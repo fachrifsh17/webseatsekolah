@@ -8,25 +8,19 @@ class UserResource extends JsonResource
 {
     public function toArray($request)
     {
-        $isGuru = $this->roles->contains('role_name', 'Guru'); // Cek apakah salah satu peran adalah 'Guru'
-
+        // Sesuaikan dengan kolom di tabel users kamu (username, nama_lengkap)
         return [
-            'id' => $this->id,
-            'name' => $this->name,
-            'email' => $this->email,
-            'email_verified_at' => $this->email_verified_at,
+            'id'           => $this->id,
+            'username'     => $this->username,
+            'nama_lengkap' => $this->nama_lengkap,
+            'role_id'      => $this->role_id,
             
-            // Relasi ke Peran (Roles)
-            'roles' => $this->whenLoaded('roles', function () {
-                // Menggunakan RoleResource yang sudah kita sesuaikan
-                return RoleResource::collection($this->roles); 
-            }),
-            // Data Guru/Staf hanya dimuat jika pengguna memiliki peran 'Guru'
-            'pegawai' => $this->whenLoaded('pegawai', function () use ($isGuru) {
-                if ($isGuru) {
-                    return new GuruResource($this->pegawai);
-                }
-                return null;
+            // Relasi ke Role (Gunakan role tunggal sesuai tabel role_id kamu)
+            'role' => $this->whenLoaded('role', function () {
+                return [
+                    'id'   => $this->role->id,
+                    'nama' => $this->role->nama_role, // Sesuaikan nama kolom di tabel roles
+                ];
             }),
             
             'created_at' => $this->created_at,

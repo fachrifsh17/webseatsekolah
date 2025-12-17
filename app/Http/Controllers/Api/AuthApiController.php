@@ -3,61 +3,95 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\User;
+use App\Models\AuthToken; // Import model AuthToken
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Symfony\Component\HttpFoundation\Response; // Import Response
+use Illuminate\Support\Str;
+use App\Http\Resources\UserResource;
+use Symfony\Component\HttpFoundation\Response;
 
 class AuthApiController extends Controller
 {
-    public function login(Request $request)
+    public function register(Request $request)
     {
-        $validated = $request->validate([
-            'username' => 'required|string',
-            'password' => 'required|string',
+        $request->validate([
+            'username'     => 'required|string|unique:users,username',
+            'password'     => 'required|string|min:6|confirmed',
+            'nama_lengkap' => 'required|string',
+            'role_id'      => 'required|integer', 
         ]);
 
-        $user = User::where('username', $validated['username'])->first();
-        
-        if (! $user || ! Hash::check($validated['password'], $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Credensial tidak valid.'
-            ], Response::HTTP_UNAUTHORIZED); // 401 Unauthorized
-        }
+        // 1. Buat user baru
+        $user = User::create([
+            'username'     => $request->username,
+            'password'     => Hash::make($request->password),
+            'nama_lengkap' => $request->nama_lengkap,
+            'role_id'      => $request->role_id,
+        ]);
 
-        // Asumsi menggunakan Laravel Sanctum atau sejenisnya
-        $token = $user->createToken('api-token')->plainTextToken;
+        // 2. Buat token pertama untuk user ini
+        $plainToken = Str::random(80);
+        AuthToken::create([
+            'user_id'    => $user->id,
+            'token_hash' => hash('sha256', $plainToken),
+            'expires_at' => now()->addDays(30),
+            'revoked'    => false
+        ]);
 
         return response()->json([
-            'success' => true,
-            'data' => [
-                'user' => $user->only(['id', 'username', 'email']), // Filter data user
-                'token' => $token,
-                'token_type' => 'Bearer',
-            ]
-        ], Response::HTTP_OK); // 200 OK
+            'success'      => true,
+            'message'      => 'Registrasi berhasil',
+            'access_token' => $plainToken,
+            'user'         => new UserResource($user)
+        ], Response::HTTP_CREATED);
+    }
+
+    public function login(Request $request)
+    {
+        $request->validate([
+            'username' => 'required',
+            'password' => 'required',
+        ]);
+
+        $user = User::where('username', $request->username)->first();
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Username atau password salah'
+            ], 401);
+        }
+
+        // 3. LOGIKA BARU: Simpan token ke tabel auth_tokens
+        $plainToken = Str::random(80);
+        
+        AuthToken::create([
+            'user_id'    => $user->id,
+            'token_hash' => hash('sha256', $plainToken),
+            'expires_at' => now()->addDays(30), // Token berlaku 30 hari
+            'revoked'    => false
+        ]);
+
+        return response()->json([
+            'success'      => true,
+            'message'      => 'Login berhasil',
+            'access_token' => $plainToken,
+            'user'         => new UserResource($user)
+        ]);
     }
 
     public function logout(Request $request)
     {
-        // Menghapus token saat ini
-        if ($request->user()) {
-            $request->user()->currentAccessToken()->delete();
-        }
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Logout berhasil.'
-        ], Response::HTTP_OK); // 200 OK
-    }
+        // Ambil token dari header, hash, lalu matikan di database (revoked)
+        $token = $request->bearerToken();
+        $hash = hash('sha256', $token);
 
-    public function me(Request $request)
-    {
-        // Mengembalikan data user yang sedang login (diasumsikan sudah melewati middleware auth:sanctum)
+        AuthToken::where('token_hash', $hash)->update(['revoked' => true]);
+
         return response()->json([
             'success' => true,
-            'data' => $request->user()->only(['id', 'username', 'email'])
-        ], Response::HTTP_OK); // 200 OK
+            'message' => 'Logout berhasil'
+        ]);
     }
 }

@@ -8,22 +8,13 @@ use App\Models\User;
 
 class AuthServiceProvider extends ServiceProvider
 {
-    /**
-     * The policy mappings for the application.
-     *
-     * @var array<class-string, class-string>
-     */
-    protected $policies = [
-        // User::class => \App\Policies\UserPolicy::class,
-    ];
+    protected $policies = [];
 
-    /**
-     * Register any authentication / authorization services.
-     */
     public function boot(): void
     {
         $this->registerPolicies();
-
-        Gate::define('manage-users', fn(User $user) => $user->role === 'Super Admin');
+        Gate::define('manage-users', function (User $user) {
+            return $user->role_id === 1; 
+        });
     }
 }
