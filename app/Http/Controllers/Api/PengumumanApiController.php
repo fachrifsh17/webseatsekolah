@@ -3,112 +3,56 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Pengumuman;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class PengumumanApiController extends Controller
 {
     public function index()
     {
         $data = Pengumuman::orderBy('tanggal_publikasi', 'desc')->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $data
-        ]);
+        return response()->json(['success' => true, 'data' => $data], Response::HTTP_OK);
     }
 
-    public function show($id)
+    // Menggunakan Route Model Binding
+    public function show(Pengumuman $pengumuman)
     {
-        $p = Pengumuman::find($id);
-
-        if (! $p) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pengumuman tidak ditemukan'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $p
-        ]);
+        // Jika tidak ditemukan, Laravel akan otomatis melempar 404
+        return response()->json(['success' => true, 'data' => $pengumuman], Response::HTTP_OK);
     }
 
     public function store(Request $request)
     {
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'judul' => 'required|string|max:255',
             'isi_pengumuman' => 'required|string',
             'tanggal_publikasi' => 'nullable|date',
             'penting' => 'nullable|boolean',
         ]);
 
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $p = Pengumuman::create($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $p
-        ], 201);
+        $p = Pengumuman::create($validated);
+        return response()->json(['success' => true, 'data' => $p], Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, Pengumuman $pengumuman)
     {
-        $p = Pengumuman::find($id);
-
-        if (! $p) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pengumuman tidak ditemukan'
-            ], 404);
-        }
-
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'judul' => 'sometimes|required|string|max:255',
             'isi_pengumuman' => 'sometimes|required|string',
             'tanggal_publikasi' => 'nullable|date',
             'penting' => 'nullable|boolean',
         ]);
 
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $p->update($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $p
-        ]);
+        $pengumuman->update($validated);
+        return response()->json(['success' => true, 'data' => $pengumuman], Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(Pengumuman $pengumuman)
     {
-        $p = Pengumuman::find($id);
-
-        if (! $p) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pengumuman tidak ditemukan'
-            ], 404);
-        }
-
-        $p->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Pengumuman dihapus'
-        ]);
+        $pengumuman->delete();
+        return response()->json(['success' => true, 'message' => 'Pengumuman berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }

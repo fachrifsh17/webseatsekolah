@@ -1,26 +1,97 @@
 <?php
+
 namespace App\Http\Controllers\Admin;
+
 use App\Http\Controllers\Controller;
 use App\Models\GuruStaf;
+use App\Http\Resources\GuruResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
-class GuruController extends Controller {
-  public function index(){ $data = GuruStaf::paginate(12); return view('admin.guru.index',compact('data')); }
-  public function create(){ return view('admin.guru.create'); }
-  public function store(Request $r){
-    $r->validate(['nama'=>'required']);
-    $foto = $r->hasFile('foto') ? $r->file('foto')->store('uploads/guru','public') : null;
-    GuruStaf::create($r->only(['nip','nuptk','nama','jabatan_fungsional','status_kepegawaian','jurusan_id']) + ['foto'=>$foto]);
-    return redirect()->route('admin.guru.index')->with('ok','Guru/Staf dibuat');
-  }
-  public function edit($id){ $item = GuruStaf::findOrFail($id); return view('admin.guru.edit',compact('item')); }
-  public function update(Request $r,$id){
-    $item = GuruStaf::findOrFail($id);
-    $r->validate(['nama'=>'required']);
-    if($r->hasFile('foto')){ if($item->foto) Storage::disk('public')->delete($item->foto); $item->foto = $r->file('foto')->store('uploads/guru','public'); }
-    $item->update($r->only(['nip','nuptk','nama','jabatan_fungsional','status_kepegawaian','jurusan_id']) + ['foto'=>$item->foto]);
-    return redirect()->route('admin.guru.index')->with('ok','Guru/Staf diubah');
-  }
-  public function destroy($id){ $item = GuruStaf::findOrFail($id); if($item->foto) Storage::disk('public')->delete($item->foto); $item->delete(); return redirect()->route('admin.guru.index')->with('ok','Guru/Staf dihapus'); }
+class GuruController extends Controller
+{
+    public function __construct()
+    {
+        $this->middleware('auth:sanctum');
+        // Otorisasi: Hanya Admin yang mengelola data Guru/Staf
+        $this->middleware('role:Admin');
+    }
+
+    public function index()
+    {
+        // Memuat relasi jurusan dan user (jika user_id ada)
+        $data = GuruStaf::with(['jurusan', 'user'])->paginate(12);
+        
+        return GuruResource::collection($data);
+    }
+    
+    public function show($id)
+    {
+        $item = GuruStaf::with(['jurusan', 'user'])->findOrFail($id);
+        
+        return new GuruResource($item);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'nip' => 'nullable|string|max:18|unique:guru_staf,nip',
+            'nuptk' => 'nullable|string|max:16|unique:guru_staf,nuptk',
+            'nama' => 'required|string|max:255',
+            'jabatan_fungsional' => 'nullable|string',
+            'status_kepegawaian' => 'nullable|string',
+            'jurusan_id' => 'nullable|exists:jurusan,id',
+            'foto' => 'nullable|image|max:2048',
+        ]);
+
+        if ($request->hasFile('foto')) {
+            $validated['foto'] = $request->file('foto')->store('uploads/guru','public');
+        }
+        
+        $guru = GuruStaf::create($validated);
+        
+        return new GuruResource($guru->load(['jurusan', 'user']));
+    }
+
+    public function update(Request $request, $id)
+    {
+        $item = GuruStaf::findOrFail($id);
+        
+        $validated = $request->validate([
+            'nip' => 'nullable|string|max:18|unique:guru_staf,nip,' . $id,
+            'nuptk' => 'nullable|string|max:16|unique:guru_staf,nuptk,' . $id,
+            'nama' => 'required|string|max:255',
+            'jabatan_fungsional' => 'nullable|string',
+            'status_kepegawaian' => 'nullable|string',
+            'jurusan_id' => 'nullable|exists:jurusan,id',
+            'foto' => 'nullable|image|max:2048',
+        ]);
+
+        if ($request->hasFile('foto')) {
+            if ($item->foto) {
+                Storage::disk('public')->delete($item->foto);
+            }
+            $validated['foto'] = $request->file('foto')->store('uploads/guru','public');
+        }
+
+        $item->update($validated);
+        
+        return new GuruResource($item->load(['jurusan', 'user']));
+    }
+
+    public function destroy($id)
+    {
+        $item = GuruStaf::findOrFail($id);
+        
+        if ($item->foto) {
+            Storage::disk('public')->delete($item->foto);
+        }
+        
+        // Catatan: Jika GuruStaf memiliki relasi user (auth), Anda mungkin perlu menghapus user-nya juga di sini.
+        // $item->user()->delete(); 
+
+        $item->delete();
+        
+        return response()->json(null, 204);
+    }
 }

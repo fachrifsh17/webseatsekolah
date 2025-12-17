@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\PPDBLink;
 use App\Models\LogAdmin;
+use App\Http\Resources\PPDBLinkResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -12,18 +13,23 @@ class PpdbLinkController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth'); // atau middleware admin sesuai project
+        // Menggunakan auth:sanctum dan role:Admin untuk konsistensi API
+        $this->middleware('auth:sanctum'); 
+        $this->middleware('role:Admin');
     }
 
     public function index()
     {
         $links = PPDBLink::orderBy('id')->get();
-        return view('admin.ppdb.index', compact('links'));
+        
+        return PPDBLinkResource::collection($links);
     }
-
-    public function create()
+    
+    public function show($id)
     {
-        return view('admin.ppdb.create');
+        $link = PPDBLink::findOrFail($id);
+        
+        return new PPDBLinkResource($link);
     }
 
     public function store(Request $request)
@@ -35,21 +41,15 @@ class PpdbLinkController extends Controller
 
         $link = PPDBLink::create($validated);
 
-        // optional: log admin action
+        // Logging aksi untuk API Sanctum
         if (Auth::check()) {
             LogAdmin::create([
                 'user_id' => Auth::id(),
-                'aksi' => 'Menambah PPDB link id='.$link->id,
+                'aksi' => 'Menambah PPDB link id=' . $link->id,
             ]);
         }
 
-        return redirect()->route('admin.ppdb.index')->with('success', 'PPDB link berhasil ditambahkan.');
-    }
-
-    public function edit($id)
-    {
-        $link = PPDBLink::findOrFail($id);
-        return view('admin.ppdb.edit', compact('link'));
+        return new PPDBLinkResource($link);
     }
 
     public function update(Request $request, $id)
@@ -63,14 +63,15 @@ class PpdbLinkController extends Controller
 
         $link->update($validated);
 
+        // Logging aksi
         if (Auth::check()) {
             LogAdmin::create([
                 'user_id' => Auth::id(),
-                'aksi' => 'Mengubah PPDB link id='.$link->id,
+                'aksi' => 'Mengubah PPDB link id=' . $link->id,
             ]);
         }
 
-        return redirect()->route('admin.ppdb.index')->with('success', 'PPDB link berhasil diperbarui.');
+        return new PPDBLinkResource($link);
     }
 
     public function destroy($id)
@@ -78,13 +79,14 @@ class PpdbLinkController extends Controller
         $link = PPDBLink::findOrFail($id);
         $link->delete();
 
+        // Logging aksi
         if (Auth::check()) {
             LogAdmin::create([
                 'user_id' => Auth::id(),
-                'aksi' => 'Menghapus PPDB link id='.$id,
+                'aksi' => 'Menghapus PPDB link id=' . $id,
             ]);
         }
 
-        return redirect()->route('admin.ppdb.index')->with('success', 'PPDB link berhasil dihapus.');
+        return response()->json(null, 204);
     }
 }

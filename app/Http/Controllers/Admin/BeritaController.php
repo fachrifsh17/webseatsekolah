@@ -4,24 +4,30 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Berita;
+use App\Http\Resources\BeritaResource;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class BeritaController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth:admin'); // sesuaikan guard jika perlu
+        $this->middleware('auth:sanctum');
+        
+        // Otorisasi: Sesuaikan dengan peran (Admin|Guru) yang diizinkan untuk mengelola Berita
+        // $this->middleware('role:Admin|Guru'); 
     }
 
     public function index()
     {
-        $beritas = Berita::orderBy('tanggal_publikasi','desc')->paginate(10);
-        return view('admin.berita.index', compact('beritas'));
+        $berita = Berita::with('kategori')->orderBy('tanggal_publikasi','desc')->paginate(10);
+        return BeritaResource::collection($berita);
     }
-
-    public function create()
+    
+    public function show(Berita $berita)
     {
-        return view('admin.berita.create');
+        $berita->load('kategori');
+        return new BeritaResource($berita);
     }
 
     public function store(Request $request)
@@ -29,22 +35,19 @@ class BeritaController extends Controller
         $data = $request->validate([
             'judul' => 'required|string|max:255',
             'isi_berita' => 'required',
-            'tanggal_publikasi' => 'nullable|date',
+            'tanggal_publikasi' => 'required|date',
+            'kategori_id' => 'required|exists:kategori,id',
             'foto' => 'nullable|image|max:2048'
         ]);
 
         if ($request->hasFile('foto')) {
-            $path = $request->file('foto')->store('berita','public');
+            $path = $request->file('foto')->store('uploads/berita','public');
             $data['foto'] = $path;
         }
 
-        Berita::create($data);
-        return redirect()->route('admin.berita.index')->with('success','Berita berhasil ditambahkan');
-    }
-
-    public function edit(Berita $berita)
-    {
-        return view('admin.berita.edit', compact('berita'));
+        $berita = Berita::create($data);
+        
+        return new BeritaResource($berita->load('kategori'));
     }
 
     public function update(Request $request, Berita $berita)
@@ -52,22 +55,32 @@ class BeritaController extends Controller
         $data = $request->validate([
             'judul' => 'required|string|max:255',
             'isi_berita' => 'required',
-            'tanggal_publikasi' => 'nullable|date',
+            'tanggal_publikasi' => 'required|date',
+            'kategori_id' => 'required|exists:kategori,id',
             'foto' => 'nullable|image|max:2048'
         ]);
 
         if ($request->hasFile('foto')) {
-            $path = $request->file('foto')->store('berita','public');
+            if ($berita->foto) {
+                Storage::disk('public')->delete($berita->foto);
+            }
+            $path = $request->file('foto')->store('uploads/berita','public');
             $data['foto'] = $path;
         }
 
         $berita->update($data);
-        return redirect()->route('admin.berita.index')->with('success','Berita berhasil diperbarui');
+        
+        return new BeritaResource($berita->load('kategori'));
     }
 
     public function destroy(Berita $berita)
     {
+        if ($berita->foto) {
+            Storage::disk('public')->delete($berita->foto);
+        }
+        
         $berita->delete();
-        return redirect()->route('admin.berita.index')->with('success','Berita berhasil dihapus');
+        
+        return response()->json(null, 204);
     }
 }

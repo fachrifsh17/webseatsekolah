@@ -3,110 +3,55 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Jurusan;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class JurusanApiController extends Controller
 {
     public function index()
     {
         $data = Jurusan::orderBy('nama_jurusan')->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $data
-        ]);
+        return response()->json(['success' => true, 'data' => $data], Response::HTTP_OK);
     }
 
-    public function show($id)
+    // Menggunakan Route Model Binding
+    public function show(Jurusan $jurusan)
     {
-        $item = Jurusan::find($id);
-
-        if (! $item) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Jurusan tidak ditemukan'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $item
-        ]);
+        // Jika tidak ditemukan, Laravel akan otomatis melempar 404
+        return response()->json(['success' => true, 'data' => $jurusan], Response::HTTP_OK);
     }
 
     public function store(Request $request)
     {
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'nama_jurusan' => 'required|string|max:100',
             'deskripsi' => 'nullable|string',
-            'foto' => 'nullable|string|max:255',
+            // Asumsi 'foto' adalah path/URL, bukan file upload
+            'foto' => 'nullable|string|max:255', 
         ]);
-
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $j = Jurusan::create($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $j
-        ], 201);
+        
+        $j = Jurusan::create($validated);
+        return response()->json(['success' => true, 'data' => $j], Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, Jurusan $jurusan)
     {
-        $j = Jurusan::find($id);
-
-        if (! $j) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Jurusan tidak ditemukan'
-            ], 404);
-        }
-
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'nama_jurusan' => 'sometimes|required|string|max:100',
             'deskripsi' => 'nullable|string',
             'foto' => 'nullable|string|max:255',
         ]);
-
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $j->update($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $j
-        ]);
+        
+        $jurusan->update($validated);
+        return response()->json(['success' => true, 'data' => $jurusan], Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(Jurusan $jurusan)
     {
-        $j = Jurusan::find($id);
-
-        if (! $j) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Jurusan tidak ditemukan'
-            ], 404);
-        }
-
-        $j->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Jurusan dihapus'
-        ]);
+        $jurusan->delete();
+        return response()->json(['success' => true, 'message' => 'Jurusan berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }

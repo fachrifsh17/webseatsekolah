@@ -6,47 +6,58 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Validator;
+use Symfony\Component\HttpFoundation\Response; // Import Response
 
 class AuthApiController extends Controller
 {
     public function login(Request $request)
     {
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'username' => 'required|string',
             'password' => 'required|string',
         ]);
 
-        if ($v->fails()) return response()->json(['success'=>false,'errors'=>$v->errors()], 422);
-
-        $user = User::where('username', $request->username)->first();
-        if (! $user || ! Hash::check($request->password, $user->password)) {
-            return response()->json(['success'=>false,'message'=>'Credensial tidak valid'], 401);
+        $user = User::where('username', $validated['username'])->first();
+        
+        if (! $user || ! Hash::check($validated['password'], $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Credensial tidak valid.'
+            ], Response::HTTP_UNAUTHORIZED); // 401 Unauthorized
         }
 
-        // Gunakan Sanctum token atau implementasi token Anda
+        // Asumsi menggunakan Laravel Sanctum atau sejenisnya
         $token = $user->createToken('api-token')->plainTextToken;
 
         return response()->json([
             'success' => true,
             'data' => [
-                'user' => $user,
+                'user' => $user->only(['id', 'username', 'email']), // Filter data user
                 'token' => $token,
+                'token_type' => 'Bearer',
             ]
-        ]);
+        ], Response::HTTP_OK); // 200 OK
     }
 
     public function logout(Request $request)
     {
-        $user = $request->user();
-        if ($user) {
-            $user->currentAccessToken()->delete();
+        // Menghapus token saat ini
+        if ($request->user()) {
+            $request->user()->currentAccessToken()->delete();
         }
-        return response()->json(['success'=>true,'message'=>'Logout berhasil']);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Logout berhasil.'
+        ], Response::HTTP_OK); // 200 OK
     }
 
     public function me(Request $request)
     {
-        return response()->json(['success'=>true,'data'=>$request->user()]);
+        // Mengembalikan data user yang sedang login (diasumsikan sudah melewati middleware auth:sanctum)
+        return response()->json([
+            'success' => true,
+            'data' => $request->user()->only(['id', 'username', 'email'])
+        ], Response::HTTP_OK); // 200 OK
     }
 }

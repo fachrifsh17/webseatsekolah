@@ -3,114 +3,58 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Prestasi;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class PrestasiApiController extends Controller
 {
     public function index()
     {
         $data = Prestasi::orderBy('tahun', 'desc')->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $data
-        ]);
+        return response()->json(['success' => true, 'data' => $data], Response::HTTP_OK);
     }
 
-    public function show($id)
+    // Menggunakan Route Model Binding
+    public function show(Prestasi $prestasi)
     {
-        $p = Prestasi::find($id);
-
-        if (! $p) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Prestasi tidak ditemukan'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $p
-        ]);
+        // Jika tidak ditemukan, Laravel akan otomatis melempar 404
+        return response()->json(['success' => true, 'data' => $prestasi], Response::HTTP_OK);
     }
 
     public function store(Request $request)
     {
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'judul' => 'required|string|max:255',
             'tahun' => 'nullable|digits:4|integer',
             'tingkat' => 'nullable|string|max:50',
             'kategori' => 'nullable|in:Siswa,Sekolah',
             'foto' => 'nullable|string|max:255',
         ]);
-
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $p = Prestasi::create($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $p
-        ], 201);
+        
+        $p = Prestasi::create($validated);
+        return response()->json(['success' => true, 'data' => $p], Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, Prestasi $prestasi)
     {
-        $p = Prestasi::find($id);
-
-        if (! $p) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Prestasi tidak ditemukan'
-            ], 404);
-        }
-
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'judul' => 'sometimes|required|string|max:255',
             'tahun' => 'nullable|digits:4|integer',
             'tingkat' => 'nullable|string|max:50',
             'kategori' => 'nullable|in:Siswa,Sekolah',
             'foto' => 'nullable|string|max:255',
         ]);
-
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $p->update($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $p
-        ]);
+        
+        $prestasi->update($validated);
+        return response()->json(['success' => true, 'data' => $prestasi], Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(Prestasi $prestasi)
     {
-        $p = Prestasi::find($id);
-
-        if (! $p) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Prestasi tidak ditemukan'
-            ], 404);
-        }
-
-        $p->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Prestasi dihapus'
-        ]);
+        $prestasi->delete();
+        return response()->json(['success' => true, 'message' => 'Prestasi berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }

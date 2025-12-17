@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Album;
+use App\Http\Resources\AlbumResource; // <-- Wajib: Import Resource
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -12,12 +13,17 @@ class AlbumController extends Controller
     public function index()
     {
         $data = Album::orderByDesc('tanggal_kegiatan')->paginate(12);
-        return view('admin.album.index', compact('data'));
+        
+        // Ganti return view() dengan Resource Collection
+        return AlbumResource::collection($data);
     }
 
-    public function create()
+    public function show($id)
     {
-        return view('admin.album.create');
+        $item = Album::findOrFail($id);
+        
+        // Kembalikan Single Resource
+        return new AlbumResource($item);
     }
 
     public function store(Request $request)
@@ -32,19 +38,14 @@ class AlbumController extends Controller
             ? $request->file('cover')->store('uploads/album', 'public')
             : null;
 
-        Album::create([
+        $album = Album::create([
             'nama_album' => $validated['nama_album'],
             'tanggal_kegiatan' => $validated['tanggal_kegiatan'] ?? null,
             'cover_path' => $coverPath,
         ]);
 
-        return redirect()->route('admin.album.index')->with('ok', 'Album dibuat');
-    }
-
-    public function edit($id)
-    {
-        $item = Album::findOrFail($id);
-        return view('admin.album.edit', compact('item'));
+        // Kembalikan Resource yang baru dibuat (HTTP 201 Created)
+        return new AlbumResource($album);
     }
 
     public function update(Request $request, $id)
@@ -68,7 +69,8 @@ class AlbumController extends Controller
         $item->tanggal_kegiatan = $validated['tanggal_kegiatan'] ?? null;
         $item->save();
 
-        return redirect()->route('admin.album.index')->with('ok', 'Album diubah');
+        // Kembalikan Resource yang telah diperbarui
+        return new AlbumResource($item);
     }
 
     public function destroy($id)
@@ -81,6 +83,7 @@ class AlbumController extends Controller
 
         $item->delete();
 
-        return redirect()->route('admin.album.index')->with('ok', 'Album dihapus');
+        // Kembalikan respons 204 No Content
+        return response()->json(null, 204);
     }
-}
+}     

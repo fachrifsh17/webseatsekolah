@@ -13,7 +13,7 @@ class BeritaResource extends JsonResource
             'judul' => $this->judul,
             'isi' => $this->isi_berita,
             'tanggal_publikasi' => $this->tanggal_publikasi,
-            'foto_url' => $this->foto ? asset('storage/'.$this->foto) : null,
+            'foto_url' => $this->foto ? asset('storage/' . $this->foto) : null,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

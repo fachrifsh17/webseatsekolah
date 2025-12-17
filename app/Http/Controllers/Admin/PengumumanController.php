@@ -4,64 +4,66 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Pengumuman;
+use App\Http\Resources\PengumumanResource;
 use Illuminate\Http\Request;
 
 class PengumumanController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('auth:sanctum');
+        $this->middleware('role:Admin');
+    }
+
     public function index()
     {
         $data = Pengumuman::latest()->paginate(10);
-        return view('admin.pengumuman.index', compact('data'));
+        
+        return PengumumanResource::collection($data);
     }
-
-    public function create()
+    
+    public function show($id)
     {
-        return view('admin.pengumuman.create');
+        $item = Pengumuman::findOrFail($id);
+        
+        return new PengumumanResource($item);
     }
 
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'judul' => 'required|string|max:255',
             'isi_pengumuman' => 'required|string',
             'tanggal_publikasi' => 'nullable|date',
-            'penting' => 'nullable|boolean',
+            // 'boolean' di API biasanya dikirim sebagai 0 atau 1 atau true/false
+            'penting' => 'nullable|boolean', 
         ]);
 
-        Pengumuman::create($request->only([
-            'judul', 'isi_pengumuman', 'tanggal_publikasi', 'penting'
-        ]));
+        $item = Pengumuman::create($validated);
 
-        return redirect()->route('pengumuman.index')->with('ok', 'Pengumuman berhasil ditambahkan');
-    }
-
-    public function edit($id)
-    {
-        $item = Pengumuman::findOrFail($id);
-        return view('admin.pengumuman.edit', compact('item'));
+        return new PengumumanResource($item);
     }
 
     public function update(Request $request, $id)
     {
         $item = Pengumuman::findOrFail($id);
 
-        $request->validate([
+        $validated = $request->validate([
             'judul' => 'required|string|max:255',
             'isi_pengumuman' => 'required|string',
             'tanggal_publikasi' => 'nullable|date',
             'penting' => 'nullable|boolean',
         ]);
 
-        $item->update($request->only([
-            'judul', 'isi_pengumuman', 'tanggal_publikasi', 'penting'
-        ]));
+        $item->update($validated);
 
-        return redirect()->route('pengumuman.index')->with('ok', 'Pengumuman berhasil diubah');
+        return new PengumumanResource($item);
     }
 
     public function destroy($id)
     {
         Pengumuman::findOrFail($id)->delete();
-        return redirect()->route('pengumuman.index')->with('ok', 'Pengumuman berhasil dihapus');
+        
+        return response()->json(null, 204);
     }
 }

@@ -11,9 +11,13 @@ class PengumumanResource extends JsonResource
         return [
             'id' => $this->id,
             'judul' => $this->judul,
-            'isi' => $this->isi_pengumuman,
+            'isi_pengumuman' => $this->isi_pengumuman,
             'tanggal_publikasi' => $this->tanggal_publikasi,
             'penting' => (bool) $this->penting,
+            
+            // Metadata
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at, 
         ];
     }
 }

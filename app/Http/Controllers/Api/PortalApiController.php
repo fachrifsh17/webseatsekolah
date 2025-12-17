@@ -5,18 +5,21 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PortalSosmed;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class PortalApiController extends Controller
 {
     public function index()
     {
-        return response()->json(PortalSosmed::orderBy('nama_platform')->get());
+        $data = PortalSosmed::orderBy('nama_platform')->get();
+        return response()->json($data, Response::HTTP_OK);
     }
 
-    public function show($id)
+    // Menggunakan Route Model Binding
+    public function show(PortalSosmed $portal)
     {
-        $portal = PortalSosmed::findOrFail($id);
-        return response()->json($portal);
+        // Jika tidak ditemukan, Laravel akan otomatis melempar 404
+        return response()->json($portal, Response::HTTP_OK);
     }
 
     public function store(Request $request)
@@ -28,13 +31,12 @@ class PortalApiController extends Controller
         ]);
 
         $portal = PortalSosmed::create($validated);
-        return response()->json($portal, 201);
+        return response()->json($portal, Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, PortalSosmed $portal)
     {
-        $portal = PortalSosmed::findOrFail($id);
-
         $validated = $request->validate([
             'nama_platform' => 'sometimes|required|string|max:100',
             'url_link' => 'nullable|url|max:255',
@@ -42,13 +44,13 @@ class PortalApiController extends Controller
         ]);
 
         $portal->update($validated);
-        return response()->json($portal);
+        return response()->json($portal, Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(PortalSosmed $portal)
     {
-        $portal = PortalSosmed::findOrFail($id);
         $portal->delete();
-        return response()->json(['message' => 'Portal/Media sosial dihapus']);
+        return response()->json(['message' => 'Portal/Media sosial berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }

@@ -3,98 +3,57 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Banner;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class BannerApiController extends Controller
 {
     public function index()
     {
+        // Mengambil banner yang aktif (aktif_sampai NULL ATAU aktif_sampai >= sekarang)
         $banners = Banner::whereNull('aktif_sampai')
             ->orWhere('aktif_sampai', '>=', now())
-            ->orderBy('id','desc')
+            ->orderBy('id', 'desc')
             ->get();
 
-        return response()->json([
-            'success' => true,
-            'data' => $banners
-        ]);
+        return response()->json(['success' => true, 'data' => $banners], Response::HTTP_OK);
     }
 
     public function store(Request $request)
     {
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'judul' => 'required|string|max:255',
             'url_link' => 'nullable|url|max:255',
             'aktif_sampai' => 'nullable|date',
-            'foto' => 'nullable|string|max:255',
+            // Asumsi 'foto' adalah path/URL, bukan file upload
+            'foto' => 'nullable|string|max:255', 
         ]);
 
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
+        $banner = Banner::create($validated);
 
-        $banner = Banner::create($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $banner
-        ], 201);
+        return response()->json(['success' => true, 'data' => $banner], Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, Banner $banner)
     {
-        $banner = Banner::find($id);
-
-        if (! $banner) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Banner tidak ditemukan'
-            ], 404);
-        }
-
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'judul' => 'sometimes|required|string|max:255',
             'url_link' => 'nullable|url|max:255',
             'aktif_sampai' => 'nullable|date',
             'foto' => 'nullable|string|max:255',
         ]);
+        
+        $banner->update($validated);
 
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $banner->update($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $banner
-        ]);
+        return response()->json(['success' => true, 'data' => $banner], Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(Banner $banner)
     {
-        $banner = Banner::find($id);
-
-        if (! $banner) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Banner tidak ditemukan'
-            ], 404);
-        }
-
         $banner->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Banner dihapus'
-        ]);
+        return response()->json(['success' => true, 'message' => 'Banner berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }

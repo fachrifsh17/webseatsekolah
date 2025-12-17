@@ -3,20 +3,25 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Ekstrakulikuler;
+use App\Models\Ekstrakurikuler;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
-class EkstrakulikulerApiController extends Controller
+class EkstrakurikulerApiController extends Controller
 {
     public function index()
     {
-        return response()->json(Ekstrakulikuler::with('pembina')->orderBy('nama_ekskul')->get());
+        $ekskul = Ekstrakurikuler::with('pembina')->orderBy('nama_ekskul')->get();
+        // Mengembalikan data langsung, status default 200 OK
+        return response()->json($ekskul, Response::HTTP_OK); 
     }
 
-    public function show($id)
+    // Menggunakan Route Model Binding
+    public function show(Ekstrakurikuler $ekskul)
     {
-        $ekskul = Ekstrakulikuler::with('pembina')->findOrFail($id);
-        return response()->json($ekskul);
+        $ekskul->load('pembina');
+        // Jika tidak ditemukan, Laravel akan otomatis melempar 404 (dikelola oleh Exception Handler)
+        return response()->json($ekskul, Response::HTTP_OK);
     }
 
     public function store(Request $request)
@@ -32,14 +37,13 @@ class EkstrakulikulerApiController extends Controller
             'keterangan' => 'nullable|string|max:255',
         ]);
 
-        $ekskul = Ekstrakulikuler::create($validated);
-        return response()->json($ekskul, 201);
+        $ekskul = Ekstrakurikuler::create($validated);
+        return response()->json($ekskul, Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, Ekstrakurikuler $ekskul)
     {
-        $ekskul = Ekstrakulikuler::findOrFail($id);
-
         $validated = $request->validate([
             'nama_ekskul' => 'sometimes|required|string|max:100',
             'deskripsi' => 'nullable|string',
@@ -52,13 +56,13 @@ class EkstrakulikulerApiController extends Controller
         ]);
 
         $ekskul->update($validated);
-        return response()->json($ekskul);
+        return response()->json($ekskul, Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(Ekstrakurikuler $ekskul)
     {
-        $ekskul = Ekstrakulikuler::findOrFail($id);
         $ekskul->delete();
-        return response()->json(['message' => 'Ekstrakurikuler dihapus']);
+        return response()->json(['message' => 'Ekstrakurikuler berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }

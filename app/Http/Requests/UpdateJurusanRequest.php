@@ -6,7 +6,10 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateJurusanRequest extends FormRequest
 {
-    public function authorize() { return true; }
+    public function authorize()
+    {
+        return true;
+    }
 
     public function rules()
     {

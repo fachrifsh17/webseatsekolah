@@ -6,7 +6,10 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreGuruRequest extends FormRequest
 {
-    public function authorize() { return true; }
+    public function authorize()
+    {
+        return true;
+    }
 
     public function rules()
     {

@@ -3,110 +3,55 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Fasilitas;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class FasilitasApiController extends Controller
 {
     public function index()
     {
-        $data = Fasilitas::orderBy('id','desc')->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $data
-        ]);
+        $data = Fasilitas::orderBy('id', 'desc')->get();
+        return response()->json(['success' => true, 'data' => $data], Response::HTTP_OK);
     }
 
-    public function show($id)
+    // Menggunakan Route Model Binding
+    public function show(Fasilitas $fasilita) // Nama variabel singular default Laravel adalah $fasilita
     {
-        $item = Fasilitas::find($id);
-
-        if (! $item) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Fasilitas tidak ditemukan'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $item
-        ]);
+        // Jika tidak ditemukan, Laravel akan otomatis melempar 404
+        return response()->json(['success' => true, 'data' => $fasilita], Response::HTTP_OK);
     }
 
     public function store(Request $request)
     {
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'nama_fasilitas' => 'required|string|max:150',
-            'foto' => 'nullable|string|max:255',
+            // Asumsi 'foto' adalah path/URL, bukan file upload
+            'foto' => 'nullable|string|max:255', 
             'keterangan' => 'nullable|string|max:255',
         ]);
-
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $f = Fasilitas::create($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $f
-        ], 201);
+        
+        $f = Fasilitas::create($validated);
+        return response()->json(['success' => true, 'data' => $f], Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, Fasilitas $fasilita)
     {
-        $f = Fasilitas::find($id);
-
-        if (! $f) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Fasilitas tidak ditemukan'
-            ], 404);
-        }
-
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'nama_fasilitas' => 'sometimes|required|string|max:150',
             'foto' => 'nullable|string|max:255',
             'keterangan' => 'nullable|string|max:255',
         ]);
-
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $f->update($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $f
-        ]);
+        
+        $fasilita->update($validated);
+        return response()->json(['success' => true, 'data' => $fasilita], Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(Fasilitas $fasilita)
     {
-        $f = Fasilitas::find($id);
-
-        if (! $f) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Fasilitas tidak ditemukan'
-            ], 404);
-        }
-
-        $f->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Fasilitas dihapus'
-        ]);
+        $fasilita->delete();
+        return response()->json(['success' => true, 'message' => 'Fasilitas berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }

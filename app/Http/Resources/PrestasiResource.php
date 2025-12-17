@@ -14,7 +14,13 @@ class PrestasiResource extends JsonResource
             'tahun' => $this->tahun,
             'tingkat' => $this->tingkat,
             'kategori' => $this->kategori,
-            'foto_url' => $this->foto ? asset('storage/'.$this->foto) : null,
+            // Media/URL
+            'foto_url' => $this->foto 
+                          ? asset('storage/' . $this->foto) 
+                          : null,
+            // Metadata
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at,
         ];
     }
 }

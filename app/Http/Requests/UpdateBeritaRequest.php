@@ -6,7 +6,10 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateBeritaRequest extends FormRequest
 {
-    public function authorize() { return true; }
+    public function authorize()
+    {
+        return true;
+    }
 
     public function rules()
     {
@@ -14,6 +17,7 @@ class UpdateBeritaRequest extends FormRequest
             "judul" => "sometimes|required|string|max:255",
             "isi_berita" => "sometimes|required|string",
             "tanggal_publikasi" => "nullable|date",
+            // 'foto' bersifat opsional, harus berupa gambar, maks 5MB.
             "foto" => "nullable|file|image|max:5120",
         ];
     }

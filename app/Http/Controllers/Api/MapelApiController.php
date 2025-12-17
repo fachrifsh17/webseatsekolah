@@ -3,114 +3,57 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\MataPelajaran;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class MapelApiController extends Controller
 {
     public function index()
     {
-        $mapel = MataPelajaran::with('jurusan')
-            ->orderBy('nama_mapel')
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $mapel
-        ]);
+        $mapel = MataPelajaran::with('jurusan')->orderBy('nama_mapel')->get();
+        return response()->json(['success' => true, 'data' => $mapel], Response::HTTP_OK);
     }
 
-    public function show($id)
+    // Menggunakan Route Model Binding
+    public function show(MataPelajaran $mapel)
     {
-        $m = MataPelajaran::find($id);
-
-        if (! $m) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Mata pelajaran tidak ditemukan'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $m
-        ]);
+        // Jika tidak ditemukan, Laravel akan otomatis melempar 404
+        return response()->json(['success' => true, 'data' => $mapel], Response::HTTP_OK);
     }
 
     public function store(Request $request)
     {
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'nama_mapel' => 'required|string|max:100',
             'jurusan_id' => 'nullable|integer|exists:jurusan,id',
             'tipe_mapel' => 'nullable|in:umum,khusus',
+            // Kategori mata pelajaran SMK
             'kategori_mapel' => 'nullable|in:normatif,adaptif,produktif',
         ]);
-
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $m = MataPelajaran::create($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $m
-        ], 201);
+        
+        $m = MataPelajaran::create($validated);
+        return response()->json(['success' => true, 'data' => $m], Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, MataPelajaran $mapel)
     {
-        $m = MataPelajaran::find($id);
-
-        if (! $m) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Mata pelajaran tidak ditemukan'
-            ], 404);
-        }
-
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
             'nama_mapel' => 'sometimes|required|string|max:100',
             'jurusan_id' => 'nullable|integer|exists:jurusan,id',
             'tipe_mapel' => 'nullable|in:umum,khusus',
             'kategori_mapel' => 'nullable|in:normatif,adaptif,produktif',
         ]);
-
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $m->update($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $m
-        ]);
+        
+        $mapel->update($validated);
+        return response()->json(['success' => true, 'data' => $mapel], Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(MataPelajaran $mapel)
     {
-        $m = MataPelajaran::find($id);
-
-        if (! $m) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Mata pelajaran tidak ditemukan'
-            ], 404);
-        }
-
-        $m->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Mata pelajaran dihapus'
-        ]);
+        $mapel->delete();
+        return response()->json(['success' => true, 'message' => 'Mata pelajaran berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }

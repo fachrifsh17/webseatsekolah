@@ -5,18 +5,22 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\SekolahSetting;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class SettingApiController extends Controller
 {
     public function index()
     {
-        return response()->json(SekolahSetting::all());
+        $data = SekolahSetting::all();
+        // Mengembalikan data, status default 200 OK
+        return response()->json($data, Response::HTTP_OK);
     }
 
-    public function show($id)
+    // Menggunakan Route Model Binding
+    public function show(SekolahSetting $setting)
     {
-        $s = SekolahSetting::findOrFail($id);
-        return response()->json($s);
+        // Jika tidak ditemukan, Laravel akan otomatis melempar 404
+        return response()->json($setting, Response::HTTP_OK);
     }
 
     public function store(Request $request)
@@ -28,27 +32,26 @@ class SettingApiController extends Controller
         ]);
 
         $s = SekolahSetting::create($validated);
-        return response()->json($s, 201);
+        return response()->json($s, Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, SekolahSetting $setting)
     {
-        $s = SekolahSetting::findOrFail($id);
-
         $validated = $request->validate([
             'tagline' => 'nullable|string|max:255',
             'logo' => 'nullable|string|max:255',
             'pesan_selamat_datang' => 'nullable|string',
         ]);
 
-        $s->update($validated);
-        return response()->json($s);
+        $setting->update($validated);
+        return response()->json($setting, Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(SekolahSetting $setting)
     {
-        $s = SekolahSetting::findOrFail($id);
-        $s->delete();
-        return response()->json(['message' => 'Setting sekolah dihapus']);
+        $setting->delete();
+        return response()->json(['message' => 'Setting sekolah berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }

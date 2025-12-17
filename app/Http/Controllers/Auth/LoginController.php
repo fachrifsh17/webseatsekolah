@@ -5,16 +5,17 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\Response;
 
 class LoginController extends Controller
 {
-    // ✅ Halaman login web
+    // --- WEB AUTHENTICATION (Session) ---
+
     public function showLoginForm()
     {
         return view('auth.login');
     }
 
-    // ✅ Login WEB (Admin & Guru) pakai USERNAME
     public function login(Request $request)
     {
         $credentials = $request->validate([
@@ -24,27 +25,23 @@ class LoginController extends Controller
 
         if (Auth::attempt($credentials)) {
             $request->session()->regenerate();
+            $role = Auth::user()->role;
 
-            // ✅ Cek role
-            if (Auth::user()->role === 'admin') {
+            if ($role === 'admin') {
                 return redirect('/admin');
             }
-
-            if (Auth::user()->role === 'guru') {
+            if ($role === 'guru') {
                 return redirect('/guru');
             }
-
-            // ✅ Role tidak valid
+            
+            // Handle role tidak valid
             Auth::logout();
-            return back()->withErrors(['username' => 'Role tidak valid.']);
+            return back()->withErrors(['username' => 'Role pengguna tidak valid.']);
         }
 
-        return back()->withErrors([
-            'username' => 'Username atau password salah.',
-        ]);
+        return back()->withErrors(['username' => 'Username atau password salah.']);
     }
 
-    // ✅ Logout WEB
     public function logout(Request $request)
     {
         Auth::logout();
@@ -53,7 +50,8 @@ class LoginController extends Controller
         return redirect('/login');
     }
 
-    // ✅ Login API (token) pakai USERNAME
+    // --- API AUTHENTICATION (Sanctum Token) ---
+
     public function apiLogin(Request $request)
     {
         $credentials = $request->validate([
@@ -65,30 +63,30 @@ class LoginController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Username atau password salah'
-            ], 401);
+            ], Response::HTTP_UNAUTHORIZED); // 401
         }
 
         $user = Auth::user();
-
-        // ✅ Buat token Sanctum
+        
+        // Buat token Sanctum
         $token = $user->createToken('api_token')->plainTextToken;
 
         return response()->json([
             'success' => true,
-            'message' => 'Login berhasil',
+            'message' => 'Login API berhasil',
             'role' => $user->role,
             'token' => $token
-        ]);
+        ], Response::HTTP_OK); // 200
     }
 
-    // ✅ Logout API (hapus token)
     public function apiLogout(Request $request)
     {
+        // Hapus token yang sedang digunakan
         $request->user()->currentAccessToken()->delete();
 
         return response()->json([
             'success' => true,
-            'message' => 'Logout berhasil'
-        ]);
+            'message' => 'Logout API berhasil'
+        ], Response::HTTP_OK); // 200
     }
 }

@@ -3,42 +3,29 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\GuruStaf;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class GuruApiController extends Controller
 {
     public function index()
     {
         $guru = GuruStaf::with('jurusan')->orderBy('nama')->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $guru
-        ]);
+        return response()->json(['success' => true, 'data' => $guru], Response::HTTP_OK);
     }
 
-    public function show($id)
+    // Menggunakan Route Model Binding
+    public function show(GuruStaf $guru)
     {
-        $g = GuruStaf::with('jurusan')->find($id);
-
-        if (! $g) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Guru tidak ditemukan'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $g
-        ]);
+        $guru->load('jurusan');
+        return response()->json(['success' => true, 'data' => $guru], Response::HTTP_OK);
     }
 
     public function store(Request $request)
     {
-        $v = Validator::make($request->all(), [
+        $validated = $request->validate([
+            // Validasi unik NIP/NUPTK tanpa mengabaikan ID (karena ini store/create)
             'nip' => 'nullable|string|max:18|unique:guru_staf,nip',
             'nuptk' => 'nullable|string|max:16|unique:guru_staf,nuptk',
             'nama' => 'required|string|max:100',
@@ -47,74 +34,35 @@ class GuruApiController extends Controller
             'foto' => 'nullable|string|max:255',
             'jurusan_id' => 'nullable|integer|exists:jurusan,id',
         ]);
-
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $g = GuruStaf::create($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $g
-        ], 201);
+        
+        $g = GuruStaf::create($validated);
+        return response()->json(['success' => true, 'data' => $g], Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, GuruStaf $guru)
     {
-        $g = GuruStaf::find($id);
+        // Mendapatkan ID model untuk validasi unik (mengabaikan ID saat ini)
+        $id = $guru->id;
 
-        if (! $g) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Guru tidak ditemukan'
-            ], 404);
-        }
-
-        $v = Validator::make($request->all(), [
-            'nip' => 'nullable|string|max:18|unique:guru_staf,nip,'.$id,
-            'nuptk' => 'nullable|string|max:16|unique:guru_staf,nuptk,'.$id,
+        $validated = $request->validate([
+            'nip' => 'nullable|string|max:18|unique:guru_staf,nip,' . $id,
+            'nuptk' => 'nullable|string|max:16|unique:guru_staf,nuptk,' . $id,
             'nama' => 'sometimes|required|string|max:100',
             'jabatan_fungsional' => 'nullable|string|max:100',
             'status_kepegawaian' => 'nullable|string|max:50',
             'foto' => 'nullable|string|max:255',
             'jurusan_id' => 'nullable|integer|exists:jurusan,id',
         ]);
-
-        if ($v->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $v->errors()
-            ], 422);
-        }
-
-        $g->update($v->validated());
-
-        return response()->json([
-            'success' => true,
-            'data' => $g
-        ]);
+        
+        $guru->update($validated);
+        return response()->json(['success' => true, 'data' => $guru], Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(GuruStaf $guru)
     {
-        $g = GuruStaf::find($id);
-
-        if (! $g) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Guru tidak ditemukan'
-            ], 404);
-        }
-
-        $g->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Guru dihapus'
-        ]);
+        $guru->delete();
+        return response()->json(['success' => true, 'message' => 'Data Guru berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }

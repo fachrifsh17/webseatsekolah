@@ -12,7 +12,15 @@ class JurusanResource extends JsonResource
             'id' => $this->id,
             'nama_jurusan' => $this->nama_jurusan,
             'deskripsi' => $this->deskripsi,
-            'foto_url' => $this->foto ? asset('storage/'.$this->foto) : null,
+            
+            // Media/URL
+            'foto_url' => $this->foto 
+                          ? asset('storage/' . $this->foto) 
+                          : null,
+            
+            // Metadata
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at,
         ];
     }
 }

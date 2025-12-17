@@ -5,18 +5,22 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ProfilSekolah;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class ProfilApiController extends Controller
 {
     public function index()
     {
-        return response()->json(ProfilSekolah::all());
+        $data = ProfilSekolah::all();
+        // Mengembalikan data, status default 200 OK
+        return response()->json($data, Response::HTTP_OK);
     }
 
-    public function show($id)
+    // Menggunakan Route Model Binding
+    public function show(ProfilSekolah $profil)
     {
-        $profil = ProfilSekolah::findOrFail($id);
-        return response()->json($profil);
+        // Jika tidak ditemukan, Laravel akan otomatis melempar 404
+        return response()->json($profil, Response::HTTP_OK);
     }
 
     public function store(Request $request)
@@ -31,13 +35,12 @@ class ProfilApiController extends Controller
         ]);
 
         $profil = ProfilSekolah::create($validated);
-        return response()->json($profil, 201);
+        return response()->json($profil, Response::HTTP_CREATED);
     }
 
-    public function update(Request $request, $id)
+    // Menggunakan Route Model Binding
+    public function update(Request $request, ProfilSekolah $profil)
     {
-        $profil = ProfilSekolah::findOrFail($id);
-
         $validated = $request->validate([
             'sejarah' => 'nullable|string',
             'visi' => 'nullable|string',
@@ -48,13 +51,13 @@ class ProfilApiController extends Controller
         ]);
 
         $profil->update($validated);
-        return response()->json($profil);
+        return response()->json($profil, Response::HTTP_OK);
     }
 
-    public function destroy($id)
+    // Menggunakan Route Model Binding
+    public function destroy(ProfilSekolah $profil)
     {
-        $profil = ProfilSekolah::findOrFail($id);
         $profil->delete();
-        return response()->json(['message' => 'Profil sekolah dihapus']);
+        return response()->json(['message' => 'Profil sekolah berhasil dihapus.'], Response::HTTP_NO_CONTENT);
     }
 }
