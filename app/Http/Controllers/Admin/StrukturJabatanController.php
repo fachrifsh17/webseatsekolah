@@ -5,64 +5,52 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\StrukturJabatan;
 use App\Http\Resources\StrukturJabatanResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\StoreStrukturJabatanRequest;
+use App\Http\Requests\UpdateStrukturJabatanRequest;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Http\JsonResponse;
 
-class StrukturJabatanController extends Controller
+class StrukturJabatanController extends Controller implements HasMiddleware
 {
-    public function __construct()
+       public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        $this->middleware('role:Admin'); 
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
     }
 
     public function index()
     {
-        // Mengambil data, menyertakan relasi guru, dan diurutkan
         $data = StrukturJabatan::with('guru')->orderBy('urutan_tampil')->get(); 
         
         return StrukturJabatanResource::collection($data);
     }
     
-    public function show($id)
+    public function show(StrukturJabatan $strukturJabatan)
     {
-        $item = StrukturJabatan::with('guru')->findOrFail($id);
-        
-        return new StrukturJabatanResource($item);
+        return new StrukturJabatanResource($strukturJabatan->load('guru'));
     }
 
-    public function store(Request $request)
+    public function store(StoreStrukturJabatanRequest $request)
     {
-        $validated = $request->validate([
-            'nama_jabatan_struktural' => 'required|string|max:255',
-            'guru_staf_id' => 'required|exists:guru_staf,id',
-            'periode_mulai' => 'nullable|date',
-            'urutan_tampil' => 'required|integer|min:1',
-        ]);
-        
-        $item = StrukturJabatan::create($validated); 
+        $item = StrukturJabatan::create($request->validated()); 
         
         return new StrukturJabatanResource($item->load('guru'));
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateStrukturJabatanRequest $request, StrukturJabatan $strukturJabatan)
     {
-        $item = StrukturJabatan::findOrFail($id); 
+        $strukturJabatan->update($request->validated()); 
         
-        $validated = $request->validate([
-            'nama_jabatan_struktural' => 'required|string|max:255',
-            'guru_staf_id' => 'required|exists:guru_staf,id',
-            'periode_mulai' => 'nullable|date',
-            'urutan_tampil' => 'required|integer|min:1',
-        ]);
-        
-        $item->update($validated); 
-        
-        return new StrukturJabatanResource($item->load('guru'));
+        return new StrukturJabatanResource($strukturJabatan->load('guru'));
     }
 
-    public function destroy($id)
+    public function destroy(StrukturJabatan $strukturJabatan): JsonResponse
     {
-        StrukturJabatan::findOrFail($id)->delete(); 
+        $strukturJabatan->delete(); 
         
         return response()->json(null, 204);
     }

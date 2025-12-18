@@ -5,86 +5,69 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Jurusan;
 use App\Http\Resources\JurusanResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\StoreJurusanRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
 
-class JurusanController extends Controller
+class JurusanController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        $this->middleware('role:Admin');
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
     }
 
     public function index()
     {
         $data = Jurusan::paginate(12);
-        
         return JurusanResource::collection($data);
     }
     
-    public function show($id)
+    public function show(Jurusan $jurusan)
     {
-        $item = Jurusan::findOrFail($id);
-        
-        return new JurusanResource($item);
+        return new JurusanResource($jurusan);
     }
 
-    public function store(Request $request)
+    public function store(StoreJurusanRequest $request)
     {
-        $validated = $request->validate([
-            'nama_jurusan' => 'required|string|max:255|unique:jurusan,nama_jurusan',
-            'deskripsi' => 'nullable|string',
-            'foto' => 'nullable|image|max:2048',
-        ]);
+        $validated = $request->validated();
         
-        $fotoPath = $request->hasFile('foto') 
-            ? $request->file('foto')->store('uploads/jurusan','public') 
-            : null;
+        if ($request->hasFile('foto')) {
+            $validated['foto'] = $request->file('foto')->store('uploads/jurusan', 'public');
+        }
 
-        $jurusan = Jurusan::create([
-            'nama_jurusan' => $validated['nama_jurusan'],
-            'deskripsi' => $validated['deskripsi'],
-            'foto' => $fotoPath,
-        ]);
+        $jurusan = Jurusan::create($validated);
         
         return new JurusanResource($jurusan);
     }
 
-    public function update(Request $request, $id)
+    public function update(StoreJurusanRequest $request, Jurusan $jurusan)
     {
-        $item = Jurusan::findOrFail($id);
-        
-        $validated = $request->validate([
-            'nama_jurusan' => 'required|string|max:255|unique:jurusan,nama_jurusan,' . $id,
-            'deskripsi' => 'nullable|string',
-            'foto' => 'nullable|image|max:2048',
-        ]);
+        $validated = $request->validated();
         
         if ($request->hasFile('foto')) {
-            if ($item->foto) {
-                Storage::disk('public')->delete($item->foto);
+            if ($jurusan->foto) {
+                Storage::disk('public')->delete($jurusan->foto);
             }
-            $item->foto = $request->file('foto')->store('uploads/jurusan','public');
-        } else {
-            // Jika foto tidak diupload, pastikan field foto tidak masuk ke $validated
-            unset($validated['foto']);
+            $validated['foto'] = $request->file('foto')->store('uploads/jurusan', 'public');
         }
 
-        $item->update($validated);
+        $jurusan->update($validated);
         
-        return new JurusanResource($item);
+        return new JurusanResource($jurusan);
     }
 
-    public function destroy($id)
+    public function destroy(Jurusan $jurusan)
     {
-        $item = Jurusan::findOrFail($id); 
-        
-        if ($item->foto) {
-            Storage::disk('public')->delete($item->foto);
+        if ($jurusan->foto) {
+            Storage::disk('public')->delete($jurusan->foto);
         }
         
-        $item->delete(); 
+        $jurusan->delete(); 
         
         return response()->json(null, 204);
     }

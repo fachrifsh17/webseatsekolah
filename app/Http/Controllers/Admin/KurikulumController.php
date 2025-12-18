@@ -5,88 +5,71 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Kurikulum;
 use App\Http\Resources\KurikulumResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\StoreKurikulumRequest;
+use App\Http\Requests\UpdateKurikulumRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Http\JsonResponse;
 
-class KurikulumController extends Controller
+class KurikulumController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        $this->middleware('role:Admin');
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
     }
 
     public function index()
     {
         $data = Kurikulum::paginate(12);
-        
         return KurikulumResource::collection($data);
     }
     
-    public function show($id)
+    public function show(Kurikulum $kurikulum)
     {
-        $item = Kurikulum::findOrFail($id);
-        
-        return new KurikulumResource($item);
+        return new KurikulumResource($kurikulum);
     }
 
-    public function store(Request $request)
+    public function store(StoreKurikulumRequest $request)
     {
-        $validated = $request->validate([
-            'judul' => 'required|string|max:255',
-            'penjelasan_kurikulum' => 'nullable|string',
-            'file_jadwal' => 'nullable|file|mimes:pdf,doc,docx|max:5120',
-        ]);
+        $validated = $request->validated();
 
-        $filePath = null;
         if ($request->hasFile('file_jadwal')) {
-            $filePath = $request->file('file_jadwal')->store('uploads/kurikulum','public');
+            $validated['file_jadwal_path'] = $request->file('file_jadwal')->store('uploads/kurikulum', 'public');
         }
 
-        $kurikulum = Kurikulum::create([
-            'judul' => $validated['judul'],
-            'penjelasan_kurikulum' => $validated['penjelasan_kurikulum'] ?? null,
-            'file_jadwal_path' => $filePath, // Sesuaikan kolom di database jika berbeda
-        ]);
+        $kurikulum = Kurikulum::create($validated);
         
         return new KurikulumResource($kurikulum);
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateKurikulumRequest $request, Kurikulum $kurikulum)
     {
-        $item = Kurikulum::findOrFail($id);
-
-        $validated = $request->validate([
-            'judul' => 'required|string|max:255',
-            'penjelasan_kurikulum' => 'nullable|string',
-            'file_jadwal' => 'nullable|file|mimes:pdf,doc,docx|max:5120',
-        ]);
+        $validated = $request->validated();
 
         if ($request->hasFile('file_jadwal')) {
-            if ($item->file_jadwal_path) {
-                Storage::disk('public')->delete($item->file_jadwal_path);
+            if ($kurikulum->file_jadwal_path) {
+                Storage::disk('public')->delete($kurikulum->file_jadwal_path);
             }
-            $item->file_jadwal_path = $request->file('file_jadwal')->store('uploads/kurikulum','public');
+            $validated['file_jadwal_path'] = $request->file('file_jadwal')->store('uploads/kurikulum', 'public');
         }
 
-        $item->judul = $validated['judul'];
-        // Menggunakan array update() agar lebih bersih, pastikan kolom yang tidak termasuk file juga masuk ke $validated
-        $item->penjelasan_kurikulum = $validated['penjelasan_kurikulum'] ?? $item->penjelasan_kurikulum; 
+        $kurikulum->update($validated);
         
-        $item->save();
-        
-        return new KurikulumResource($item);
+        return new KurikulumResource($kurikulum);
     }
 
-    public function destroy($id)
+    public function destroy(Kurikulum $kurikulum): JsonResponse
     {
-        $item = Kurikulum::findOrFail($id);
-
-        if ($item->file_jadwal_path) {
-            Storage::disk('public')->delete($item->file_jadwal_path);
+        if ($kurikulum->file_jadwal_path) {
+            Storage::disk('public')->delete($kurikulum->file_jadwal_path);
         }
 
-        $item->delete();
+        $kurikulum->delete();
         
         return response()->json(null, 204);
     }

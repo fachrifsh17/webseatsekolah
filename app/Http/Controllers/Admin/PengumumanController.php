@@ -5,14 +5,20 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Pengumuman;
 use App\Http\Resources\PengumumanResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\StorePengumumanRequest;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Http\JsonResponse;
 
-class PengumumanController extends Controller
+class PengumumanController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        $this->middleware('role:Admin');
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
     }
 
     public function index()
@@ -22,47 +28,28 @@ class PengumumanController extends Controller
         return PengumumanResource::collection($data);
     }
     
-    public function show($id)
+    public function show(Pengumuman $pengumuman)
     {
-        $item = Pengumuman::findOrFail($id);
-        
-        return new PengumumanResource($item);
+        return new PengumumanResource($pengumuman);
     }
 
-    public function store(Request $request)
+    public function store(StorePengumumanRequest $request)
     {
-        $validated = $request->validate([
-            'judul' => 'required|string|max:255',
-            'isi_pengumuman' => 'required|string',
-            'tanggal_publikasi' => 'nullable|date',
-            // 'boolean' di API biasanya dikirim sebagai 0 atau 1 atau true/false
-            'penting' => 'nullable|boolean', 
-        ]);
-
-        $item = Pengumuman::create($validated);
+        $item = Pengumuman::create($request->validated());
 
         return new PengumumanResource($item);
     }
 
-    public function update(Request $request, $id)
+    public function update(StorePengumumanRequest $request, Pengumuman $pengumuman)
     {
-        $item = Pengumuman::findOrFail($id);
+        $pengumuman->update($request->validated());
 
-        $validated = $request->validate([
-            'judul' => 'required|string|max:255',
-            'isi_pengumuman' => 'required|string',
-            'tanggal_publikasi' => 'nullable|date',
-            'penting' => 'nullable|boolean',
-        ]);
-
-        $item->update($validated);
-
-        return new PengumumanResource($item);
+        return new PengumumanResource($pengumuman);
     }
 
-    public function destroy($id)
+    public function destroy(Pengumuman $pengumuman): JsonResponse
     {
-        Pengumuman::findOrFail($id)->delete();
+        $pengumuman->delete();
         
         return response()->json(null, 204);
     }

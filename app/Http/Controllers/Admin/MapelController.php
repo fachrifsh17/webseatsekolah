@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\MataPelajaran;
 use App\Http\Resources\MapelResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\StoreMapelRequest;
 
 class MapelController extends Controller
 {
@@ -17,7 +17,6 @@ class MapelController extends Controller
 
     public function index()
     {
-        // Memuat relasi jurusan
         $data = MataPelajaran::with('jurusan')->paginate(12);
         
         return MapelResource::collection($data);
@@ -30,30 +29,19 @@ class MapelController extends Controller
         return new MapelResource($item);
     }
 
-    public function store(Request $request)
+    public function store(StoreMapelRequest $request)
     {
-        $validated = $request->validate([
-            'nama_mapel' => 'required|string|max:255|unique:mata_pelajaran,nama_mapel',
-            'jurusan_id' => 'nullable|exists:jurusan,id',
-            'tipe_mapel' => 'nullable|string|max:50',
-            'kategori_mapel' => 'nullable|string|max:50',
-        ]);
+        $validated = $request->validated();
         
         $item = MataPelajaran::create($validated); 
         
         return new MapelResource($item->load('jurusan'));
     }
 
-    public function update(Request $request, $id)
+    public function update(StoreMapelRequest $request, $id)
     {
         $item = MataPelajaran::findOrFail($id); 
-        
-        $validated = $request->validate([
-            'nama_mapel' => 'required|string|max:255|unique:mata_pelajaran,nama_mapel,' . $id,
-            'jurusan_id' => 'nullable|exists:jurusan,id',
-            'tipe_mapel' => 'nullable|string|max:50',
-            'kategori_mapel' => 'nullable|string|max:50',
-        ]);
+        $validated = $request->validated();
         
         $item->update($validated); 
         

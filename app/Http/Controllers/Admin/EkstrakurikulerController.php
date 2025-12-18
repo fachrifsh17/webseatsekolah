@@ -5,48 +5,42 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Ekstrakurikuler;
 use App\Http\Resources\EkstrakurikulerResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\StoreEkstrakurikulerRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
 
-class EkstrakurikulerController extends Controller
+class EkstrakurikulerController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        // Otorisasi: Hanya Admin yang biasanya mengelola data master seperti Ekskul
-        $this->middleware('role:Admin');
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
     }
 
     public function index()
     {
-        // Memuat relasi pembina (asumsi relasi di model bernama 'pembina' ke tabel 'guru')
         $data = Ekstrakurikuler::with('pembina')->paginate(12);
         
         return EkstrakurikulerResource::collection($data);
     }
     
-    public function show($id)
+    public function show(Ekstrakurikuler $ekstrakurikuler)
     {
-        $item = Ekstrakurikuler::with('pembina')->findOrFail($id);
+        $ekstrakurikuler->load('pembina');
         
-        return new EkstrakurikulerResource($item);
+        return new EkstrakurikulerResource($ekstrakurikuler);
     }
 
-    public function store(Request $request)
+    public function store(StoreEkstrakurikulerRequest $request)
     {
-        $validated = $request->validate([
-            'nama_ekskul' => 'required|string|max:255',
-            'deskripsi' => 'nullable|string',
-            'hari' => 'nullable|string',
-            'jam_mulai' => 'nullable',
-            'jam_selesai' => 'nullable',
-            'pembina_id' => 'required|exists:guru,id',
-            'keterangan' => 'nullable|string',
-            'foto' => 'nullable|image|max:2048',
-        ]);
+        $validated = $request->validated();
 
         if ($request->hasFile('foto')) {
-            $validated['foto'] = $request->file('foto')->store('uploads/ekskul','public');
+            $validated['foto'] = $request->file('foto')->store('uploads/ekskul', 'public');
         }
         
         $ekskul = Ekstrakurikuler::create($validated);
@@ -54,42 +48,29 @@ class EkstrakurikulerController extends Controller
         return new EkstrakurikulerResource($ekskul->load('pembina'));
     }
 
-    public function update(Request $request, $id)
+    public function update(StoreEkstrakurikulerRequest $request, Ekstrakurikuler $ekstrakurikuler)
     {
-        $item = Ekstrakurikuler::with('pembina')->findOrFail($id);
-        
-        $validated = $request->validate([
-            'nama_ekskul' => 'required|string|max:255',
-            'deskripsi' => 'nullable|string',
-            'hari' => 'nullable|string',
-            'jam_mulai' => 'nullable',
-            'jam_selesai' => 'nullable',
-            'pembina_id' => 'required|exists:guru,id',
-            'keterangan' => 'nullable|string',
-            'foto' => 'nullable|image|max:2048',
-        ]);
+        $validated = $request->validated();
 
         if ($request->hasFile('foto')) {
-            if ($item->foto) {
-                Storage::disk('public')->delete($item->foto);
+            if ($ekstrakurikuler->foto) {
+                Storage::disk('public')->delete($ekstrakurikuler->foto);
             }
-            $validated['foto'] = $request->file('foto')->store('uploads/ekskul','public');
+            $validated['foto'] = $request->file('foto')->store('uploads/ekskul', 'public');
         }
 
-        $item->update($validated);
+        $ekstrakurikuler->update($validated);
         
-        return new EkstrakurikulerResource($item);
+        return new EkstrakurikulerResource($ekstrakurikuler->load('pembina'));
     }
 
-    public function destroy($id)
+    public function destroy(Ekstrakurikuler $ekstrakurikuler)
     {
-        $item = Ekstrakurikuler::findOrFail($id);
-        
-        if ($item->foto) {
-            Storage::disk('public')->delete($item->foto);
+        if ($ekstrakurikuler->foto) {
+            Storage::disk('public')->delete($ekstrakurikuler->foto);
         }
         
-        $item->delete();
+        $ekstrakurikuler->delete();
         
         return response()->json(null, 204);
     }

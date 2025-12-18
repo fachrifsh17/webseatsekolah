@@ -5,87 +5,69 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Prestasi;
 use App\Http\Resources\PrestasiResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\StorePrestasiRequest;
+use App\Http\Requests\UpdatePrestasiRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Http\JsonResponse;
 
-class PrestasiController extends Controller
+class PrestasiController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        // Menggunakan auth:sanctum dan role:Admin untuk konsistensi API
-        $this->middleware('auth:sanctum'); 
-        $this->middleware('role:Admin');
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
     }
 
     public function index()
     {
-        $items = Prestasi::orderBy('tahun','desc')->paginate(12);
-        
+        $items = Prestasi::orderBy('tahun', 'desc')->paginate(12);
         return PrestasiResource::collection($items);
     }
     
-    public function show($id)
+    public function show(Prestasi $prestasi)
     {
-        $item = Prestasi::findOrFail($id);
-        
-        return new PrestasiResource($item);
-    }
-
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'judul' => 'required|string|max:255',
-            'tahun' => 'nullable|digits:4|integer',
-            'tingkat' => 'nullable|string|max:50',
-            'kategori' => 'nullable|in:Siswa,Sekolah',
-            'foto' => 'nullable|image|max:2048'
-        ]);
-        
-        if ($request->hasFile('foto')) {
-            $validated['foto'] = $request->file('foto')->store('uploads/prestasi','public');
-        } else {
-            unset($validated['foto']);
-        }
-        
-        $prestasi = Prestasi::create($validated);
-        
         return new PrestasiResource($prestasi);
     }
 
-    // Menggunakan Route Model Binding
-    public function update(Request $request, Prestasi $prestasi)
+    public function store(StorePrestasiRequest $request)
     {
-        $validated = $request->validate([
-            'judul' => 'required|string|max:255',
-            'tahun' => 'nullable|digits:4|integer',
-            'tingkat' => 'nullable|string|max:50',
-            'kategori' => 'nullable|in:Siswa,Sekolah',
-            // File foto bersifat opsional untuk update
-            'foto' => 'nullable|image|max:2048' 
-        ]);
+        $validated = $request->validated();
+        
+        if ($request->hasFile('foto')) {
+            $validated['foto'] = $request->file('foto')->store('uploads/prestasi', 'public');
+        }
+        
+        $prestasi = Prestasi::create($validated);
+        return new PrestasiResource($prestasi);
+    }
+
+    public function update(UpdatePrestasiRequest $request, Prestasi $prestasi)
+    {
+        $validated = $request->validated();
         
         if ($request->hasFile('foto')) {
             if ($prestasi->foto) {
                 Storage::disk('public')->delete($prestasi->foto);
             }
-            $validated['foto'] = $request->file('foto')->store('uploads/prestasi','public');
-        } else {
-            unset($validated['foto']);
+            $validated['foto'] = $request->file('foto')->store('uploads/prestasi', 'public');
         }
         
         $prestasi->update($validated);
-        
         return new PrestasiResource($prestasi);
     }
 
-    public function destroy(Prestasi $prestasi)
+    public function destroy(Prestasi $prestasi): JsonResponse
     {
         if ($prestasi->foto) {
             Storage::disk('public')->delete($prestasi->foto);
         }
         
         $prestasi->delete();
-        
         return response()->json(null, 204);
     }
 }

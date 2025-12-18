@@ -5,15 +5,17 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\LogAdmin;
 use App\Http\Resources\LogAdminResource;
-use Illuminate\Http\Request;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
 
-class LogAdminController extends Controller
+class LogAdminController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        // Log harus diakses oleh Admin
-        $this->middleware('role:Admin');
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+        ];
     }
 
     public function index()
@@ -23,10 +25,10 @@ class LogAdminController extends Controller
         return LogAdminResource::collection($data);
     }
     
-    public function show($id)
+    public function show(LogAdmin $log)
     {
-        $item = LogAdmin::with('user')->findOrFail($id);
+        $log->load('user');
         
-        return new LogAdminResource($item);
+        return new LogAdminResource($log);
     }
 }

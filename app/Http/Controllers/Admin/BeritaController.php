@@ -5,22 +5,25 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Berita;
 use App\Http\Resources\BeritaResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\StoreBeritaRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
 
-class BeritaController extends Controller
+class BeritaController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        
-        // Otorisasi: Sesuaikan dengan peran (Admin|Guru) yang diizinkan untuk mengelola Berita
-        // $this->middleware('role:Admin|Guru'); 
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
     }
 
     public function index()
     {
-        $berita = Berita::with('kategori')->orderBy('tanggal_publikasi','desc')->paginate(10);
+        $berita = Berita::with('kategori')->orderBy('tanggal_publikasi', 'desc')->paginate(10);
         return BeritaResource::collection($berita);
     }
     
@@ -30,19 +33,12 @@ class BeritaController extends Controller
         return new BeritaResource($berita);
     }
 
-    public function store(Request $request)
+    public function store(StoreBeritaRequest $request)
     {
-        $data = $request->validate([
-            'judul' => 'required|string|max:255',
-            'isi_berita' => 'required',
-            'tanggal_publikasi' => 'required|date',
-            'kategori_id' => 'required|exists:kategori,id',
-            'foto' => 'nullable|image|max:2048'
-        ]);
+        $data = $request->validated();
 
         if ($request->hasFile('foto')) {
-            $path = $request->file('foto')->store('uploads/berita','public');
-            $data['foto'] = $path;
+            $data['foto'] = $request->file('foto')->store('uploads/berita', 'public');
         }
 
         $berita = Berita::create($data);
@@ -50,22 +46,15 @@ class BeritaController extends Controller
         return new BeritaResource($berita->load('kategori'));
     }
 
-    public function update(Request $request, Berita $berita)
+    public function update(StoreBeritaRequest $request, Berita $berita)
     {
-        $data = $request->validate([
-            'judul' => 'required|string|max:255',
-            'isi_berita' => 'required',
-            'tanggal_publikasi' => 'required|date',
-            'kategori_id' => 'required|exists:kategori,id',
-            'foto' => 'nullable|image|max:2048'
-        ]);
+        $data = $request->validated();
 
         if ($request->hasFile('foto')) {
             if ($berita->foto) {
                 Storage::disk('public')->delete($berita->foto);
             }
-            $path = $request->file('foto')->store('uploads/berita','public');
-            $data['foto'] = $path;
+            $data['foto'] = $request->file('foto')->store('uploads/berita', 'public');
         }
 
         $berita->update($data);

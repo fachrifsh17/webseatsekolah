@@ -5,61 +5,51 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\PortalSosmed;
 use App\Http\Resources\PortalSosmedResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\StorePortalRequest;
+use App\Http\Requests\UpdatePortalRequest;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Http\JsonResponse;
 
-class PortalController extends Controller
+class PortalController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        $this->middleware('role:Admin');
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
     }
 
     public function index()
     {
         $data = PortalSosmed::paginate(12);
-        
         return PortalSosmedResource::collection($data);
     }
     
-    public function show($id)
+    public function show(PortalSosmed $portal)
     {
-        $item = PortalSosmed::findOrFail($id);
+        return new PortalSosmedResource($portal);
+    }
+
+    public function store(StorePortalRequest $request)
+    {
+        $item = PortalSosmed::create($request->validated()); 
         
         return new PortalSosmedResource($item);
     }
 
-    public function store(Request $request)
+    public function update(UpdatePortalRequest $request, PortalSosmed $portal) 
     {
-        $validated = $request->validate([
-            'nama_platform' => 'required|string|max:255|unique:portal_sosmed,nama_platform',
-            'url_link' => 'required|url|max:255',
-            'tipe' => 'required|in:Sosial Media,Website,Portal Lain', 
-        ]);
+        $portal->update($request->validated()); 
         
-        $item = PortalSosmed::create($validated); 
-        
-        return new PortalSosmedResource($item);
+        return new PortalSosmedResource($portal);
     }
 
-    public function update(Request $request, $id)
+    public function destroy(PortalSosmed $portal): JsonResponse
     {
-        $item = PortalSosmed::findOrFail($id); 
-        
-        $validated = $request->validate([
-            'nama_platform' => 'required|string|max:255|unique:portal_sosmed,nama_platform,' . $id,
-            'url_link' => 'required|url|max:255',
-            'tipe' => 'required|in:Sosial Media,Website,Portal Lain', 
-        ]);
-        
-        $item->update($validated); 
-        
-        return new PortalSosmedResource($item);
-    }
-
-    public function destroy($id)
-    {
-        PortalSosmed::findOrFail($id)->delete(); 
+        $portal->delete(); 
         
         return response()->json(null, 204);
     }

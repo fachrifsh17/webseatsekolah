@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\{
+    AuthController,
+    DashboardController,
     BeritaController,
     PengumumanController,
     PrestasiController,
@@ -23,39 +25,33 @@ use App\Http\Controllers\Admin\{
     RoleController,
     StrukturJabatanController,
     UserController,
-    LogAdminController
+    LogAdminController,
+    PesanController
 };
 
 /*
 |--------------------------------------------------------------------------
-| WEB ROUTES (ADMIN PANEL)
+| API ROUTES (ADMIN PANEL)
 |--------------------------------------------------------------------------
 */
 
-// Batasi semua parameter ID hanya angka
-Route::pattern('id', '[0-9]+');
+// Public Login
+Route::post('/login', [AuthController::class, 'login']);
 
-// Halaman root (sementara)
-Route::get('/', function () {
-    return view('welcome');
-});
+// Grouping dengan Middleware Auth Token Kustom
+Route::middleware(['auth.token'])->group(function () {
 
-// =====================
-// ADMIN PANEL ROUTES
-// =====================
-Route::prefix('admin')
-    ->as('admin.')
-    // ->middleware(['auth', 'verified']) 
-    ->group(function () {
+    // Global: Logout & Dashboard (Bisa diakses Admin & Guru)
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/dashboard', [DashboardController::class, 'index']);
 
-        // Dashboard (opsional tapi disarankan)
-        Route::get('/', function () {
-            return redirect()->route('admin.berita.index');
-        })->name('dashboard');
+    // ========================================================
+    // 1. AKSES FULL: ADMIN
+    // ========================================================
+    Route::middleware(['role:Admin'])->prefix('admin')->as('admin.')->group(function () {
 
-        // --- 1. CRUD Resources Penuh (Koleksi Data) ---
-        // Resource ini memiliki index, create, store, show, edit, update, destroy
-        Route::resources([
+        // CRUD Resources (Sesuai dengan Route Model Binding di Controller)
+        Route::apiResources([
             'berita'          => BeritaController::class,
             'pengumuman'      => PengumumanController::class,
             'prestasi'        => PrestasiController::class,
@@ -71,42 +67,38 @@ Route::prefix('admin')
             'portal'          => PortalController::class,
             'role'            => RoleController::class,
             'user'            => UserController::class,
+            'ppdb'            => PpdbLinkController::class,
         ]);
+
+        // Resources dengan Parameter Khusus (Menghindari konflik penamaan)
+        Route::apiResource('struktur', StrukturJabatanController::class)
+            ->parameters(['struktur' => 'strukturJabatan']);
+
+        // Monitoring & Pesan (Hanya Lihat & Hapus)
+        Route::apiResource('log', LogAdminController::class)->only(['index', 'show']);
+        Route::apiResource('pesan', PesanController::class)->only(['index', 'show', 'destroy']);
+        Route::patch('pesan/{pesan}/status', [PesanController::class, 'updateStatus']);
+
+        // Data Tunggal / Single-Row (Profil, Setting, Kontak)
+        Route::get('profil', [ProfilSekolahController::class, 'index']);
+        Route::put('profil', [ProfilSekolahController::class, 'update']);
+
+        Route::get('setting', [SettingController::class, 'index']);
+        Route::post('setting/general', [SettingController::class, 'updateGeneral']);
+        Route::post('setting/kontak', [SettingController::class, 'updateKontak']);
+
+        Route::get('datakontak', [DataKontakController::class, 'index']);
+        Route::put('datakontak', [DataKontakController::class, 'update']);
         
-        // --- 2. Resources dengan Pembatasan Method ---
-        
-        // Log Admin (Tidak perlu Create, Edit, Update, Destroy)
-        Route::resource('log', LogAdminController::class)
-            ->only(['index', 'show']); 
+        Route::apiResource('kurikulum', KurikulumController::class);
+    });
 
-        // Kurikulum (Sesuai kebutuhan Anda: hanya index, store, update, destroy)
-        Route::resource('kurikulum', KurikulumController::class)
-            ->only(['index', 'store', 'update', 'destroy']);
-            
-        // --- 3. Single-Row Resources (Data Tunggal: Hanya Edit/Index & Update) ---
-        // Karena data ini hanya ada 1 record, kita gunakan method 'only' atau GET/POST langsung.
-
-        // Profil Sekolah
-        Route::resource('profil', ProfilSekolahController::class)
-            ->only(['index', 'edit', 'update']); 
-            
-        // Setting
-        Route::resource('setting', SettingController::class)
-            ->only(['index', 'edit', 'update']); 
-            
-        // Data Kontak
-        Route::resource('datakontak', DataKontakController::class)
-            ->only(['index', 'edit', 'update']);
-
-        // PPDB Link
-        Route::resource('ppdb', PpdbLinkController::class)
-            ->only(['index', 'edit', 'update']);
-            
-        // Struktur Jabatan
-        Route::resource('struktur', StrukturJabatanController::class)
-            ->only(['index', 'edit', 'update']);
-            
-        // Catatan: Jika Anda hanya menggunakan satu fungsi Index untuk menampilkan form edit
-        // Anda bisa mengganti: ->only(['index', 'update'])
-        // Namun, ->only(['index', 'edit', 'update']) lebih standar untuk Resources.
+    // ========================================================
+    // 2. AKSES TERBATAS: GURU
+    // ========================================================
+    Route::middleware(['role:Guru'])->prefix('guru')->as('guru.')->group(function () {
+        // Contoh: Guru hanya boleh mengelola berita dan melihat profil sendiri
+        Route::apiResource('berita', BeritaController::class)->only(['index', 'store', 'show', 'update']);
+        Route::get('profil-saya', [UserController::class, 'show']); // Me-load data guru
+    });
 });

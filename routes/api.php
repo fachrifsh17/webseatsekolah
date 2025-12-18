@@ -1,88 +1,93 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-// Controllers
-use App\Http\Controllers\Api\AuthApiController;
-use App\Http\Controllers\Api\{
-    AlbumApiController, BannerApiController, BeritaApiController,
-    FasilitasApiController, GuruApiController, JurusanApiController,
-    MapelApiController, PengumumanApiController, PrestasiApiController,
-    DataKontakApiController, EkstrakurikulerApiController, KalenderApiController,
-    KurikulumApiController, LogAdminApiController, MediaApiController,
-    PortalApiController, PPDBLinkApiController, ProfilApiController,
-    SettingApiController, StrukturJabatanApiController, RoleApiController,
-    UserApiController
+// Import Controllers
+use App\Http\Controllers\Admin\{
+    AuthController, DashboardController, BeritaController, PengumumanController,
+    GuruController, JurusanController, KurikulumController, KalenderController, 
+    MediaController, AlbumController, BannerController, FasilitasController, 
+    EkstrakurikulerController, SettingController, StrukturJabatanController, 
+    RoleController, UserController, PesanController, LogAdminController,
+    PrestasiController, PortalController, PpdbLinkController, ProfilSekolahController
 };
 
 /*
 |--------------------------------------------------------------------------
-| API Routes
+| API Routes - Admin & Guru Version
 |--------------------------------------------------------------------------
 */
 
 // ==========================================
-// 1. AUTH & PUBLIC (Tanpa Token)
+// 1. PUBLIC ROUTES (Tanpa Login)
 // ==========================================
 Route::prefix('public')->group(function () {
-    
-    // Auth
-    Route::post('login', [AuthApiController::class, 'login']);
+    Route::post('login', [AuthController::class, 'login']);
 
-    // Data Read-Only (Hanya index & show untuk pengunjung)
-    Route::apiResource('berita', BeritaApiController::class)->only(['index','show'])->parameters(['berita' => 'berita']);
-    Route::apiResource('fasilitas', FasilitasApiController::class)->only(['index','show'])->parameters(['fasilitas' => 'fasilitas']);
-    Route::apiResource('media', MediaApiController::class)->only(['index','show'])->parameters(['media' => 'media']);
+    // Data Read-Only untuk pengunjung website
+    Route::get('berita', [BeritaController::class, 'index']);
+    Route::get('berita/{berita}', [BeritaController::class, 'show']);
+    Route::get('profil-sekolah', [ProfilSekolahController::class, 'index']);
+    Route::get('guru', [GuruController::class, 'index']);
     
-    Route::apiResource('pengumuman', PengumumanApiController::class)->only(['index','show']);
-    Route::apiResource('prestasi', PrestasiApiController::class)->only(['index','show']);
-    Route::apiResource('jurusan', JurusanApiController::class)->only(['index','show']);
-    Route::apiResource('mapel', MapelApiController::class)->only(['index','show']);
-    Route::apiResource('album', AlbumApiController::class)->only(['index','show']);
-    Route::apiResource('ekstrakurikuler', EkstrakurikulerApiController::class)->only(['index','show']);
-    Route::apiResource('guru', GuruApiController::class)->only(['index','show']);
-    
-    Route::get('banner', [BannerApiController::class, 'index']);
-    Route::get('profil', [ProfilApiController::class, 'show']);
-    Route::get('setting', [SettingApiController::class, 'show']);
-    Route::get('datakontak', [DataKontakApiController::class, 'show']);
+    // Form Kontak (Public mengirim ke Admin)
+    Route::post('pesan', [PesanController::class, 'store']);
 });
 
 // ==========================================
-// 2. PROTECTED ADMIN (Wajib api_token)
+// 2. PROTECTED ROUTES (Wajib Token)
 // ==========================================
-// Menggunakan auth:api karena kita pakai kolom api_token manual
-Route::middleware('auth:api')->prefix('admin')->group(function () {
+Route::middleware(['auth.token'])->group(function () {
+    
+    // Bisa diakses oleh siapapun yang login (Admin & Guru)
+    Route::post('logout', [AuthController::class, 'logout']);
+    Route::get('dashboard', [DashboardController::class, 'index']);
 
-    Route::post('register', [AuthApiController::class, 'register']); // Register ditaruh di sini agar aman
-    Route::post('logout', [AuthApiController::class, 'logout']);
-    Route::get('me', [AuthApiController::class, 'me']);
+    // ==========================================
+    // KHUSUS ROLE: ADMIN (Akses Penuh)
+    // ==========================================
+    Route::middleware(['role:Admin'])->prefix('admin')->group(function () {
+        
+        // Manajemen Akun & Hak Akses
+        Route::apiResource('users', UserController::class);
+        Route::apiResource('roles', RoleController::class);
+        Route::get('logs', [LogAdminController::class, 'index']);
 
-    // --- ADMIN CRUD (Full Access) ---
-    Route::apiResource('berita', BeritaApiController::class)->parameters(['berita' => 'berita']);
-    Route::apiResource('fasilitas', FasilitasApiController::class)->parameters(['fasilitas' => 'fasilitas']);
-    Route::apiResource('media', MediaApiController::class)->parameters(['media' => 'media']);
+        // Konten Website (CRUD)
+        Route::apiResource('berita', BeritaController::class);
+        Route::apiResource('pengumuman', PengumumanController::class);
+        Route::apiResource('prestasi', PrestasiController::class);
+        Route::apiResource('fasilitas', FasilitasController::class);
+        Route::apiResource('ekstrakurikuler', EkstrakurikulerController::class);
+        
+        // Akademik & Profil
+        Route::apiResource('guru', GuruController::class);
+        Route::apiResource('jurusan', JurusanController::class);
+        Route::apiResource('kurikulum', KurikulumController::class);
+        Route::apiResource('kalender', KalenderController::class);
+        Route::apiResource('struktur-jabatan', StrukturJabatanController::class)
+             ->parameters(['struktur-jabatan' => 'strukturJabatan']);
 
-    Route::apiResource('pengumuman', PengumumanApiController::class);
-    Route::apiResource('prestasi', PrestasiApiController::class);
-    Route::apiResource('jurusan', JurusanApiController::class);
-    Route::apiResource('mapel', MapelApiController::class);
-    Route::apiResource('album', AlbumApiController::class);
-    Route::apiResource('ekstrakurikuler', EkstrakurikulerApiController::class);
-    Route::apiResource('kalender', KalenderApiController::class);
-    Route::apiResource('kurikulum', KurikulumApiController::class);
-    Route::apiResource('portal', PortalApiController::class);
-    Route::apiResource('banner', BannerApiController::class);
-    Route::apiResource('guru', GuruApiController::class);
-    Route::apiResource('role', RoleApiController::class);
-    Route::apiResource('user', UserApiController::class);
-    Route::apiResource('log', LogAdminApiController::class)->only(['index', 'show']);
+        // Gallery & Media
+        Route::apiResource('album', AlbumController::class);
+        Route::apiResource('media', MediaController::class);
+        
+        // Pengaturan & Pesan
+        Route::apiResource('pesan', PesanController::class)->except(['store']);
+        Route::post('setting/general', [SettingController::class, 'updateGeneral']);
+        Route::post('setting/kontak', [SettingController::class, 'updateKontak']);
+        Route::put('profil-sekolah', [ProfilSekolahController::class, 'update']);
+    });
 
-    // --- Rute Update Data Tunggal ---
-    Route::post('profil', [ProfilApiController::class, 'update']);
-    Route::post('ppdb', [PPDBLinkApiController::class, 'update']);
-    Route::post('setting', [SettingApiController::class, 'update']);
-    Route::post('struktur', [StrukturJabatanApiController::class, 'update']);
-    Route::post('datakontak', [DataKontakApiController::class, 'update']);
+    // ==========================================
+    // KHUSUS ROLE: GURU (Akses Terbatas)
+    // ==========================================
+    Route::middleware(['role:Guru'])->prefix('guru')->group(function () {
+        // Contoh: Guru hanya boleh posting Berita atau Pengumuman saja
+        Route::get('berita', [BeritaController::class, 'index']);
+        Route::post('berita', [BeritaController::class, 'store']);
+        
+        // Guru boleh melihat daftar guru lain tapi tidak boleh hapus
+        Route::get('daftar-guru', [GuruController::class, 'index']);
+    });
 });

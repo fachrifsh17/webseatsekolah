@@ -6,33 +6,37 @@ use App\Http\Controllers\Controller;
 use App\Models\ProfilSekolah;
 use App\Http\Resources\ProfilSekolahResource;
 use App\Http\Requests\UpdateProfilSekolahRequest;
-use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
 
-class ProfilSekolahController extends Controller
+class ProfilSekolahController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        $this->middleware('role:Admin');
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['update', 'destroy']),
+        ];
     }
     
-    // Metode untuk mengambil data (READ)
     public function index()
     {
-        // Cari atau buat record ID 1 (Single Row Logic)
-        $profil = ProfilSekolah::firstOrNew(['id' => 1]); 
+        $profil = ProfilSekolah::find(1); 
         
-        // Jika data belum ada (baru dibuat), kembalikan respons kosong atau default
-        if (!$profil->exists) {
+        if (!$profil) {
              return response()->json([
-                'message' => 'Data profil sekolah belum diinisialisasi.'
+                'status' => 'success',
+                'message' => 'Data profil sekolah belum diisi.',
+                'data' => null
             ], 200);
         }
 
         return new ProfilSekolahResource($profil);
     }
     
-    public function update(UpdateProfilSekolahRequest $request)
+    public function update(UpdateProfilSekolahRequest $request): ProfilSekolahResource
     {
         $profil = ProfilSekolah::firstOrNew(['id' => 1]);
 
@@ -47,14 +51,17 @@ class ProfilSekolahController extends Controller
         return new ProfilSekolahResource($profil);
     }
 
-    public function destroy($id)
+    public function destroy(mixed $id): JsonResponse
     {
         if ((int)$id !== 1) {
-            return response()->json(['message' => 'Hanya profil ID 1 yang dapat dihapus, jika diperlukan.'], 403);
+            return response()->json(['message' => 'Hanya profil sekolah (ID 1) yang tersedia.'], 403);
         }
         
-        $profil = ProfilSekolah::findOrFail(1);
-        $profil->delete();
+        $profil = ProfilSekolah::find(1);
+        
+        if ($profil) {
+            $profil->delete();
+        }
         
         return response()->json(null, 204);
     }

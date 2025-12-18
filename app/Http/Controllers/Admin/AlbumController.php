@@ -4,86 +4,71 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Album;
-use App\Http\Resources\AlbumResource; // <-- Wajib: Import Resource
-use Illuminate\Http\Request;
+use App\Http\Resources\AlbumResource;
+use App\Http\Requests\StoreAlbumRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
 
-class AlbumController extends Controller
+class AlbumController extends Controller implements HasMiddleware
 {
+    public static function middleware(): array
+    {
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
+    }
+
     public function index()
     {
         $data = Album::orderByDesc('tanggal_kegiatan')->paginate(12);
-        
-        // Ganti return view() dengan Resource Collection
         return AlbumResource::collection($data);
     }
 
-    public function show($id)
+    public function show(Album $album)
     {
-        $item = Album::findOrFail($id);
-        
-        // Kembalikan Single Resource
-        return new AlbumResource($item);
-    }
-
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'nama_album' => 'required|string|max:255',
-            'tanggal_kegiatan' => 'nullable|date',
-            'cover' => 'nullable|image|max:2048',
-        ]);
-
-        $coverPath = $request->hasFile('cover')
-            ? $request->file('cover')->store('uploads/album', 'public')
-            : null;
-
-        $album = Album::create([
-            'nama_album' => $validated['nama_album'],
-            'tanggal_kegiatan' => $validated['tanggal_kegiatan'] ?? null,
-            'cover_path' => $coverPath,
-        ]);
-
-        // Kembalikan Resource yang baru dibuat (HTTP 201 Created)
         return new AlbumResource($album);
     }
 
-    public function update(Request $request, $id)
+    public function store(StoreAlbumRequest $request)
     {
-        $item = Album::findOrFail($id);
-
-        $validated = $request->validate([
-            'nama_album' => 'required|string|max:255',
-            'tanggal_kegiatan' => 'nullable|date',
-            'cover' => 'nullable|image|max:2048',
-        ]);
+        $validated = $request->validated();
 
         if ($request->hasFile('cover')) {
-            if ($item->cover_path) {
-                Storage::disk('public')->delete($item->cover_path);
-            }
-            $item->cover_path = $request->file('cover')->store('uploads/album', 'public');
+            $validated['cover_path'] = $request->file('cover')->store('uploads/album', 'public');
         }
 
-        $item->nama_album = $validated['nama_album'];
-        $item->tanggal_kegiatan = $validated['tanggal_kegiatan'] ?? null;
-        $item->save();
+        $album = Album::create($validated);
 
-        // Kembalikan Resource yang telah diperbarui
-        return new AlbumResource($item);
+        return new AlbumResource($album);
     }
 
-    public function destroy($id)
+    public function update(StoreAlbumRequest $request, Album $album)
     {
-        $item = Album::findOrFail($id);
+        $validated = $request->validated();
 
-        if ($item->cover_path) {
-            Storage::disk('public')->delete($item->cover_path);
+        if ($request->hasFile('cover')) {
+            if ($album->cover_path) {
+                Storage::disk('public')->delete($album->cover_path);
+            }
+            $validated['cover_path'] = $request->file('cover')->store('uploads/album', 'public');
         }
 
-        $item->delete();
+        $album->update($validated);
 
-        // Kembalikan respons 204 No Content
+        return new AlbumResource($album);
+    }
+
+    public function destroy(Album $album)
+    {
+        if ($album->cover_path) {
+            Storage::disk('public')->delete($album->cover_path);
+        }
+
+        $album->delete();
+
         return response()->json(null, 204);
     }
-}     
+}

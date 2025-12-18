@@ -7,57 +7,45 @@ use App\Models\SekolahSetting;
 use App\Models\DataKontak;
 use App\Http\Resources\SekolahSettingResource;
 use App\Http\Resources\DataKontakResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\UpdateGeneralSettingRequest;
+use App\Http\Requests\UpdateKontakRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Http\JsonResponse;
 
-class SettingController extends Controller
+class SettingController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        $this->middleware('role:Admin'); 
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['updateGeneral', 'updateKontak']),
+        ];
     }
 
-    /**
-     * Mengambil semua data setting dan kontak dalam satu respons.
-     */
-    public function index()
+    public function index(): JsonResponse
     {
-        // Ambil setting dan kontak pertama (asumsi single-row, id=1)
-        $setting = SekolahSetting::firstOrNew(['id' => 1]);
-        $kontak = DataKontak::firstOrNew(['id' => 1]);
-        
-        // Cek apakah ada data yang sudah tersimpan sebelum membuat Resource
-        $settingResource = $setting->exists ? new SekolahSettingResource($setting) : null;
-        $kontakResource = $kontak->exists ? new DataKontakResource($kontak) : null;
+        $setting = SekolahSetting::find(1);
+        $kontak = DataKontak::find(1);
         
         return response()->json([
-            'general_settings' => $settingResource,
-            'contact_data' => $kontakResource,
+            'general_settings' => $setting ? new SekolahSettingResource($setting) : null,
+            'contact_data' => $kontak ? new DataKontakResource($kontak) : null,
         ]);
     }
 
-    /**
-     * Memperbarui setting umum (SekolahSetting).
-     */
-    public function updateGeneral(Request $request)
+    public function updateGeneral(UpdateGeneralSettingRequest $request): SekolahSettingResource
     {
-        $validated = $request->validate([
-            'tagline' => 'nullable|string|max:255',
-            'pesan_selamat_datang' => 'nullable|string',
-            'logo' => 'nullable|image|max:2048',
-        ]);
-        
+        $validated = $request->validated();
         $setting = SekolahSetting::firstOrNew(['id' => 1]);
 
         if ($request->hasFile('logo')) {
             if ($setting->logo) {
                 Storage::disk('public')->delete($setting->logo);
             }
-            $validated['logo'] = $request->file('logo')->store('uploads/logo','public');
-        } else {
-            // Hilangkan 'logo' dari validated jika tidak di-upload agar tidak menimpa path lama
-            unset($validated['logo']);
+            $validated['logo'] = $request->file('logo')->store('uploads/logo', 'public');
         }
 
         $setting->fill($validated);
@@ -67,21 +55,11 @@ class SettingController extends Controller
         return new SekolahSettingResource($setting);
     }
 
-    /**
-     * Memperbarui data kontak (DataKontak).
-     */
-    public function updateKontak(Request $request)
+    public function updateKontak(UpdateKontakRequest $request): DataKontakResource
     {
-        $validated = $request->validate([
-            'alamat_lengkap' => 'nullable|string',
-            'telepon' => 'nullable|string|max:20',
-            'email_resmi' => 'nullable|email|max:100',
-            'peta_embed_code' => 'nullable|string',
-        ]);
-        
         $kontak = DataKontak::firstOrNew(['id' => 1]);
         
-        $kontak->fill($validated);
+        $kontak->fill($request->validated());
         $kontak->id = 1; 
         $kontak->save();
         

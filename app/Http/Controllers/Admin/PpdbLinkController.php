@@ -4,88 +4,52 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\PPDBLink;
-use App\Models\LogAdmin;
 use App\Http\Resources\PPDBLinkResource;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use App\Http\Requests\StorePpdbRequest;
+use App\Http\Requests\UpdatePpdbRequest;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Http\JsonResponse;
 
-class PpdbLinkController extends Controller
+class PpdbLinkController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        // Menggunakan auth:sanctum dan role:Admin untuk konsistensi API
-        $this->middleware('auth:sanctum'); 
-        $this->middleware('role:Admin');
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
     }
 
     public function index()
     {
         $links = PPDBLink::orderBy('id')->get();
-        
         return PPDBLinkResource::collection($links);
     }
     
-    public function show($id)
+    public function show(PPDBLink $ppdb)
     {
-        $link = PPDBLink::findOrFail($id);
-        
-        return new PPDBLinkResource($link);
+        return new PPDBLinkResource($ppdb);
     }
 
-    public function store(Request $request)
+    public function store(StorePpdbRequest $request)
     {
-        $validated = $request->validate([
-            'url_link' => 'required|url|max:255',
-            'status_ppdb' => 'nullable|in:Buka,Tutup,Segera',
-        ]);
-
-        $link = PPDBLink::create($validated);
-
-        // Logging aksi untuk API Sanctum
-        if (Auth::check()) {
-            LogAdmin::create([
-                'user_id' => Auth::id(),
-                'aksi' => 'Menambah PPDB link id=' . $link->id,
-            ]);
-        }
+        $link = PPDBLink::create($request->validated());
 
         return new PPDBLinkResource($link);
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdatePpdbRequest $request, PPDBLink $ppdb)
     {
-        $link = PPDBLink::findOrFail($id);
+        $ppdb->update($request->validated());
 
-        $validated = $request->validate([
-            'url_link' => 'required|url|max:255',
-            'status_ppdb' => 'nullable|in:Buka,Tutup,Segera',
-        ]);
-
-        $link->update($validated);
-
-        // Logging aksi
-        if (Auth::check()) {
-            LogAdmin::create([
-                'user_id' => Auth::id(),
-                'aksi' => 'Mengubah PPDB link id=' . $link->id,
-            ]);
-        }
-
-        return new PPDBLinkResource($link);
+        return new PPDBLinkResource($ppdb);
     }
 
-    public function destroy($id)
+    public function destroy(PPDBLink $ppdb): JsonResponse
     {
-        $link = PPDBLink::findOrFail($id);
-        $link->delete();
-
-        // Logging aksi
-        if (Auth::check()) {
-            LogAdmin::create([
-                'user_id' => Auth::id(),
-                'aksi' => 'Menghapus PPDB link id=' . $id,
-            ]);
-        }
+        $ppdb->delete();
 
         return response()->json(null, 204);
     }

@@ -5,14 +5,20 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\KalenderAkademik;
 use App\Http\Resources\KalenderAkademikResource;
-use Illuminate\Http\Request;
+use App\Http\Requests\StoreKalenderRequest;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Http\JsonResponse;
 
-class KalenderController extends Controller
+class KalenderController extends Controller implements HasMiddleware
 {
-    public function __construct()
+    public static function middleware(): array
     {
-        $this->middleware('auth:sanctum');
-        $this->middleware('role:Admin');
+        return [
+            new Middleware('auth.token'),
+            new Middleware('role:Admin,SuperAdmin'),
+            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
+        ];
     }
 
     public function index()
@@ -22,46 +28,28 @@ class KalenderController extends Controller
         return KalenderAkademikResource::collection($data);
     }
     
-    public function show($id)
+    public function show(KalenderAkademik $kalender)
     {
-        $item = KalenderAkademik::findOrFail($id);
+        return new KalenderAkademikResource($kalender);
+    }
+
+    public function store(StoreKalenderRequest $request)
+    {
+        $item = KalenderAkademik::create($request->validated());
         
         return new KalenderAkademikResource($item);
     }
 
-    public function store(Request $request)
+    public function update(StoreKalenderRequest $request, KalenderAkademik $kalender)
     {
-        $validated = $request->validate([
-            'kegiatan' => 'required|string|max:255',
-            'tanggal_mulai' => 'required|date',
-            'tanggal_selesai' => 'nullable|date|after_or_equal:tanggal_mulai',
-            'kategori' => 'nullable|string|max:100',
-        ]);
+        $kalender->update($request->validated()); 
         
-        $item = KalenderAkademik::create($validated);
-        
-        return new KalenderAkademikResource($item);
+        return new KalenderAkademikResource($kalender);
     }
 
-    public function update(Request $request, $id)
+    public function destroy(KalenderAkademik $kalender): JsonResponse
     {
-        $item = KalenderAkademik::findOrFail($id); 
-        
-        $validated = $request->validate([
-            'kegiatan' => 'required|string|max:255',
-            'tanggal_mulai' => 'required|date',
-            'tanggal_selesai' => 'nullable|date|after_or_equal:tanggal_mulai',
-            'kategori' => 'nullable|string|max:100',
-        ]);
-        
-        $item->update($validated); 
-        
-        return new KalenderAkademikResource($item);
-    }
-
-    public function destroy($id)
-    {
-        KalenderAkademik::findOrFail($id)->delete(); 
+        $kalender->delete(); 
         
         return response()->json(null, 204);
     }
