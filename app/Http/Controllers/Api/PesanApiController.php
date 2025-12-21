@@ -13,7 +13,9 @@ class PesanApiController extends Controller
     public function store(StorePesanRequest $request): JsonResponse
     {
         $data = $request->validated();
+        
         $pesan = Pesan::create($data);
+        
         return response()->json([
             'success' => true,
             'message' => 'Terima kasih, pesan Anda telah kami terima.',

@@ -5,52 +5,81 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\PPDBLink;
 use App\Http\Resources\PPDBLinkResource;
-use App\Http\Requests\StorePpdbRequest;
-use App\Http\Requests\UpdatePpdbRequest;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
+use App\Http\Requests\StorePpdbLinkRequest;
+use App\Http\Requests\UpdatePpdbLinkRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
+use Throwable;
 
-class PpdbLinkController extends Controller implements HasMiddleware
+class PpdbLinkController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
         $links = PPDBLink::orderBy('id')->get();
-        return PPDBLinkResource::collection($links);
+        return response()->json(PPDBLinkResource::collection($links));
     }
     
-    public function show(PPDBLink $ppdb)
+    public function show(PPDBLink $ppdb): JsonResponse
     {
-        return new PPDBLinkResource($ppdb);
+        return response()->json(new PPDBLinkResource($ppdb));
     }
 
-    public function store(StorePpdbRequest $request)
+    public function store(StorePpdbLinkRequest $request): JsonResponse
     {
-        $link = PPDBLink::create($request->validated());
+        $validated = $request->validated();
 
-        return new PPDBLinkResource($link);
+        DB::beginTransaction();
+        try {
+            $link = PPDBLink::create($validated);
+            DB::commit();
+            return response()->json(new PPDBLinkResource($link), 201);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat link PPDB'
+            ], 500);
+        }
     }
 
-    public function update(UpdatePpdbRequest $request, PPDBLink $ppdb)
+    public function update(UpdatePpdbLinkRequest $request, PPDBLink $ppdb): JsonResponse
     {
-        $ppdb->update($request->validated());
+        $validated = $request->validated();
 
-        return new PPDBLinkResource($ppdb);
+        DB::beginTransaction();
+        try {
+            $ppdb->update($validated);
+            DB::commit();
+            return response()->json(new PPDBLinkResource($ppdb));
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui link PPDB'
+            ], 500);
+        }
     }
 
     public function destroy(PPDBLink $ppdb): JsonResponse
     {
-        $ppdb->delete();
-
-        return response()->json(null, 204);
+        DB::beginTransaction();
+        try {
+            $ppdb->delete();
+            DB::commit();
+            return response()->json(null, 204);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus link PPDB'
+            ], 500);
+        }
     }
 }

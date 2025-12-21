@@ -7,26 +7,37 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\AuthToken;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
 
-class AuthController extends Controller implements HasMiddleware
+class AuthController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token', only: ['logout']),
-        ];
+        $this->middleware('auth.token')->only(['logout']);
     }
 
     public function logout(Request $request): JsonResponse
     {
         $token = $request->bearerToken();
+
+        if (! $token) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token tidak ditemukan pada header Authorization.'
+            ], 400);
+        }
+
         $hash = hash('sha256', $token);
 
-        AuthToken::where('token_hash', $hash)->update([
+        $updated = AuthToken::where('token_hash', $hash)->update([
             'revoked' => true
         ]);
+
+        if (! $updated) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token tidak valid atau sudah dicabut.'
+            ], 400);
+        }
 
         Auth::logout();
 

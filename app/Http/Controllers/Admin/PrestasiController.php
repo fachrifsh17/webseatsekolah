@@ -8,66 +8,104 @@ use App\Http\Resources\PrestasiResource;
 use App\Http\Requests\StorePrestasiRequest;
 use App\Http\Requests\UpdatePrestasiRequest;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
+use Throwable;
 
-class PrestasiController extends Controller implements HasMiddleware
+class PrestasiController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin,Guru');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
         $items = Prestasi::orderBy('tahun', 'desc')->paginate(12);
-        return PrestasiResource::collection($items);
+        return response()->json(PrestasiResource::collection($items));
     }
     
-    public function show(Prestasi $prestasi)
+    public function show(Prestasi $prestasi): JsonResponse
     {
-        return new PrestasiResource($prestasi);
+        return response()->json(new PrestasiResource($prestasi));
     }
 
-    public function store(StorePrestasiRequest $request)
+    public function store(StorePrestasiRequest $request): JsonResponse
     {
         $validated = $request->validated();
-        
+
         if ($request->hasFile('foto')) {
             $validated['foto'] = $request->file('foto')->store('uploads/prestasi', 'public');
         }
-        
-        $prestasi = Prestasi::create($validated);
-        return new PrestasiResource($prestasi);
-    }
 
-    public function update(UpdatePrestasiRequest $request, Prestasi $prestasi)
-    {
-        $validated = $request->validated();
-        
-        if ($request->hasFile('foto')) {
-            if ($prestasi->foto) {
-                Storage::disk('public')->delete($prestasi->foto);
+        DB::beginTransaction();
+        try {
+            $prestasi = Prestasi::create($validated);
+            DB::commit();
+            return response()->json(new PrestasiResource($prestasi), 201);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            if (!empty($validated['foto'] ?? null)) {
+                Storage::disk('public')->delete($validated['foto']);
             }
-            $validated['foto'] = $request->file('foto')->store('uploads/prestasi', 'public');
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat prestasi'
+            ], 500);
         }
-        
-        $prestasi->update($validated);
-        return new PrestasiResource($prestasi);
+    }
+
+    public function update(UpdatePrestasiRequest $request, Prestasi $prestasi): JsonResponse
+    {
+        $validated = $request->validated();
+
+        if ($request->hasFile('foto')) {
+            $newPath = $request->file('foto')->store('uploads/prestasi', 'public');
+            if ($newPath) {
+                if ($prestasi->foto) {
+                    Storage::disk('public')->delete($prestasi->foto);
+                }
+                $validated['foto'] = $newPath;
+            }
+        }
+
+        DB::beginTransaction();
+        try {
+            $prestasi->update($validated);
+            DB::commit();
+            return response()->json(new PrestasiResource($prestasi));
+        } catch (Throwable $e) {
+            DB::rollBack();
+            if (!empty($validated['foto'] ?? null) && ($validated['foto'] !== $prestasi->foto)) {
+                Storage::disk('public')->delete($validated['foto']);
+            }
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui prestasi'
+            ], 500);
+        }
     }
 
     public function destroy(Prestasi $prestasi): JsonResponse
     {
-        if ($prestasi->foto) {
-            Storage::disk('public')->delete($prestasi->foto);
+        DB::beginTransaction();
+        try {
+            if ($prestasi->foto) {
+                Storage::disk('public')->delete($prestasi->foto);
+            }
+
+            $prestasi->delete();
+            DB::commit();
+
+            return response()->json(null, 204);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus prestasi'
+            ], 500);
         }
-        
-        $prestasi->delete();
-        return response()->json(null, 204);
     }
 }

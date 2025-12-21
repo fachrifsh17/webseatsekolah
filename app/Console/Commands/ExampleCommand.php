@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 class ExampleCommand extends Command
 {
@@ -25,12 +26,11 @@ class ExampleCommand extends Command
      *
      * @return int
      */
-    public function handle()
+    public function handle(): int
     {
-        // Contoh aksi: tulis log atau tampilkan pesan
-        \Log::info('ExampleCommand dijalankan oleh scheduler.');
+        Log::info('ExampleCommand dijalankan oleh scheduler.');
         $this->info('ExampleCommand executed.');
 
-        return 0;
+        return Command::SUCCESS;
     }
 }

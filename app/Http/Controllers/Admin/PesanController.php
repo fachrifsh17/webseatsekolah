@@ -6,49 +6,64 @@ use App\Http\Controllers\Controller;
 use App\Models\Pesan;
 use App\Http\Resources\PesanResource;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Facades\DB;
+use Throwable;
 
-class PesanController extends Controller implements HasMiddleware
+class PesanController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['updateStatus', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['updateStatus', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
-        $pesan = Pesan::latest()->paginate(10); 
-        return PesanResource::collection($pesan);
+        $pesan = Pesan::latest()->paginate(10);
+        return response()->json(PesanResource::collection($pesan));
     }
 
-    public function show(Pesan $pesan)
+    public function show(Pesan $pesan): JsonResponse
     {
-        return new PesanResource($pesan);
+        return response()->json(new PesanResource($pesan));
     }
 
     public function updateStatus(Pesan $pesan): JsonResponse
     {
-        $pesan->update(['is_read' => true]);
+        DB::beginTransaction();
+        try {
+            $pesan->update(['is_read' => true]);
+            DB::commit();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Status pesan berhasil diperbarui',
-            'data'    => new PesanResource($pesan)
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Status pesan berhasil diperbarui',
+                'data'    => new PesanResource($pesan->fresh())
+            ], 200);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui status pesan'
+            ], 500);
+        }
     }
 
     public function destroy(Pesan $pesan): JsonResponse
     {
-        $pesan->delete();
+        DB::beginTransaction();
+        try {
+            $pesan->delete();
+            DB::commit();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Pesan berhasil dihapus'
-        ]);
+            return response()->json(null, 204);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus pesan'
+            ], 500);
+        }
     }
 }

@@ -3,80 +3,101 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\User; 
+use App\Models\User;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
 use Illuminate\Http\JsonResponse;
+use Throwable;
 
-class UserController extends Controller implements HasMiddleware
+class UserController extends Controller
 {
-       public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:SuperAdmin'), 
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
-        $users = User::with(['roles', 'guru'])->paginate(15); 
-        return UserResource::collection($users);
+        $users = User::with(['roles', 'guru'])->paginate(15);
+        return response()->json(UserResource::collection($users));
     }
     
-    public function show(User $user)
+    public function show(User $user): JsonResponse
     {
-        return new UserResource($user->load(['roles', 'guru']));
+        return response()->json(new UserResource($user->load(['roles', 'guru'])));
     }
 
-    public function store(StoreUserRequest $request)
+    public function store(StoreUserRequest $request): JsonResponse
     {
-        $data = $request->validated();
-        $data['password'] = Hash::make($request->password);
-        
-        $user = User::create($data);
-        
-        if ($request->filled('role_id')) {
-            $user->roles()->sync($request->role_id);
+        try {
+            $data = $request->validated();
+
+            if (!empty($data['password'])) {
+                $data['password'] = Hash::make($data['password']);
+            }
+
+            $user = User::create($data);
+
+            if ($request->filled('role_id')) {
+                $user->roles()->sync($request->role_id);
+            }
+
+            return response()->json(new UserResource($user->load(['roles', 'guru'])), 201);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Gagal menambahkan user'
+            ], 500);
         }
-        
-        return new UserResource($user->load(['roles', 'guru']));
     }
 
-    public function update(UpdateUserRequest $request, User $user)
+    public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
-        $data = $request->validated();
+        try {
+            $data = $request->validated();
 
-        if ($request->filled('password')) {
-            $data['password'] = Hash::make($request->password);
-        } else {
-            unset($data['password']);
-        }
-        
-        $user->update($data);
-        
-        if ($request->has('role_id')) {
-            $user->roles()->sync($request->role_id);
-        }
+            if (!empty($data['password'])) {
+                $data['password'] = Hash::make($data['password']);
+            } else {
+                unset($data['password']);
+            }
 
-        return new UserResource($user->load(['roles', 'guru']));
+            $user->update($data);
+
+            if ($request->has('role_id')) {
+                $user->roles()->sync($request->role_id);
+            }
+
+            return response()->json(new UserResource($user->load(['roles', 'guru'])));
+        } catch (Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Gagal memperbarui user'
+            ], 500);
+        }
     }
 
     public function destroy(User $user): JsonResponse
     {
-        if ($user->id === request()->user()->id) {
+        try {
+            if ($user->id === request()->user()->id) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Anda tidak diizinkan menghapus akun yang sedang digunakan.'
+                ], 403);
+            }
+
+            $user->delete();
+            return response()->json(null, 204);
+        } catch (Throwable $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Anda tidak diizinkan menghapus akun yang sedang digunakan.'
-            ], 403);
+                'message' => 'Gagal menghapus user'
+            ], 500);
         }
-
-        $user->delete();
-        return response()->json(null, 204);
     }
 }

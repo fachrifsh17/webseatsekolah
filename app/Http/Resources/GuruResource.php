@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Http\Resources\JurusanResource;
+use App\Http\Resources\UserResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class GuruResource extends JsonResource
@@ -11,12 +12,13 @@ class GuruResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'user_id' => $this->user_id,
+            'user' => new UserResource($this->whenLoaded('user')),
             'nip' => $this->nip,
             'nuptk' => $this->nuptk,
             'nama' => $this->nama,
             'jabatan_fungsional' => $this->jabatan_fungsional,
             'status_kepegawaian' => $this->status_kepegawaian,
-            'bidang_studi' => $this->bidang_studi ?? null,
             'jurusan_id' => $this->jurusan_id,
             'jurusan' => new JurusanResource($this->whenLoaded('jurusan')),
             'foto_url' => $this->foto ? asset('storage/' . $this->foto) : null,

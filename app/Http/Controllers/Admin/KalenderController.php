@@ -6,51 +6,80 @@ use App\Http\Controllers\Controller;
 use App\Models\KalenderAkademik;
 use App\Http\Resources\KalenderAkademikResource;
 use App\Http\Requests\StoreKalenderRequest;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
+use App\Http\Requests\UpdateKalenderRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
+use Throwable;
 
-class KalenderController extends Controller implements HasMiddleware
+class KalenderController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin,Guru');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
-        $data = KalenderAkademik::orderBy('tanggal_mulai')->paginate(12); 
-        
-        return KalenderAkademikResource::collection($data);
+        $data = KalenderAkademik::orderBy('tanggal_mulai')->paginate(12);
+        return response()->json(KalenderAkademikResource::collection($data));
     }
     
-    public function show(KalenderAkademik $kalender)
+    public function show(KalenderAkademik $kalender): JsonResponse
     {
-        return new KalenderAkademikResource($kalender);
+        return response()->json(new KalenderAkademikResource($kalender));
     }
 
-    public function store(StoreKalenderRequest $request)
+    public function store(StoreKalenderRequest $request): JsonResponse
     {
-        $item = KalenderAkademik::create($request->validated());
-        
-        return new KalenderAkademikResource($item);
+        $validated = $request->validated();
+
+        DB::beginTransaction();
+        try {
+            $item = KalenderAkademik::create($validated);
+            DB::commit();
+            return response()->json(new KalenderAkademikResource($item), 201);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat item kalender akademik'
+            ], 500);
+        }
     }
 
-    public function update(StoreKalenderRequest $request, KalenderAkademik $kalender)
+    public function update(UpdateKalenderRequest $request, KalenderAkademik $kalender): JsonResponse
     {
-        $kalender->update($request->validated()); 
-        
-        return new KalenderAkademikResource($kalender);
+        $validated = $request->validated();
+
+        DB::beginTransaction();
+        try {
+            $kalender->update($validated);
+            DB::commit();
+            return response()->json(new KalenderAkademikResource($kalender));
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui item kalender akademik'
+            ], 500);
+        }
     }
 
     public function destroy(KalenderAkademik $kalender): JsonResponse
     {
-        $kalender->delete(); 
-        
-        return response()->json(null, 204);
+        DB::beginTransaction();
+        try {
+            $kalender->delete();
+            DB::commit();
+            return response()->json(null, 204);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus item kalender akademik'
+            ], 500);
+        }
     }
 }

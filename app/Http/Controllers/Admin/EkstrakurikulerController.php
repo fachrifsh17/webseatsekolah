@@ -6,32 +6,27 @@ use App\Http\Controllers\Controller;
 use App\Models\Ekstrakurikuler;
 use App\Http\Resources\EkstrakurikulerResource;
 use App\Http\Requests\StoreEkstrakurikulerRequest;
+use App\Http\Requests\UpdateEkstrakurikulerRequest;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
 
-class EkstrakurikulerController extends Controller implements HasMiddleware
+class EkstrakurikulerController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
     public function index()
     {
         $data = Ekstrakurikuler::with('pembina')->paginate(12);
-        
         return EkstrakurikulerResource::collection($data);
     }
     
     public function show(Ekstrakurikuler $ekstrakurikuler)
     {
         $ekstrakurikuler->load('pembina');
-        
         return new EkstrakurikulerResource($ekstrakurikuler);
     }
 
@@ -44,11 +39,10 @@ class EkstrakurikulerController extends Controller implements HasMiddleware
         }
         
         $ekskul = Ekstrakurikuler::create($validated);
-        
         return new EkstrakurikulerResource($ekskul->load('pembina'));
     }
 
-    public function update(StoreEkstrakurikulerRequest $request, Ekstrakurikuler $ekstrakurikuler)
+    public function update(UpdateEkstrakurikulerRequest $request, Ekstrakurikuler $ekstrakurikuler)
     {
         $validated = $request->validated();
 
@@ -60,7 +54,6 @@ class EkstrakurikulerController extends Controller implements HasMiddleware
         }
 
         $ekstrakurikuler->update($validated);
-        
         return new EkstrakurikulerResource($ekstrakurikuler->load('pembina'));
     }
 
@@ -71,7 +64,6 @@ class EkstrakurikulerController extends Controller implements HasMiddleware
         }
         
         $ekstrakurikuler->delete();
-        
-        return response()->json(null, 204);
+        return response()->noContent();
     }
 }

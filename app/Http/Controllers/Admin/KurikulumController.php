@@ -8,33 +8,31 @@ use App\Http\Resources\KurikulumResource;
 use App\Http\Requests\StoreKurikulumRequest;
 use App\Http\Requests\UpdateKurikulumRequest;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
+use Throwable;
 
-class KurikulumController extends Controller implements HasMiddleware
+class KurikulumController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
         $data = Kurikulum::paginate(12);
-        return KurikulumResource::collection($data);
+        return response()->json(KurikulumResource::collection($data));
     }
     
-    public function show(Kurikulum $kurikulum)
+    public function show(Kurikulum $kurikulum): JsonResponse
     {
-        return new KurikulumResource($kurikulum);
+        return response()->json(new KurikulumResource($kurikulum));
     }
 
-    public function store(StoreKurikulumRequest $request)
+    public function store(StoreKurikulumRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
@@ -42,35 +40,72 @@ class KurikulumController extends Controller implements HasMiddleware
             $validated['file_jadwal_path'] = $request->file('file_jadwal')->store('uploads/kurikulum', 'public');
         }
 
-        $kurikulum = Kurikulum::create($validated);
-        
-        return new KurikulumResource($kurikulum);
-    }
-
-    public function update(UpdateKurikulumRequest $request, Kurikulum $kurikulum)
-    {
-        $validated = $request->validated();
-
-        if ($request->hasFile('file_jadwal')) {
-            if ($kurikulum->file_jadwal_path) {
-                Storage::disk('public')->delete($kurikulum->file_jadwal_path);
+        DB::beginTransaction();
+        try {
+            $kurikulum = Kurikulum::create($validated);
+            DB::commit();
+            return response()->json(new KurikulumResource($kurikulum), 201);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            if (!empty($validated['file_jadwal_path'] ?? null)) {
+                Storage::disk('public')->delete($validated['file_jadwal_path']);
             }
-            $validated['file_jadwal_path'] = $request->file('file_jadwal')->store('uploads/kurikulum', 'public');
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat kurikulum'
+            ], 500);
+        }
+    }
+
+    public function update(UpdateKurikulumRequest $request, Kurikulum $kurikulum): JsonResponse
+    {
+        $validated = $request->validated();
+
+        if ($request->hasFile('file_jadwal')) {
+            $newPath = $request->file('file_jadwal')->store('uploads/kurikulum', 'public');
+            if ($newPath) {
+                if ($kurikulum->file_jadwal_path) {
+                    Storage::disk('public')->delete($kurikulum->file_jadwal_path);
+                }
+                $validated['file_jadwal_path'] = $newPath;
+            }
         }
 
-        $kurikulum->update($validated);
-        
-        return new KurikulumResource($kurikulum);
+        DB::beginTransaction();
+        try {
+            $kurikulum->update($validated);
+            DB::commit();
+            return response()->json(new KurikulumResource($kurikulum));
+        } catch (Throwable $e) {
+            DB::rollBack();
+            if (!empty($validated['file_jadwal_path'] ?? null) && ($validated['file_jadwal_path'] !== $kurikulum->file_jadwal_path)) {
+                Storage::disk('public')->delete($validated['file_jadwal_path']);
+            }
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui kurikulum'
+            ], 500);
+        }
     }
 
     public function destroy(Kurikulum $kurikulum): JsonResponse
     {
-        if ($kurikulum->file_jadwal_path) {
-            Storage::disk('public')->delete($kurikulum->file_jadwal_path);
-        }
+        DB::beginTransaction();
+        try {
+            if ($kurikulum->file_jadwal_path) {
+                Storage::disk('public')->delete($kurikulum->file_jadwal_path);
+            }
 
-        $kurikulum->delete();
-        
-        return response()->json(null, 204);
+            $kurikulum->delete();
+            DB::commit();
+
+            return response()->json(null, 204);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus kurikulum'
+            ], 500);
+        }
     }
 }

@@ -6,51 +6,80 @@ use App\Http\Controllers\Controller;
 use App\Models\Pengumuman;
 use App\Http\Resources\PengumumanResource;
 use App\Http\Requests\StorePengumumanRequest;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
+use App\Http\Requests\UpdatePengumumanRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
+use Throwable;
 
-class PengumumanController extends Controller implements HasMiddleware
+class PengumumanController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin,Guru');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
         $data = Pengumuman::latest()->paginate(10);
-        
-        return PengumumanResource::collection($data);
+        return response()->json(PengumumanResource::collection($data));
     }
     
-    public function show(Pengumuman $pengumuman)
+    public function show(Pengumuman $pengumuman): JsonResponse
     {
-        return new PengumumanResource($pengumuman);
+        return response()->json(new PengumumanResource($pengumuman));
     }
 
-    public function store(StorePengumumanRequest $request)
+    public function store(StorePengumumanRequest $request): JsonResponse
     {
-        $item = Pengumuman::create($request->validated());
+        $validated = $request->validated();
 
-        return new PengumumanResource($item);
+        DB::beginTransaction();
+        try {
+            $item = Pengumuman::create($validated);
+            DB::commit();
+            return response()->json(new PengumumanResource($item), 201);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat pengumuman'
+            ], 500);
+        }
     }
 
-    public function update(StorePengumumanRequest $request, Pengumuman $pengumuman)
+    public function update(UpdatePengumumanRequest $request, Pengumuman $pengumuman): JsonResponse
     {
-        $pengumuman->update($request->validated());
+        $validated = $request->validated();
 
-        return new PengumumanResource($pengumuman);
+        DB::beginTransaction();
+        try {
+            $pengumuman->update($validated);
+            DB::commit();
+            return response()->json(new PengumumanResource($pengumuman));
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui pengumuman'
+            ], 500);
+        }
     }
 
     public function destroy(Pengumuman $pengumuman): JsonResponse
     {
-        $pengumuman->delete();
-        
-        return response()->json(null, 204);
+        DB::beginTransaction();
+        try {
+            $pengumuman->delete();
+            DB::commit();
+            return response()->json(null, 204);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus pengumuman'
+            ], 500);
+        }
     }
 }

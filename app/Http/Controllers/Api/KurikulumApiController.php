@@ -74,7 +74,6 @@ class KurikulumApiController extends Controller
 
     public function destroy(Kurikulum $kurikulum)
     {
-        // Hapus file dari storage sebelum menghapus record
         if ($kurikulum->file_jadwal_path) {
             Storage::disk('public')->delete($kurikulum->file_jadwal_path);
         }

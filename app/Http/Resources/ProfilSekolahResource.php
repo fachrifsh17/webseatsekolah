@@ -2,25 +2,28 @@
 
 namespace App\Http\Resources;
 
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class ProfilSekolahResource extends JsonResource
 {
-    public function toArray($request)
+    public function toArray(Request $request): array
     {
         return [
             'id' => $this->id,
-            'sejarah' => $this->sejarah,
-            'visi' => $this->visi,
-            'misi' => $this->misi,
             'npsn' => $this->npsn,
             'akreditasi' => $this->akreditasi,
+            'visi' => $this->visi,
+            'misi' => $this->misi,
+            'sejarah' => $this->sejarah,
             'sambutan_kepsek' => $this->sambutan_kepsek,
-            // Media/URL
-            'foto_kepsek_url' => $this->foto_kepsek  ? asset('storage/' . $this->foto_kepsek)  : null,
-            // Metadata
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'kepala_sekolah' => [
+                'id' => $this->guru_staf_id,
+                'nama' => $this->kepalaSekolah->nama_lengkap ?? null,
+                'nip' => $this->kepalaSekolah->nip ?? null,
+                'foto' => $this->kepalaSekolah->foto ?? null,
+            ],
+            'updated_at' => $this->updated_at->format('d-m-Y H:i'),
         ];
     }
 }

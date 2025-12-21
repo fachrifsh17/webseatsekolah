@@ -25,10 +25,6 @@ class Pengumuman extends Model
         'tanggal_publikasi' => 'datetime',
         'penting' => 'boolean',
     ];
-
-    /**
-     * Relasi ke user admin yang membuat pengumuman
-     */
     public function author()
     {
         return $this->belongsTo(User::class, 'created_by');

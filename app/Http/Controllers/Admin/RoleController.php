@@ -8,48 +8,58 @@ use App\Http\Resources\RoleResource;
 use App\Http\Requests\StoreRoleRequest;
 use App\Http\Requests\UpdateRoleRequest;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
+use Throwable;
 
-class RoleController extends Controller implements HasMiddleware
+class RoleController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            // Manajemen Role biasanya dibatasi hanya untuk SuperAdmin
-            new Middleware('role:SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
         $roles = Role::all();
-        return RoleResource::collection($roles);
+        return response()->json(RoleResource::collection($roles));
     }
     
-    public function show(Role $role)
+    public function show(Role $role): JsonResponse
     {
-        return new RoleResource($role);
+        return response()->json(new RoleResource($role));
     }
 
-    public function store(StoreRoleRequest $request)
+    public function store(StoreRoleRequest $request): JsonResponse
     {
-        $role = Role::create($request->validated());
-        return new RoleResource($role);
+        try {
+            $role = Role::create($request->validated());
+            return response()->json(new RoleResource($role), 201);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Gagal membuat role'
+            ], 500);
+        }
     }
 
-    public function update(UpdateRoleRequest $request, Role $role)
+    public function update(UpdateRoleRequest $request, Role $role): JsonResponse
     {
-        $role->update($request->validated());
-        return new RoleResource($role);
+        try {
+            $role->update($request->validated());
+            return response()->json(new RoleResource($role));
+        } catch (Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Gagal memperbarui role'
+            ], 500);
+        }
     }
 
     public function destroy(Role $role): JsonResponse
     {   
-        // Proteksi Hard-coded untuk role krusial sistem
-        if (in_array($role->nama_role, ['SuperAdmin', 'Admin'])) {
+        // Proteksi hard-coded untuk role krusial sistem
+        if (in_array($role->nama_role, ['Admin'])) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Role sistem tidak dapat dihapus.'

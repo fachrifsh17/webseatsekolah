@@ -6,19 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Banner;
 use App\Http\Resources\BannerResource;
 use App\Http\Requests\StoreBannerRequest;
+use App\Http\Requests\UpdateBannerRequest;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
 
-class BannerController extends Controller implements HasMiddleware
+class BannerController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
     public function index()
@@ -45,7 +42,7 @@ class BannerController extends Controller implements HasMiddleware
         return new BannerResource($banner);
     }
 
-    public function update(StoreBannerRequest $request, Banner $banner)
+    public function update(UpdateBannerRequest $request, Banner $banner)
     {
         $validated = $request->validated();
 
@@ -68,7 +65,7 @@ class BannerController extends Controller implements HasMiddleware
         }
 
         $banner->delete();
-        
-        return response()->json(null, 204);
+
+        return response()->noContent();
     }
 }

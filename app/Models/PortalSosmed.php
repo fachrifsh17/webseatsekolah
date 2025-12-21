@@ -1,9 +1,19 @@
-<?php // app/Models/PortalSosmed.php
+<?php
+
 namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class PortalSosmed extends Model {
+class PortalSosmed extends Model
+{
+    use HasFactory;
+
     protected $table = 'portal_sosmed';
-    protected $fillable = ['nama_platform','url_link','tipe'];
-    public $timestamps = false;
+
+    protected $fillable = [
+        'nama_platform',
+        'url_link',
+        'tipe',
+    ];
 }

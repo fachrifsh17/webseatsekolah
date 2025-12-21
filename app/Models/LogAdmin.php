@@ -1,11 +1,24 @@
-<?php // app/Models/LogAdmin.php
+<?php
+
 namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class LogAdmin extends Model {
-    protected $table = 'user';
-    protected $fillable = ['user_id','aksi','created_at'];
-    public $timestamps = false;
+class LogAdmin extends Model
+{
+    use HasFactory;
 
-    public function user() { return $this->belongsTo(User::class,'user_id'); }
+    protected $table = 'log_admin';
+
+    protected $fillable = [
+        'user_id',
+        'aksi',
+    ];
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 }

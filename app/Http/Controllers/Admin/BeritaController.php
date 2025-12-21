@@ -6,24 +6,21 @@ use App\Http\Controllers\Controller;
 use App\Models\Berita;
 use App\Http\Resources\BeritaResource;
 use App\Http\Requests\StoreBeritaRequest;
+use App\Http\Requests\UpdateBeritaRequest;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
 
-class BeritaController extends Controller implements HasMiddleware
+class BeritaController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin,Guru');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
     public function index()
     {
-        $berita = Berita::with('kategori')->orderBy('tanggal_publikasi', 'desc')->paginate(10);
+        $berita = Berita::with('kategori')->orderByDesc('tanggal_publikasi')->paginate(10);
         return BeritaResource::collection($berita);
     }
     
@@ -46,7 +43,7 @@ class BeritaController extends Controller implements HasMiddleware
         return new BeritaResource($berita->load('kategori'));
     }
 
-    public function update(StoreBeritaRequest $request, Berita $berita)
+    public function update(UpdateBeritaRequest $request, Berita $berita)
     {
         $data = $request->validated();
 
@@ -70,6 +67,6 @@ class BeritaController extends Controller implements HasMiddleware
         
         $berita->delete();
         
-        return response()->json(null, 204);
+        return response()->noContent();
     }
 }

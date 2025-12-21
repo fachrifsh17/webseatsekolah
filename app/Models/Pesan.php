@@ -18,4 +18,8 @@ class Pesan extends Model
         'pesan',
         'status',
     ];
+
+    protected $casts = [
+        'status' => 'string',
+    ];
 }

@@ -6,32 +6,31 @@ use App\Http\Controllers\Controller;
 use App\Models\GuruStaf;
 use App\Http\Resources\GuruResource;
 use App\Http\Requests\StoreGuruRequest;
+use App\Http\Requests\UpdateGuruRequest;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\JsonResponse;
+use Throwable;
 
-class GuruController extends Controller implements HasMiddleware
+class GuruController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
     public function index()
     {
         $data = GuruStaf::with(['jurusan', 'user'])->paginate(12);
-        
         return GuruResource::collection($data);
     }
-    
+
     public function show(GuruStaf $guru)
     {
         $guru->load(['jurusan', 'user']);
-        
         return new GuruResource($guru);
     }
 
@@ -42,36 +41,82 @@ class GuruController extends Controller implements HasMiddleware
         if ($request->hasFile('foto')) {
             $validated['foto'] = $request->file('foto')->store('uploads/guru', 'public');
         }
-        
-        $guru = GuruStaf::create($validated);
-        
-        return new GuruResource($guru->load(['jurusan', 'user']));
+
+        if (Auth::check() && empty($validated['user_id'] ?? null)) {
+            $validated['user_id'] = Auth::id();
+        }
+
+        DB::beginTransaction();
+        try {
+            $guru = GuruStaf::create($validated);
+            DB::commit();
+            return new GuruResource($guru->load(['jurusan', 'user']));
+        } catch (Throwable $e) {
+            DB::rollBack();
+            if (!empty($validated['foto'] ?? null)) {
+                Storage::disk('public')->delete($validated['foto']);
+            }
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat data guru'
+            ], 500);
+        }
     }
 
-    public function update(StoreGuruRequest $request, GuruStaf $guru)
+    public function update(UpdateGuruRequest $request, GuruStaf $guru)
     {
         $validated = $request->validated();
 
+        $newFotoPath = null;
         if ($request->hasFile('foto')) {
-            if ($guru->foto) {
-                Storage::disk('public')->delete($guru->foto);
+            $newFotoPath = $request->file('foto')->store('uploads/guru', 'public');
+            if ($newFotoPath) {
+                $validated['foto'] = $newFotoPath;
             }
-            $validated['foto'] = $request->file('foto')->store('uploads/guru', 'public');
         }
 
-        $guru->update($validated);
-        
-        return new GuruResource($guru->load(['jurusan', 'user']));
+        DB::beginTransaction();
+        try {
+            $oldFoto = $guru->foto;
+            $guru->update($validated);
+            DB::commit();
+
+            if ($newFotoPath && $oldFoto) {
+                Storage::disk('public')->delete($oldFoto);
+            }
+
+            return new GuruResource($guru->load(['jurusan', 'user']));
+        } catch (Throwable $e) {
+            DB::rollBack();
+            if ($newFotoPath) {
+                Storage::disk('public')->delete($newFotoPath);
+            }
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui data guru'
+            ], 500);
+        }
     }
 
     public function destroy(GuruStaf $guru)
     {
-        if ($guru->foto) {
-            Storage::disk('public')->delete($guru->foto);
-        }
+        DB::beginTransaction();
+        try {
+            $oldFoto = $guru->foto;
+            $guru->delete();
+            DB::commit();
 
-        $guru->delete();
-        
-        return response()->json(null, 204);
+            if ($oldFoto) {
+                Storage::disk('public')->delete($oldFoto);
+            }
+
+            return response()->noContent();
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus data guru'
+            ], 500);
+        }
     }
 }

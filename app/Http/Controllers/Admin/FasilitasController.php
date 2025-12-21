@@ -6,19 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Fasilitas;
 use App\Http\Resources\FasilitasResource;
 use App\Http\Requests\StoreFasilitasRequest;
+use App\Http\Requests\UpdateFasilitasRequest;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
 
-class FasilitasController extends Controller implements HasMiddleware
+class FasilitasController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
     public function index()
@@ -45,7 +42,7 @@ class FasilitasController extends Controller implements HasMiddleware
         return new FasilitasResource($fasilitas);
     }
 
-    public function update(StoreFasilitasRequest $request, Fasilitas $fasilitas)
+    public function update(UpdateFasilitasRequest $request, Fasilitas $fasilitas)
     {
         $validated = $request->validated();
         
@@ -69,6 +66,6 @@ class FasilitasController extends Controller implements HasMiddleware
         
         $fasilitas->delete(); 
         
-        return response()->json(null, 204);
+        return response()->noContent();
     }
 }

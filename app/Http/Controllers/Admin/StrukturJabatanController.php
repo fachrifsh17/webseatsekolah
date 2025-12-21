@@ -7,51 +7,65 @@ use App\Models\StrukturJabatan;
 use App\Http\Resources\StrukturJabatanResource;
 use App\Http\Requests\StoreStrukturJabatanRequest;
 use App\Http\Requests\UpdateStrukturJabatanRequest;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
 use Illuminate\Http\JsonResponse;
+use Throwable;
 
-class StrukturJabatanController extends Controller implements HasMiddleware
+class StrukturJabatanController extends Controller
 {
-       public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
-        $data = StrukturJabatan::with('guru')->orderBy('urutan_tampil')->get(); 
-        
-        return StrukturJabatanResource::collection($data);
+        $data = StrukturJabatan::with('guru')->orderBy('urutan_tampil')->get();
+        return response()->json(StrukturJabatanResource::collection($data));
     }
     
-    public function show(StrukturJabatan $strukturJabatan)
+    public function show(StrukturJabatan $strukturJabatan): JsonResponse
     {
-        return new StrukturJabatanResource($strukturJabatan->load('guru'));
+        return response()->json(new StrukturJabatanResource($strukturJabatan->load('guru')));
     }
 
-    public function store(StoreStrukturJabatanRequest $request)
+    public function store(StoreStrukturJabatanRequest $request): JsonResponse
     {
-        $item = StrukturJabatan::create($request->validated()); 
-        
-        return new StrukturJabatanResource($item->load('guru'));
+        try {
+            $item = StrukturJabatan::create($request->validated());
+            return response()->json(new StrukturJabatanResource($item->load('guru')), 201);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat struktur jabatan'
+            ], 500);
+        }
     }
 
-    public function update(UpdateStrukturJabatanRequest $request, StrukturJabatan $strukturJabatan)
+    public function update(UpdateStrukturJabatanRequest $request, StrukturJabatan $strukturJabatan): JsonResponse
     {
-        $strukturJabatan->update($request->validated()); 
-        
-        return new StrukturJabatanResource($strukturJabatan->load('guru'));
+        try {
+            $strukturJabatan->update($request->validated());
+            return response()->json(new StrukturJabatanResource($strukturJabatan->load('guru')));
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui struktur jabatan'
+            ], 500);
+        }
     }
 
     public function destroy(StrukturJabatan $strukturJabatan): JsonResponse
     {
-        $strukturJabatan->delete(); 
-        
-        return response()->json(null, 204);
+        try {
+            $strukturJabatan->delete();
+            return response()->json(null, 204);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus struktur jabatan'
+            ], 500);
+        }
     }
 }

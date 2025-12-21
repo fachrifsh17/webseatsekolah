@@ -1,9 +1,19 @@
-<?php // app/Models/Fasilitas.php
+<?php
+
 namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Fasilitas extends Model {
+class Fasilitas extends Model
+{
+    use HasFactory;
+
     protected $table = 'fasilitas';
-    protected $fillable = ['nama_fasilitas','foto','keterangan'];
-    public $timestamps = false;
+
+    protected $fillable = [
+        'nama_fasilitas',
+        'foto',
+        'keterangan',
+    ];
 }

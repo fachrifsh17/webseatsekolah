@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Models\AuthToken; // Import model AuthToken
+use App\Models\AuthToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -22,7 +22,6 @@ class AuthApiController extends Controller
             'role_id'      => 'required|integer', 
         ]);
 
-        // 1. Buat user baru
         $user = User::create([
             'username'     => $request->username,
             'password'     => Hash::make($request->password),
@@ -30,7 +29,6 @@ class AuthApiController extends Controller
             'role_id'      => $request->role_id,
         ]);
 
-        // 2. Buat token pertama untuk user ini
         $plainToken = Str::random(80);
         AuthToken::create([
             'user_id'    => $user->id,
@@ -63,13 +61,11 @@ class AuthApiController extends Controller
             ], 401);
         }
 
-        // 3. LOGIKA BARU: Simpan token ke tabel auth_tokens
         $plainToken = Str::random(80);
-        
         AuthToken::create([
             'user_id'    => $user->id,
             'token_hash' => hash('sha256', $plainToken),
-            'expires_at' => now()->addDays(30), // Token berlaku 30 hari
+            'expires_at' => now()->addDays(30),
             'revoked'    => false
         ]);
 
@@ -83,11 +79,11 @@ class AuthApiController extends Controller
 
     public function logout(Request $request)
     {
-        // Ambil token dari header, hash, lalu matikan di database (revoked)
         $token = $request->bearerToken();
-        $hash = hash('sha256', $token);
-
-        AuthToken::where('token_hash', $hash)->update(['revoked' => true]);
+        if ($token) {
+            $hash = hash('sha256', $token);
+            AuthToken::where('token_hash', $hash)->update(['revoked' => true]);
+        }
 
         return response()->json([
             'success' => true,

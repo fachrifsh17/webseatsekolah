@@ -6,19 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Album;
 use App\Http\Resources\AlbumResource;
 use App\Http\Requests\StoreAlbumRequest;
+use App\Http\Requests\UpdateAlbumRequest;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
 
-class AlbumController extends Controller implements HasMiddleware
+class AlbumController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['store', 'update', 'destroy']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin,Guru');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
     public function index()
@@ -45,7 +42,7 @@ class AlbumController extends Controller implements HasMiddleware
         return new AlbumResource($album);
     }
 
-    public function update(StoreAlbumRequest $request, Album $album)
+    public function update(UpdateAlbumRequest $request, Album $album)
     {
         $validated = $request->validated();
 
@@ -69,6 +66,6 @@ class AlbumController extends Controller implements HasMiddleware
 
         $album->delete();
 
-        return response()->json(null, 204);
+        return response()->noContent();
     }
 }

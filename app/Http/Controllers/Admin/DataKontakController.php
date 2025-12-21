@@ -6,19 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\DataKontak;
 use App\Http\Requests\UpdateDataKontakRequest;
 use App\Http\Resources\DataKontakResource;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Routing\Controllers\HasMiddleware;
-use Illuminate\Routing\Controllers\Middleware;
 
-class DataKontakController extends Controller implements HasMiddleware
+class DataKontakController extends Controller
 {
-    public static function middleware(): array
+    public function __construct()
     {
-        return [
-            new Middleware('auth.token'),
-            new Middleware('role:Admin,SuperAdmin'),
-            new Middleware('log.admin', only: ['update']),
-        ];
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.admin')->only(['update']);
     }
 
     public function show(): DataKontakResource
@@ -27,9 +22,9 @@ class DataKontakController extends Controller implements HasMiddleware
             ['id' => 1],
             [
                 'alamat_lengkap' => '-',
-                'telepon' => '-',
-                'email_resmi' => '-',
-                'peta_embed_code' => null
+                'telepon'        => '-',
+                'email_resmi'    => '-',
+                'peta_embed_code'=> null,
             ]
         );
 
@@ -38,11 +33,10 @@ class DataKontakController extends Controller implements HasMiddleware
 
     public function update(UpdateDataKontakRequest $request): DataKontakResource
     {
-        $dataKontak = DataKontak::firstOrNew(['id' => 1]);
-        
-        $dataKontak->fill($request->validated());
-        $dataKontak->save();
-        
+        $dataKontak = DataKontak::firstOrCreate(['id' => 1]);
+
+        $dataKontak->update($request->validated());
+
         return new DataKontakResource($dataKontak);
     }
 }

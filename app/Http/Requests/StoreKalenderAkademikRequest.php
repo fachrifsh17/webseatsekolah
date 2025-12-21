@@ -14,10 +14,36 @@ class StoreKalenderAkademikRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'kegiatan' => 'required|string|max:255', 
-            'tanggal_mulai' => 'required|date',
-            'tanggal_selesai' => 'nullable|date|after_or_equal:tanggal_mulai',
-            'kategori' => 'required|string|max:50', 
+            'kegiatan'        => ['required', 'string', 'max:255'],
+            'tanggal_mulai'   => ['required', 'date'],
+            'tanggal_selesai' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
+            'kategori'        => ['required', 'string', 'max:50'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'kegiatan.required'              => 'Nama kegiatan akademik wajib diisi.',
+            'kegiatan.string'                => 'Nama kegiatan harus berupa teks.',
+            'kegiatan.max'                   => 'Nama kegiatan tidak boleh lebih dari 255 karakter.',
+            'tanggal_mulai.required'         => 'Tanggal mulai harus ditentukan.',
+            'tanggal_mulai.date'             => 'Format tanggal mulai tidak valid.',
+            'tanggal_selesai.date'           => 'Tanggal selesai harus berupa format tanggal yang valid.',
+            'tanggal_selesai.after_or_equal' => 'Tanggal selesai tidak boleh mendahului tanggal mulai.',
+            'kategori.required'              => 'Kategori kegiatan (misal: Libur, Ujian, Event) wajib dipilih.',
+            'kategori.string'                => 'Kategori kegiatan harus berupa teks.',
+            'kategori.max'                   => 'Kategori kegiatan tidak boleh lebih dari 50 karakter.',
+        ];
+    }
+
+    public function attributes(): array
+    {
+        return [
+            'kegiatan'        => 'Nama kegiatan akademik',
+            'tanggal_mulai'   => 'Tanggal mulai',
+            'tanggal_selesai' => 'Tanggal selesai',
+            'kategori'        => 'Kategori kegiatan',
         ];
     }
 }
