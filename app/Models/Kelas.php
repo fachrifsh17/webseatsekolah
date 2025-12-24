@@ -16,8 +16,14 @@ class Kelas extends Model
     protected $fillable = [
         'nama_kelas',
         'jurusan_id',
+        'wali_kelas_id',
         'tahun_ajaran_id',
     ];
+
+    public function waliKelas(): BelongsTo
+    {
+        return $this->belongsTo(GuruStaf::class, 'wali_kelas_id');
+    }
 
     public function jurusan(): BelongsTo
     {
@@ -32,5 +38,10 @@ class Kelas extends Model
     public function siswa(): HasMany
     {
         return $this->hasMany(Siswa::class, 'kelas_id');
+    }
+    
+    public function presensi(): HasMany
+    {
+        return $this->hasMany(Presensi::class, 'kelas_id');
     }
 }

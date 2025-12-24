@@ -9,6 +9,7 @@ use App\Http\Requests\StoreSiswaRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Gate;
 
 class SiswaApiController extends Controller
 {
@@ -16,27 +17,51 @@ class SiswaApiController extends Controller
     {
         $user = Auth::user();
         
-        if ($user->role !== 'admin' && $user->role !== 'guru') {
+        if (!Gate::allows('view', Siswa::class)) {
             return response()->json(['message' => 'Akses ditolak'], 403);
         }
 
-        $query = Siswa::with(['user', 'kelas', 'jurusan', 'orangtua']);
+        $query = Siswa::with(['user', 'kelas.waliKelas', 'jurusan', 'orangtua']);
 
-        if ($request->has('kelas_id')) {
-            $query->where('kelas_id', $request->kelas_id);
+        if ($user->role === 'guru') {
+            $guru = $user->guru_staf; 
+            if (!$guru) {
+                return response()->json(['message' => 'Profil Guru tidak ditemukan'], 404);
+            }
+            
+            $query->whereHas('kelas', function($q) use ($guru) {
+                $q->where('wali_kelas_id', $guru->id);
+            });
         }
 
-        if ($request->has('search')) {
-            $query->where('nama_lengkap', 'like', '%' . $request->search . '%')
-                  ->orWhere('nis', 'like', '%' . $request->search . '%');
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('nama_lengkap', 'like', "%{$search}%")
+                  ->orWhere('nis', 'like', "%{$search}%");
+            });
         }
 
         return SiswaResource::collection($query->latest()->paginate(20));
     }
 
+    public function show($id)
+    {
+        $user = Auth::user();
+        $siswa = Siswa::with(['user', 'kelas', 'jurusan', 'orangtua'])->findOrFail($id);
+
+        if ($user->role === 'guru') {
+            if ($siswa->kelas->wali_kelas_id !== $user->guru_staf->id) {
+                return response()->json(['message' => 'Akses ditolak. Siswa bukan anggota kelas Anda.'], 403);
+            }
+        }
+
+        return new SiswaResource($siswa);
+    }
+
     public function store(StoreSiswaRequest $request)
     {
-        if (Auth::user()->role !== 'admin') {
+        if (Gate::denies('manage', Siswa::class)) {
             return response()->json(['message' => 'Hanya Admin yang dapat menambah siswa'], 403);
         }
 
@@ -55,32 +80,28 @@ class SiswaApiController extends Controller
         ], 201);
     }
 
-    public function show($id)
-    {
-        $siswa = Siswa::with(['user', 'kelas', 'jurusan', 'orangtua'])->find($id);
-
-        if (!$siswa) {
-            return response()->json(['message' => 'Siswa tidak ditemukan'], 404);
-        }
-
-        return new SiswaResource($siswa);
-    }
-
     public function update(Request $request, $id)
     {
-        $siswa = Siswa::find($id);
-        if (!$siswa) return response()->json(['message' => 'Data tidak ditemukan'], 404);
-
-        if (Auth::user()->role !== 'admin' && Auth::user()->role !== 'guru') {
-            return response()->json(['message' => 'Akses ditolak'], 403);
+        if (Gate::denies('manage', Siswa::class)) {
+            return response()->json(['message' => 'Hanya Admin yang dapat mengubah data master siswa'], 403);
         }
 
+        $siswa = Siswa::findOrFail($id);
+        
         $validated = $request->validate([
-            'nis' => 'sometimes|required|unique:siswa,nis,' . $siswa->id,
-            'nama_lengkap' => 'sometimes|required|string|max:150',
-            'kelas_id' => 'sometimes|required|exists:kelas,id',
-            'jurusan_id' => 'sometimes|required|exists:jurusan,id',
-            'foto' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'user_id'        => 'sometimes|required|exists:users,id|unique:siswa,user_id,' . $siswa->id,
+            'nis'            => 'sometimes|required|unique:siswa,nis,' . $siswa->id,
+            'nama_lengkap'   => 'sometimes|required|string|max:100', // Sesuai varchar(100) di database
+            'tempat_lahir'   => 'nullable|string|max:100', // Kolom Baru sesuai image_096627.png
+            'tanggal_lahir'  => 'nullable|date',           // Kolom Baru sesuai image_096627.png
+            'jenis_kelamin'  => 'sometimes|required|in:Laki-laki,Perempuan',
+            'kelas_id'       => 'sometimes|required|exists:kelas,id',
+            'jurusan_id'     => 'sometimes|required|exists:jurusan,id',
+            'orangtua_id'    => 'nullable|exists:orangtua,id',
+            'foto'           => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'no_telp_siswa'  => 'nullable|string|max:15',
+            'alamat'         => 'nullable|string',
+            'status_aktif'   => 'sometimes|required|in:Aktif,Lulus,Pindah,Keluar',
         ]);
 
         if ($request->hasFile('foto')) {
@@ -95,28 +116,24 @@ class SiswaApiController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Data siswa berhasil diperbarui',
-            'data' => new SiswaResource($siswa->load(['user', 'kelas', 'jurusan']))
+            'data' => new SiswaResource($siswa->fresh(['user', 'kelas', 'jurusan']))
         ]);
     }
 
     public function destroy($id)
     {
-        if (Auth::user()->role !== 'admin') {
+        if (Gate::denies('manage', Siswa::class)) {
             return response()->json(['message' => 'Hanya Admin yang dapat menghapus data siswa'], 403);
         }
 
-        $siswa = Siswa::find($id);
-        if (!$siswa) return response()->json(['message' => 'Data tidak ditemukan'], 404);
-
+        $siswa = Siswa::findOrFail($id);
+        
         if ($siswa->foto) {
             Storage::disk('public')->delete($siswa->foto);
         }
 
         $siswa->delete();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Data siswa berhasil dihapus'
-        ]);
+        return response()->json(['success' => true, 'message' => 'Data siswa berhasil dihapus']);
     }
 }

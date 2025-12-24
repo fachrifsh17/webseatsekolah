@@ -12,10 +12,21 @@ class CheckRole
     {
         $user = $request->user();
 
-        if (!$user || !$user->roles()->whereIn('nama_role', $roles)->exists()) {
+        if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Anda tidak memiliki hak akses (Role) untuk tindakan ini.'
+                'message' => 'Silakan login terlebih dahulu.'
+            ], 401);
+        }
+
+        $userRole = ($user->role && isset($user->role->role_name)) 
+            ? strtolower($user->role->role_name) 
+            : null;
+
+        if (!$userRole || !in_array($userRole, array_map('strtolower', $roles))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki hak akses untuk tindakan ini.'
             ], 403);
         }
 

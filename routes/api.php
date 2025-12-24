@@ -2,39 +2,41 @@
 
 use Illuminate\Support\Facades\Route;
 
-// Import Controllers dari folder Api (Untuk Public)
 use App\Http\Controllers\Api\{
-    BeritaApiController, PengumumanApiController, GuruApiController, 
-    JurusanApiController, KurikulumApiController, KalenderApiController, 
-    MediaApiController, AlbumApiController, BannerApiController, 
-    FasilitasApiController, EkstrakurikulerApiController, 
-    PesanApiController, DataKontakApiController, MapelApiController
+    BeritaApiController, PengumumanApiController, GuruApiController,
+    JurusanApiController, KurikulumApiController, KalenderApiController,
+    MediaApiController, AlbumApiController, BannerApiController,
+    FasilitasApiController, EkstrakurikulerApiController,
+    PesanApiController, DataKontakApiController, MapelApiController,
+    SiswaApiController, OrangtuaApiController, PresensiApiController,
+    JadwalProduktifApiController, PrestasiApiController, PoinSiswaApiController,
+    PortalApiController, PPDBLinkApiController, KelasApiController,
+    TahunAjaranApiController, JamSekolahApiController, AuthApiController as ApiAuth,
+    DashboardApiController, SettingApiController,
+    StrukturJabatanApiController, ProfilApiController
 };
 
-// Import Controllers dari folder Admin (Untuk Admin & Guru)
 use App\Http\Controllers\Admin\{
-    AuthController, DashboardController, BeritaController, PengumumanController,
-    GuruController, JurusanController, KurikulumController, KalenderController, 
-    MediaController, AlbumController, BannerController, FasilitasController, 
-    EkstrakurikulerController, SettingController, StrukturJabatanController, 
+    AuthController as AdminAuth, BeritaController, PengumumanController,
+    GuruController, JurusanController, KurikulumController, KalenderController,
+    MediaController, AlbumController, BannerController, FasilitasController,
+    EkstrakurikulerController, StrukturJabatanController,
     RoleController, UserController, PesanController, LogAdminController,
-    PrestasiController, ProfilSekolahController, MapelController
+    PrestasiController, ProfilSekolahController, MapelController,
+    SiswaController, OrangtuaController, PresensiController, 
+    JadwalProduktifController, PoinSiswaController, PortalController,
+    PpdbLinkController, KelasController, TahunAjaranController,
+    JamSekolahController, GuruMapelController, DataKontakController,
+    PresensiGuruMapelController, SettingController
 };
 
-/*
-|--------------------------------------------------------------------------
-| 1. PUBLIC ROUTES (Akses Tanpa Login / Pengunjung Website)
-|--------------------------------------------------------------------------
-*/
 Route::prefix('public')->group(function () {
-    // Auth Login (Admin/Guru tetap login lewat sini)
-    Route::post('login', [AuthController::class, 'login']);
+    Route::post('login', [AdminAuth::class, 'login']);
+    Route::post('login-api', [ApiAuth::class, 'login']);
+    Route::post('register', [ApiAuth::class, 'register']);
 
-    // Data Read-Only (Menggunakan ApiController agar aman dari DELETE/POST liar)
     Route::get('berita', [BeritaApiController::class, 'index']);
-    Route::get('berita/{berita}', [BeritaApiController::class, 'show']);
     Route::get('pengumuman', [PengumumanApiController::class, 'index']);
-    Route::get('pengumuman/{pengumuman}', [PengumumanApiController::class, 'show']);
     Route::get('guru', [GuruApiController::class, 'index']);
     Route::get('jurusan', [JurusanApiController::class, 'index']);
     Route::get('kurikulum', [KurikulumApiController::class, 'index']);
@@ -45,69 +47,88 @@ Route::prefix('public')->group(function () {
     Route::get('media', [MediaApiController::class, 'index']);
     Route::get('album', [AlbumApiController::class, 'index']);
     Route::get('mapel', [MapelApiController::class, 'index']);
+    Route::get('prestasi', [PrestasiApiController::class, 'index']);
+    Route::get('portal', [PortalApiController::class, 'index']);
+    Route::get('ppdb-link', [PPDBLinkApiController::class, 'index']);
     Route::get('kontak', [DataKontakApiController::class, 'show']);
     Route::get('profil-sekolah', [ProfilSekolahController::class, 'index']);
-
-    // Form Kontak (Public mengirim ke Admin)
-    // Ditambahkan throttle:3,1 (Maksimal 3 pesan per menit per IP) untuk cegah SPAM
-    Route::post('pesan', [PesanApiController::class, 'store'])->middleware('throttle:3,1');
+    Route::get('struktur', [StrukturJabatanApiController::class, 'index']);
+    Route::post('pesan', [PesanApiController::class, 'store']);
 });
 
-/*
-|--------------------------------------------------------------------------
-| 2. PROTECTED ROUTES (Wajib Token)
-|--------------------------------------------------------------------------
-*/
 Route::middleware(['auth.token'])->group(function () {
+    Route::post('logout', [AdminAuth::class, 'logout']);
     
-    // Global Auth Actions
-    Route::post('logout', [AuthController::class, 'logout']);
-    Route::get('dashboard', [DashboardController::class, 'index']);
+    Route::get('dashboard', [DashboardApiController::class, 'index']);
 
-    // ==========================================
-    // KHUSUS ROLE: ADMIN (Akses Penuh CRUD)
-    // ==========================================
+    Route::get('me', [AdminAuth::class, 'me']);
+    Route::get('me-api', [AdminAuth::class, 'me']);
+
     Route::middleware(['role:Admin'])->prefix('admin')->group(function () {
-        
-        // Manajemen Akun & Hak Akses
         Route::apiResource('users', UserController::class);
         Route::apiResource('roles', RoleController::class);
-        Route::get('logs', [LogAdminController::class, 'index']);
-
-        // Konten Website (CRUD Lengkap)
+        Route::apiResource('siswa', SiswaController::class);
+        Route::apiResource('orangtua', OrangtuaController::class);
+        Route::apiResource('guru', GuruController::class);
+        Route::apiResource('guru-mapel', GuruMapelController::class);
+        Route::apiResource('jurusan', JurusanController::class);
+        Route::apiResource('kurikulum', KurikulumController::class);
+        Route::apiResource('kalender', KalenderController::class);
+        Route::apiResource('kelas', KelasController::class);
+        Route::apiResource('mapel', MapelController::class);
+        Route::apiResource('tahun-ajaran', TahunAjaranController::class);
+        Route::apiResource('jam-sekolah', JamSekolahController::class);
+        Route::apiResource('jadwal-produktif', JadwalProduktifController::class);
+        Route::apiResource('presensi', PresensiController::class);
+        Route::apiResource('presensi-guru-mapel', PresensiGuruMapelController::class);
+        Route::apiResource('poin-siswa', PoinSiswaController::class);
         Route::apiResource('berita', BeritaController::class);
         Route::apiResource('pengumuman', PengumumanController::class);
         Route::apiResource('prestasi', PrestasiController::class);
         Route::apiResource('fasilitas', FasilitasController::class);
         Route::apiResource('ekstrakurikuler', EkstrakurikulerController::class);
         Route::apiResource('banner', BannerController::class);
-        
-        // Akademik & Profil
-        Route::apiResource('guru', GuruController::class);
-        Route::apiResource('jurusan', JurusanController::class);
-        Route::apiResource('kurikulum', KurikulumController::class);
-        Route::apiResource('kalender', KalenderController::class);
-        Route::apiResource('mapel', MapelController::class); // Jika ada Admin MapelController
-        Route::apiResource('struktur-jabatan', StrukturJabatanController::class)
-             ->parameters(['struktur-jabatan' => 'strukturJabatan']);
-
-        // Gallery & Media
         Route::apiResource('album', AlbumController::class);
         Route::apiResource('media', MediaController::class);
-        
-        // Pengaturan & Pesan
+        Route::apiResource('portal', PortalController::class);
+        Route::apiResource('ppdb-link', PpdbLinkController::class);
         Route::apiResource('pesan', PesanController::class)->except(['store']);
-        Route::post('setting/general', [SettingController::class, 'updateGeneral']);
-        Route::post('setting/kontak', [SettingController::class, 'updateKontak']);
+        Route::apiResource('struktur-jabatan', StrukturJabatanController::class);
+        Route::apiResource('data-kontak', DataKontakController::class);
+        
+        Route::get('logs', [LogAdminController::class, 'index']);
         Route::put('profil-sekolah', [ProfilSekolahController::class, 'update']);
+        Route::post('setting/update', [SettingController::class, 'updateGeneral']);
+        Route::get('api-kelas-list', [KelasApiController::class, 'index']);
+        Route::get('api-setting-list', [SettingApiController::class, 'index']);
     });
 
-    // ==========================================
-    // KHUSUS ROLE: GURU (Akses Terbatas)
-    // ==========================================
     Route::middleware(['role:Guru'])->prefix('guru')->group(function () {
-        Route::get('berita', [BeritaController::class, 'index']);
-        Route::post('berita', [BeritaController::class, 'store']);
-        Route::get('daftar-guru', [GuruController::class, 'index']);
+        Route::get('data-siswa', [SiswaApiController::class, 'index']);
+        Route::get('data-orangtua', [OrangtuaApiController::class, 'index']);
+        Route::post('input-presensi', [PresensiController::class, 'store']);
+        Route::post('input-presensi-mapel', [PresensiGuruMapelController::class, 'store']);
+        Route::post('input-poin', [PoinSiswaController::class, 'store']);
+        Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);
+        Route::post('change-password', [ProfilApiController::class, 'changePassword']);
+    });
+
+    Route::middleware(['role:Siswa'])->prefix('siswa')->group(function () {
+        Route::get('presensi-saya', [PresensiApiController::class, 'index']);
+        Route::get('poin-saya', [PoinSiswaApiController::class, 'index']);
+        Route::get('jadwal', [JadwalProduktifApiController::class, 'index']);
+        Route::get('tahun-ajaran', [TahunAjaranApiController::class, 'index']);
+        Route::get('jam-sekolah', [JamSekolahApiController::class, 'index']);
+        Route::get('buku-poin', [SettingApiController::class, 'index']); 
+        Route::get('no-kesiswaan', [SettingApiController::class, 'index']); 
+        Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);
+        Route::post('change-password', [ProfilApiController::class, 'changePassword']);
+    });
+
+    Route::middleware(['role:Orangtua'])->prefix('ortu')->group(function () {
+        Route::get('presensi-anak', [PresensiApiController::class, 'index']);
+        Route::get('poin-anak', [PoinSiswaApiController::class, 'index']);
+        Route::get('buku-poin', [SettingApiController::class, 'index']);
+        Route::post('change-password', [ProfilApiController::class, 'changePassword']);
     });
 });

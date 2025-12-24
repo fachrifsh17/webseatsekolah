@@ -10,7 +10,6 @@ use App\Http\Requests\UpdateMapelRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Throwable;
 
 class MapelController extends Controller
 {
@@ -29,59 +28,37 @@ class MapelController extends Controller
     
     public function show(MataPelajaran $mapel): JsonResponse
     {
-        return response()->json(new MapelResource($mapel->load('jurusan')));
+        return new JsonResponse(new MapelResource($mapel->load('jurusan')));
     }
 
     public function store(StoreMapelRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        DB::beginTransaction();
-        try {
-            $item = MataPelajaran::create($validated);
-            DB::commit();
-            return response()->json(new MapelResource($item->load('jurusan')), 201);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal membuat mata pelajaran'
-            ], 500);
-        }
+        $item = DB::transaction(function () use ($validated) {
+            return MataPelajaran::create($validated);
+        });
+
+        return new JsonResponse(new MapelResource($item->load('jurusan')), 201);
     }
 
     public function update(UpdateMapelRequest $request, MataPelajaran $mapel): JsonResponse
     {
         $validated = $request->validated();
 
-        DB::beginTransaction();
-        try {
+        DB::transaction(function () use ($mapel, $validated) {
             $mapel->update($validated);
-            DB::commit();
-            return response()->json(new MapelResource($mapel->load('jurusan')));
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal memperbarui mata pelajaran'
-            ], 500);
-        }
+        });
+
+        return new JsonResponse(new MapelResource($mapel->load('jurusan')));
     }
 
     public function destroy(MataPelajaran $mapel): JsonResponse
     {
-        DB::beginTransaction();
-        try {
+        DB::transaction(function () use ($mapel) {
             $mapel->delete();
-            DB::commit();
+        });
 
-            return response()->json(null, 204);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal menghapus mata pelajaran'
-            ], 500);
-        }
+        return new JsonResponse(null, 204);
     }
 }

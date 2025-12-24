@@ -13,9 +13,11 @@ class AuthToken extends Model
     protected $table = 'auth_tokens';
 
     protected $fillable = [
-        'token_hash',
         'user_id',
+        'token_hash',
+        'refresh_token',
         'expires_at',
+        'refresh_expires_at',
         'revoked',
     ];
 

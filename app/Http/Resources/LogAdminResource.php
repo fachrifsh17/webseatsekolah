@@ -2,8 +2,6 @@
 
 namespace App\Http\Resources;
 
-// Asumsi Anda memiliki UserResource untuk menampilkan data Admin/User
-use App\Http\Resources\UserResource; 
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class LogAdminResource extends JsonResource
@@ -14,12 +12,11 @@ class LogAdminResource extends JsonResource
             'id' => $this->id,
             'user_id' => $this->user_id,
             'aksi' => $this->aksi,
-            
-            // Relasi ke User/Admin yang melakukan aksi
+            'ip_address' => $this->ip_address,
+            'user_agent' => $this->user_agent,
             'user' => new UserResource($this->whenLoaded('user')),
-            
-            // Metadata
-            'created_at' => $this->created_at,
+            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
+            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 }

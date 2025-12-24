@@ -8,6 +8,8 @@ use App\Http\Resources\AlbumResource;
 use App\Http\Requests\StoreAlbumRequest;
 use App\Http\Requests\UpdateAlbumRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\JsonResponse;
+use Throwable;
 
 class AlbumController extends Controller
 {
@@ -18,54 +20,83 @@ class AlbumController extends Controller
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
         $data = Album::orderByDesc('tanggal_kegiatan')->paginate(12);
-        return AlbumResource::collection($data);
+        return new JsonResponse(AlbumResource::collection($data));
     }
 
-    public function show(Album $album)
+    public function show(Album $album): JsonResponse
     {
-        return new AlbumResource($album);
+        return new JsonResponse(new AlbumResource($album));
     }
 
-    public function store(StoreAlbumRequest $request)
+    public function store(StoreAlbumRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        if ($request->hasFile('cover')) {
-            $validated['cover_path'] = $request->file('cover')->store('uploads/album', 'public');
+        try {
+            if ($request->hasFile('cover')) {
+                $validated['cover_path'] = $request->file('cover')
+                    ->store('uploads/album', 'public');
+            }
+
+            $album = Album::create($validated);
+
+            return new JsonResponse(new AlbumResource($album), 201);
+        } catch (Throwable $e) {
+            if (!empty($validated['cover_path'] ?? null)) {
+                Storage::disk('public')->delete($validated['cover_path']);
+            }
+            return new JsonResponse([
+                'success' => false,
+                'message' => 'Gagal menambahkan album'
+            ], 500);
         }
-
-        $album = Album::create($validated);
-
-        return new AlbumResource($album);
     }
 
-    public function update(UpdateAlbumRequest $request, Album $album)
+    public function update(UpdateAlbumRequest $request, Album $album): JsonResponse
     {
         $validated = $request->validated();
 
-        if ($request->hasFile('cover')) {
+        try {
+            if ($request->hasFile('cover')) {
+                if ($album->cover_path) {
+                    Storage::disk('public')->delete($album->cover_path);
+                }
+                $validated['cover_path'] = $request->file('cover')
+                    ->store('uploads/album', 'public');
+            }
+
+            $album->update($validated);
+
+            return new JsonResponse(new AlbumResource($album));
+        } catch (Throwable $e) {
+            if (!empty($validated['cover_path'] ?? null)) {
+                Storage::disk('public')->delete($validated['cover_path']);
+            }
+            return new JsonResponse([
+                'success' => false,
+                'message' => 'Gagal memperbarui album'
+            ], 500);
+        }
+    }
+
+    public function destroy(Album $album): JsonResponse
+    {
+        try {
             if ($album->cover_path) {
                 Storage::disk('public')->delete($album->cover_path);
             }
-            $validated['cover_path'] = $request->file('cover')->store('uploads/album', 'public');
+
+            $album->delete();
+
+            return new JsonResponse(null, 204);
+        } catch (Throwable $e) {
+            return new JsonResponse([
+                'success' => false,
+                'message' => 'Gagal menghapus album'
+            ], 500);
         }
-
-        $album->update($validated);
-
-        return new AlbumResource($album);
-    }
-
-    public function destroy(Album $album)
-    {
-        if ($album->cover_path) {
-            Storage::disk('public')->delete($album->cover_path);
-        }
-
-        $album->delete();
-
-        return response()->noContent();
     }
 }

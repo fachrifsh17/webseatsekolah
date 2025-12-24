@@ -14,7 +14,6 @@ class PPDBLinkResource extends JsonResource
             'status_ppdb' => $this->status_ppdb,
             
             // Metadata standar
-            'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
     }

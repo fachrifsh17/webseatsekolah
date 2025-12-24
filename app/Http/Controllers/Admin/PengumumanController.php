@@ -9,7 +9,6 @@ use App\Http\Requests\StorePengumumanRequest;
 use App\Http\Requests\UpdatePengumumanRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
-use Throwable;
 
 class PengumumanController extends Controller
 {
@@ -23,63 +22,42 @@ class PengumumanController extends Controller
     public function index(): JsonResponse
     {
         $data = Pengumuman::latest()->paginate(10);
-        return response()->json(PengumumanResource::collection($data));
+        return new JsonResponse(PengumumanResource::collection($data));
     }
     
     public function show(Pengumuman $pengumuman): JsonResponse
     {
-        return response()->json(new PengumumanResource($pengumuman));
+        return new JsonResponse(new PengumumanResource($pengumuman));
     }
 
     public function store(StorePengumumanRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        DB::beginTransaction();
-        try {
-            $item = Pengumuman::create($validated);
-            DB::commit();
-            return response()->json(new PengumumanResource($item), 201);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal membuat pengumuman'
-            ], 500);
-        }
+        $item = DB::transaction(function () use ($validated) {
+            return Pengumuman::create($validated);
+        });
+
+        return new JsonResponse(new PengumumanResource($item), 201);
     }
 
     public function update(UpdatePengumumanRequest $request, Pengumuman $pengumuman): JsonResponse
     {
         $validated = $request->validated();
 
-        DB::beginTransaction();
-        try {
+        DB::transaction(function () use ($pengumuman, $validated) {
             $pengumuman->update($validated);
-            DB::commit();
-            return response()->json(new PengumumanResource($pengumuman));
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal memperbarui pengumuman'
-            ], 500);
-        }
+        });
+
+        return new JsonResponse(new PengumumanResource($pengumuman));
     }
 
     public function destroy(Pengumuman $pengumuman): JsonResponse
     {
-        DB::beginTransaction();
-        try {
+        DB::transaction(function () use ($pengumuman) {
             $pengumuman->delete();
-            DB::commit();
-            return response()->json(null, 204);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal menghapus pengumuman'
-            ], 500);
-        }
+        });
+
+        return new JsonResponse(null, 204);
     }
 }

@@ -9,7 +9,6 @@ use App\Http\Requests\StoreKalenderRequest;
 use App\Http\Requests\UpdateKalenderRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
-use Throwable;
 
 class KalenderController extends Controller
 {
@@ -36,17 +35,10 @@ class KalenderController extends Controller
         $validated = $request->validated();
 
         DB::beginTransaction();
-        try {
-            $item = KalenderAkademik::create($validated);
-            DB::commit();
-            return response()->json(new KalenderAkademikResource($item), 201);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal membuat item kalender akademik'
-            ], 500);
-        }
+        $item = KalenderAkademik::create($validated);
+        DB::commit();
+
+        return response()->json(new KalenderAkademikResource($item), 201);
     }
 
     public function update(UpdateKalenderRequest $request, KalenderAkademik $kalender): JsonResponse
@@ -54,32 +46,18 @@ class KalenderController extends Controller
         $validated = $request->validated();
 
         DB::beginTransaction();
-        try {
-            $kalender->update($validated);
-            DB::commit();
-            return response()->json(new KalenderAkademikResource($kalender));
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal memperbarui item kalender akademik'
-            ], 500);
-        }
+        $kalender->update($validated);
+        DB::commit();
+
+        return response()->json(new KalenderAkademikResource($kalender));
     }
 
     public function destroy(KalenderAkademik $kalender): JsonResponse
     {
         DB::beginTransaction();
-        try {
-            $kalender->delete();
-            DB::commit();
-            return response()->json(null, 204);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal menghapus item kalender akademik'
-            ], 500);
-        }
+        $kalender->delete();
+        DB::commit();
+
+        return response()->json(null, 204);
     }
 }

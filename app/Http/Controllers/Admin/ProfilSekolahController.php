@@ -7,7 +7,6 @@ use App\Models\ProfilSekolah;
 use App\Http\Resources\ProfilSekolahResource;
 use App\Http\Requests\UpdateProfilSekolahRequest;
 use Illuminate\Http\JsonResponse;
-use Throwable;
 
 class ProfilSekolahController extends Controller
 {
@@ -23,14 +22,14 @@ class ProfilSekolahController extends Controller
         $profil = ProfilSekolah::find(1); 
         
         if (!$profil) {
-            return response()->json([
+            return new JsonResponse([
                 'status' => 'success',
                 'message' => 'Data profil sekolah belum diisi.',
                 'data' => null
             ], 200);
         }
 
-        return response()->json(new ProfilSekolahResource($profil));
+        return new JsonResponse(new ProfilSekolahResource($profil));
     }
     
     public function update(UpdateProfilSekolahRequest $request): JsonResponse
@@ -45,13 +44,13 @@ class ProfilSekolahController extends Controller
         
         $profil->save();
 
-        return response()->json(new ProfilSekolahResource($profil));
+        return new JsonResponse(new ProfilSekolahResource($profil));
     }
 
     public function destroy(int $id): JsonResponse
     {
         if ($id !== 1) {
-            return response()->json(['message' => 'Hanya profil sekolah (ID 1) yang tersedia.'], 403);
+            return new JsonResponse(['message' => 'Hanya profil sekolah (ID 1) yang tersedia.'], 403);
         }
         
         $profil = ProfilSekolah::find(1);
@@ -60,6 +59,6 @@ class ProfilSekolahController extends Controller
             $profil->delete();
         }
         
-        return response()->json(null, 204);
+        return new JsonResponse(null, 204);
     }
 }

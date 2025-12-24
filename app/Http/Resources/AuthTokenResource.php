@@ -10,14 +10,12 @@ class AuthTokenResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'access_token' => $this->resource, 
+            'access_token' => $this->access_token,
+            'refresh_token' => $this->refresh_token, 
             'token_type' => 'Bearer',
-            'expires_at' => $this->when(isset($this->expires_at), function () {
-                return $this->expires_at;
-            }),
-            'user' => $this->whenLoaded('user', function () {
-                return new UserResource($this->user); 
-            }),
+            'expires_at' => $this->expires_at,
+            'refresh_expires_at' => $this->refresh_expires_at,
+            'user' => new UserResource($this->whenLoaded('user')),
             'created_at' => $this->created_at,
         ];
     }

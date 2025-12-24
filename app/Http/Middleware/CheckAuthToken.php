@@ -21,7 +21,8 @@ class CheckAuthToken
             ], 401);
         }
 
-        $authToken = AuthToken::with('user')
+        // PERUBAHAN: Menambahkan eager loading role, guru, siswa, dan ortu
+        $authToken = AuthToken::with(['user.role', 'user.guru', 'user.siswa', 'user.orangtua'])
             ->where('token_hash', hash('sha256', $token))
             ->where('revoked', false)
             ->where('expires_at', '>', now())
@@ -30,18 +31,23 @@ class CheckAuthToken
         if (!$authToken || !$authToken->user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Token tidak valid, expired, atau sudah logout.'
+                'message' => 'Token kadaluwarsa atau tidak valid.',
+                'error_code' => 'TOKEN_EXPIRED'
             ], 401);
         }
 
-        if (!$authToken->user->is_active) {
+        if ((int) $authToken->user->is_active === 0) {
             return response()->json([
                 'success' => false,
                 'message' => 'Akun Anda tidak aktif.'
             ], 403);
         }
 
+        // Set user ke sistem Auth Laravel
         Auth::setUser($authToken->user);
+        
+        // PENTING: Memastikan data user di request sudah membawa data relasi (role)
+        $request->setUserResolver(fn () => $authToken->user);
 
         return $next($request);
     }

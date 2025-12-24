@@ -17,7 +17,6 @@ class DataKontakResource extends JsonResource
             'email' => $this->email_resmi, 
             'maps_embed_code' => $this->peta_embed_code, 
             // Metadata
-            'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
     }

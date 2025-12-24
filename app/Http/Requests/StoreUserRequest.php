@@ -8,20 +8,19 @@ class StoreUserRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        // Semua user diizinkan, bisa diganti dengan logika otorisasi jika perlu
         return true;
     }
 
     public function rules(): array
     {
-        return [
-            'username'     => ['required', 'string', 'max:50', 'unique:users_admin,username'],
-            'password'     => ['required', 'string', 'min:6'],
-            'nama_lengkap' => ['nullable', 'string', 'max:100'],
-            'role_id'      => ['required', 'integer', 'exists:roles,id'],
-        ];
+     return [
+        'username'     => ['required', 'string', 'max:50', 'unique:users,username'],
+        'password'     => ['required', 'string', 'min:6', 'confirmed'], 
+        'nama_lengkap' => ['nullable', 'string', 'max:100'],
+        'role_id'      => ['required', 'integer', 'exists:roles,id'],
+        'is_active'    => ['nullable', 'integer', 'in:0,1'],
+          ];
     }
-
     public function messages(): array
     {
         return [
@@ -40,6 +39,9 @@ class StoreUserRequest extends FormRequest
             'role_id.required' => 'Role wajib dipilih.',
             'role_id.integer'  => 'Role ID harus berupa angka.',
             'role_id.exists'   => 'Role tidak ditemukan dalam sistem.',
+
+            'is_active.integer' => 'Status aktif harus berupa angka.',
+            'is_active.in'      => 'Status tidak valid.',
         ];
     }
 
@@ -50,6 +52,7 @@ class StoreUserRequest extends FormRequest
             'password'     => 'Password',
             'nama_lengkap' => 'Nama lengkap',
             'role_id'      => 'Role',
+            'is_active'    => 'Status Aktif',
         ];
     }
 }

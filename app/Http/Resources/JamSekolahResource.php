@@ -11,15 +11,16 @@ class JamSekolahResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => $this->id,
+            'id'           => $this->id,
             'tahun_ajaran' => [
-                'id' => $this->tahun_ajaran_id,
+                'id'   => $this->tahun_ajaran_id,
                 'nama' => $this->tahunAjaran->nama ?? null,
             ],
-            'semester' => $this->semester,
-            'keterangan' => $this->keterangan,
-            'file_url' => $this->file_path ? url(Storage::url($this->file_path)) : null,
-            'created_at' => $this->created_at->format('d-m-Y H:i'),
+            'semester'     => $this->semester,
+            'keterangan'   => $this->keterangan,
+            'file_url'     => $this->file_path ? url(Storage::url($this->file_path)) : null,
+            'created_at'   => $this->created_at ? $this->created_at->format('d-m-Y H:i') : null,
+            'updated_at'   => $this->updated_at ? $this->updated_at->format('d-m-Y H:i') : null,
         ];
     }
 }

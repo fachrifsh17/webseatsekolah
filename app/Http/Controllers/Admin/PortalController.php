@@ -9,8 +9,6 @@ use App\Http\Requests\StorePortalRequest;
 use App\Http\Requests\UpdatePortalRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Throwable;
 
 class PortalController extends Controller
 {
@@ -24,63 +22,42 @@ class PortalController extends Controller
     public function index(): JsonResponse
     {
         $data = PortalSosmed::paginate(12);
-        return response()->json(PortalSosmedResource::collection($data));
+        return new JsonResponse(PortalSosmedResource::collection($data));
     }
     
     public function show(PortalSosmed $portal): JsonResponse
     {
-        return response()->json(new PortalSosmedResource($portal));
+        return new JsonResponse(new PortalSosmedResource($portal));
     }
 
     public function store(StorePortalRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        DB::beginTransaction();
-        try {
-            $item = PortalSosmed::create($validated);
-            DB::commit();
-            return response()->json(new PortalSosmedResource($item), 201);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal membuat portal'
-            ], 500);
-        }
+        $item = DB::transaction(function () use ($validated) {
+            return PortalSosmed::create($validated);
+        });
+
+        return new JsonResponse(new PortalSosmedResource($item), 201);
     }
 
     public function update(UpdatePortalRequest $request, PortalSosmed $portal): JsonResponse
     {
         $validated = $request->validated();
 
-        DB::beginTransaction();
-        try {
+        DB::transaction(function () use ($portal, $validated) {
             $portal->update($validated);
-            DB::commit();
-            return response()->json(new PortalSosmedResource($portal));
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal memperbarui portal'
-            ], 500);
-        }
+        });
+
+        return new JsonResponse(new PortalSosmedResource($portal));
     }
 
     public function destroy(PortalSosmed $portal): JsonResponse
     {
-        DB::beginTransaction();
-        try {
+        DB::transaction(function () use ($portal) {
             $portal->delete();
-            DB::commit();
-            return response()->json(null, 204);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal menghapus portal'
-            ], 500);
-        }
+        });
+
+        return new JsonResponse(null, 204);
     }
 }

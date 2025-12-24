@@ -17,15 +17,16 @@ class Siswa extends Model
         'user_id',
         'nis',
         'nama_lengkap',
+        'tempat_lahir',
+        'tanggal_lahir',
         'jenis_kelamin',
         'kelas_id',
         'jurusan_id',
         'orangtua_id',
-        'tempat_lahir',
-        'tanggal_lahir',
-        'alamat',
-        'no_hp',
         'foto',
+        'no_telp_siswa',
+        'alamat',
+        'status_aktif',
     ];
 
     public function user(): BelongsTo

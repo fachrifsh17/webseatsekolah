@@ -8,6 +8,8 @@ use App\Http\Resources\BannerResource;
 use App\Http\Requests\StoreBannerRequest;
 use App\Http\Requests\UpdateBannerRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\JsonResponse;
+use Throwable;
 
 class BannerController extends Controller
 {
@@ -18,54 +20,83 @@ class BannerController extends Controller
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
         $data = Banner::orderByDesc('aktif_sampai')->paginate(12);
-        return BannerResource::collection($data);
+        return new JsonResponse(BannerResource::collection($data));
     }
 
-    public function show(Banner $banner)
+    public function show(Banner $banner): JsonResponse
     {
-        return new BannerResource($banner);
+        return new JsonResponse(new BannerResource($banner));
     }
 
-    public function store(StoreBannerRequest $request)
+    public function store(StoreBannerRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        if ($request->hasFile('foto')) {
-            $validated['foto'] = $request->file('foto')->store('uploads/banner', 'public');
+        try {
+            if ($request->hasFile('foto')) {
+                $validated['foto'] = $request->file('foto')
+                    ->store('uploads/banner', 'public');
+            }
+
+            $banner = Banner::create($validated);
+
+            return new JsonResponse(new BannerResource($banner), 201);
+        } catch (Throwable $e) {
+            if (!empty($validated['foto'] ?? null)) {
+                Storage::disk('public')->delete($validated['foto']);
+            }
+            return new JsonResponse([
+                'success' => false,
+                'message' => 'Gagal menambahkan banner'
+            ], 500);
         }
-
-        $banner = Banner::create($validated);
-
-        return new BannerResource($banner);
     }
 
-    public function update(UpdateBannerRequest $request, Banner $banner)
+    public function update(UpdateBannerRequest $request, Banner $banner): JsonResponse
     {
         $validated = $request->validated();
 
-        if ($request->hasFile('foto')) {
+        try {
+            if ($request->hasFile('foto')) {
+                if ($banner->foto) {
+                    Storage::disk('public')->delete($banner->foto);
+                }
+                $validated['foto'] = $request->file('foto')
+                    ->store('uploads/banner', 'public');
+            }
+
+            $banner->update($validated);
+
+            return new JsonResponse(new BannerResource($banner));
+        } catch (Throwable $e) {
+            if (!empty($validated['foto'] ?? null)) {
+                Storage::disk('public')->delete($validated['foto']);
+            }
+            return new JsonResponse([
+                'success' => false,
+                'message' => 'Gagal memperbarui banner'
+            ], 500);
+        }
+    }
+
+    public function destroy(Banner $banner): JsonResponse
+    {
+        try {
             if ($banner->foto) {
                 Storage::disk('public')->delete($banner->foto);
             }
-            $validated['foto'] = $request->file('foto')->store('uploads/banner', 'public');
+
+            $banner->delete();
+
+            return new JsonResponse(null, 204);
+        } catch (Throwable $e) {
+            return new JsonResponse([
+                'success' => false,
+                'message' => 'Gagal menghapus banner'
+            ], 500);
         }
-
-        $banner->update($validated);
-
-        return new BannerResource($banner);
-    }
-
-    public function destroy(Banner $banner)
-    {
-        if ($banner->foto) {
-            Storage::disk('public')->delete($banner->foto);
-        }
-
-        $banner->delete();
-
-        return response()->noContent();
     }
 }

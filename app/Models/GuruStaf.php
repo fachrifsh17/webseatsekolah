@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class GuruStaf extends Model
 {
@@ -34,8 +35,28 @@ class GuruStaf extends Model
         return $this->belongsTo(Jurusan::class, 'jurusan_id');
     }
 
+    public function kelas(): HasOne
+    {
+        return $this->hasOne(Kelas::class, 'wali_kelas_id');
+    }
+
     public function guruMapel(): HasMany
     {
         return $this->hasMany(GuruMapel::class, 'guru_staf_id');
+    }
+
+    public function strukturJabatan(): HasMany
+    {
+        return $this->hasMany(StrukturJabatan::class, 'guru_staf_id');
+    }
+
+    public function presensi(): HasMany
+    {
+        return $this->hasMany(Presensi::class, 'guru_id');
+    }
+
+    public function poinSiswa(): HasMany
+    {
+        return $this->hasMany(PoinSiswa::class, 'guru_id');
     }
 }
