@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
@@ -18,23 +18,17 @@ class User extends Authenticatable
         'username', 
         'password', 
         'nama_lengkap', 
-        'role_id',
         'is_active',
     ];
 
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
-
-    protected $casts = [
-        'is_active' => 'integer',
-        'password' => 'hashed',
-    ];
-
-    public function role(): BelongsTo
+    public function roles(): BelongsToMany
     {
-        return $this->belongsTo(Role::class, 'role_id');
+        return $this->belongsToMany(Role::class, 'user_roles', 'user_id', 'role_id');
+    }
+
+    public function hasRole($roleName)
+    {
+        return $this->roles->contains('role_name', $roleName);
     }
 
     public function guru(): HasOne
@@ -42,12 +36,10 @@ class User extends Authenticatable
         return $this->hasOne(GuruStaf::class, 'user_id');
     }
 
-
     public function siswa(): HasOne
     {
         return $this->hasOne(Siswa::class, 'user_id');
     }
-
 
     public function orangtua(): HasOne
     {

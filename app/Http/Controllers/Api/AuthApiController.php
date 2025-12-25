@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\AuthToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Http\Resources\UserResource;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,26 +16,33 @@ class AuthApiController extends Controller
 {
     public function register(Request $request)
     {
+        // 1. Validasi: role_ids sekarang harus array
         $request->validate([
             'username'     => 'required|string|unique:users,username',
             'password'     => 'required|string|min:6|confirmed',
             'nama_lengkap' => 'required|string',
-            'role_id'      => 'required|integer', 
+            'role_ids'     => 'required|array', // Menggunakan array untuk many-to-many
+            'role_ids.*'   => 'integer|exists:roles,id',
         ]);
 
-        $user = User::create([
-            'username'     => $request->username,
-            'password'     => Hash::make($request->password),
-            'nama_lengkap' => $request->nama_lengkap,
-            'role_id'      => $request->role_id,
-            'is_active'    => 1,
-        ]);
+        // 2. Gunakan Transaction agar jika simpan role gagal, user tidak jadi dibuat
+        return DB::transaction(function () use ($request) {
+            $user = User::create([
+                'username'     => $request->username,
+                'password'     => Hash::make($request->password),
+                'nama_lengkap' => $request->nama_lengkap,
+                'is_active'    => 1,
+            ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Registrasi berhasil, akun sudah dibuat.',
-            'user'    => new UserResource($user->load('role'))
-        ], Response::HTTP_CREATED);
+            // 3. Simpan ke tabel jembatan user_roles
+            $user->roles()->attach($request->role_ids);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Registrasi berhasil, akun sudah dibuat.',
+                'user'    => new UserResource($user->load('roles')) // Load 'roles' jamak
+            ], Response::HTTP_CREATED);
+        });
     }
 
     public function login(Request $request)
@@ -44,7 +52,8 @@ class AuthApiController extends Controller
             'password' => 'required',
         ]);
 
-        $user = User::where('username', $request->username)->first();
+        // Cari user beserta roles-nya
+        $user = User::with('roles')->where('username', $request->username)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
@@ -53,6 +62,7 @@ class AuthApiController extends Controller
             ], 401);
         }
 
+        // Hapus token lama jika ada
         AuthToken::where('user_id', $user->id)->delete();
 
         $plainAccessToken = Str::random(80);
@@ -72,15 +82,16 @@ class AuthApiController extends Controller
             'message'       => 'Login berhasil',
             'access_token'  => $plainAccessToken,
             'refresh_token' => $plainRefreshToken,
-            'user'          => new UserResource($user->load('role'))
+            'user'          => new UserResource($user)
         ]);
     }
 
     public function me(Request $request)
     {
+        // Load roles jamak dan relasi lainnya
         return response()->json([
             'success' => true,
-            'data'    => new UserResource($request->user()->load(['role', 'guru', 'siswa', 'orangtua']))
+            'data'    => new UserResource($request->user()->load(['roles', 'guru', 'siswa', 'orangtua']))
         ]);
     }
 

@@ -8,6 +8,8 @@ use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 
 class UserController extends Controller
@@ -21,13 +23,13 @@ class UserController extends Controller
 
     public function index(): JsonResponse
     {
-        $users = User::with(['role', 'guru'])->paginate(15);
-        return new JsonResponse(UserResource::collection($users));
+        $users = User::with(['roles', 'guru'])->paginate(15);
+        return UserResource::collection($users)->response();
     }
     
     public function show(User $user): JsonResponse
     {
-        return new JsonResponse(new UserResource($user->load(['role', 'guru'])));
+        return new JsonResponse(new UserResource($user->load(['roles', 'guru'])));
     }
 
     public function store(StoreUserRequest $request): JsonResponse
@@ -38,9 +40,15 @@ class UserController extends Controller
             $data['password'] = Hash::make($data['password']);
         }
 
-        $user = User::create($data);
+        return DB::transaction(function () use ($data) {
+            $user = User::create($data);
+            
+            if (isset($data['role_ids'])) {
+                $user->roles()->attach($data['role_ids']);
+            }
 
-        return new JsonResponse(new UserResource($user->load(['role', 'guru'])), 201);
+            return new JsonResponse(new UserResource($user->load(['roles', 'guru'])), 201);
+        });
     }
 
     public function update(UpdateUserRequest $request, User $user): JsonResponse
@@ -53,16 +61,23 @@ class UserController extends Controller
             unset($data['password']);
         }
 
-        $user->update($data);
+        return DB::transaction(function () use ($data, $user) {
+            $user->update($data);
 
-        return new JsonResponse(new UserResource($user->load(['role', 'guru'])));
+            if (isset($data['role_ids'])) {
+                $user->roles()->sync($data['role_ids']);
+            }
+
+            return new JsonResponse(new UserResource($user->load(['roles', 'guru'])));
+        });
     }
 
     public function destroy(User $user): JsonResponse
     {
-        if ($user->id === request()->user()->id) {
+        // Perbaikan utama: Menggunakan Auth::id() untuk menghilangkan error IDE
+        if ($user->id === Auth::id()) {
             return new JsonResponse([
-                'status' => 'error',
+                'success' => false,
                 'message' => 'Anda tidak diizinkan menghapus akun yang sedang digunakan.'
             ], 403);
         }

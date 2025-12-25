@@ -19,6 +19,18 @@ class Banner extends Model
     ];
 
     protected $casts = [
-        'aktif_sampai' => 'date',
+        'aktif_sampai' => 'datetime', 
     ];
+
+    // Scope untuk banner aktif
+    public function scopeAktif($query)
+    {
+        return $query->where('aktif_sampai', '>=', now());
+    }
+
+    // Accessor untuk foto_url
+    public function getFotoUrlAttribute()
+    {
+        return $this->foto ? asset('storage/'.$this->foto) : null;
+    }
 }

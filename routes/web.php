@@ -1,6 +1,14 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+
+/*
+|--------------------------------------------------------------------------
+| API Routes - Sistem Informasi Sekolah Multi-Role
+|--------------------------------------------------------------------------
+*/
+
+// Import Controller Admin (Backend/Manajemen)
 use App\Http\Controllers\Admin\{
     AuthController,
     DashboardController,
@@ -27,30 +35,45 @@ use App\Http\Controllers\Admin\{
     UserController,
     LogAdminController,
     PesanController,
-    // Tambahkan Controller baru di sini
-    PresensiGuruMapelController 
+    PresensiGuruMapelController
 };
 
 /*
 |--------------------------------------------------------------------------
-| API ROUTES (ADMIN PANEL)
+| 1) PUBLIC ROUTES -> /api/public/...
 |--------------------------------------------------------------------------
 */
+Route::prefix('public')->group(function () {
+    Route::post('login', [AuthController::class, 'login']); // /api/public/login
+    // Tambahkan endpoint publik lain di sini (login-api, register, dsb) jika perlu
+});
 
-// Public Login
-Route::post('/login', [AuthController::class, 'login']);
-
-// Grouping dengan Middleware Auth Token Kustom
+/*
+|--------------------------------------------------------------------------
+| 2) PROTECTED ROUTES -> semua admin/manajemen di bawah /api/admin/...
+|    - auth.token dipakai untuk semua route yang butuh autentikasi
+|--------------------------------------------------------------------------
+*/
 Route::middleware(['auth.token'])->group(function () {
 
-    // Global: Logout & Dashboard (Bisa diakses Admin & Guru)
-    Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/dashboard', [DashboardController::class, 'index']);
+    /*
+    |-----------------------------------------------------------------------
+    | Basic admin endpoints di /api/admin/...
+    |-----------------------------------------------------------------------
+    */
+    Route::prefix('admin')->group(function () {
+        Route::post('logout', [AuthController::class, 'logout']);        // /api/admin/logout
+        Route::get('dashboard', [DashboardController::class, 'index']);  // /api/admin/dashboard
+        Route::get('me', [AuthController::class, 'me']);                // /api/admin/me
+    });
 
-    // ========================================================
-    // 1. AKSES FULL: ADMIN
-    // ========================================================
-    Route::middleware(['role:Admin'])->prefix('admin')->as('admin.')->group(function () {
+    /*
+    |-----------------------------------------------------------------------
+    | Akses penuh Admin
+    | Semua resource manajemen di /api/admin/...
+    |-----------------------------------------------------------------------
+    */
+    Route::prefix('admin')->middleware(['role:Admin'])->as('admin.')->group(function () {
 
         // CRUD Resources
         Route::apiResources([
@@ -69,14 +92,12 @@ Route::middleware(['auth.token'])->group(function () {
             'portal'              => PortalController::class,
             'role'                => RoleController::class,
             'user'                => UserController::class,
-            'ppdb'                => PpdbLinkController::class,
+            'ppdb-link'           => PpdbLinkController::class,
             'kurikulum'           => KurikulumController::class,
-            
-            // --- Fitur Baru: Admin bisa Lihat, Edit, & Hapus semua presensi ---
-            'presensi-guru-mapel' => PresensiGuruMapelController::class, 
+            'presensi-guru-mapel' => PresensiGuruMapelController::class,
         ]);
 
-        // Resources dengan Parameter Khusus
+        // Resource dengan parameter khusus
         Route::apiResource('struktur', StrukturJabatanController::class)
             ->parameters(['struktur' => 'strukturJabatan']);
 
@@ -85,31 +106,36 @@ Route::middleware(['auth.token'])->group(function () {
         Route::apiResource('pesan', PesanController::class)->only(['index', 'show', 'destroy']);
         Route::patch('pesan/{pesan}/status', [PesanController::class, 'updateStatus']);
 
-        // Data Tunggal
+        // Data tunggal: profil & setting
         Route::get('profil', [ProfilSekolahController::class, 'index']);
         Route::put('profil', [ProfilSekolahController::class, 'update']);
+
         Route::get('setting', [SettingController::class, 'index']);
-        Route::post('setting/general', [SettingController::class, 'updateGeneral']);
-        Route::post('setting/kontak', [SettingController::class, 'updateKontak']);
+        Route::put('setting/general', [SettingController::class, 'updateGeneral']);
+        Route::put('setting/kontak', [SettingController::class, 'updateKontak']);
+
         Route::get('datakontak', [DataKontakController::class, 'index']);
         Route::put('datakontak', [DataKontakController::class, 'update']);
     });
 
-    // ========================================================
-    // 2. AKSES TERBATAS: GURU
-    // ========================================================
-    Route::middleware(['role:Guru'])->prefix('guru')->as('guru.')->group(function () {
-        Route::apiResource('berita', BeritaController::class)->only(['index', 'store', 'show', 'update']);
-        Route::get('profil-saya', [UserController::class, 'show']); 
+    /*
+    |-----------------------------------------------------------------------
+    | Akses terbatas Guru
+    | Semua route guru berada di /api/admin/guru/...
+    |-----------------------------------------------------------------------
+    */
+    Route::prefix('admin')->group(function () {
+        Route::prefix('guru')->middleware(['role:Guru'])->as('guru.')->group(function () {
+            // Guru boleh mengelola berita terbatas
+            Route::apiResource('berita', BeritaController::class)->only(['index', 'store', 'show', 'update']);
 
-        // --- Fitur Baru Khusus Operasional Guru ---
-        // Guru Menginput Presensi (Header & Detail sekaligus)
-        Route::post('input-presensi-mapel', [PresensiGuruMapelController::class, 'store']);
-        
-        // Guru melihat riwayat presensi yang pernah dia buat sendiri
-        Route::get('riwayat-presensi', [PresensiGuruMapelController::class, 'index']);
-        
-        // Guru melihat detail satu presensi (untuk cek daftar siswa)
-        Route::get('riwayat-presensi/{id}', [PresensiGuruMapelController::class, 'show']);
+            // Profil guru
+            Route::get('profil-saya', [UserController::class, 'show']);
+
+            // Presensi mapel
+            Route::post('input-presensi-mapel', [PresensiGuruMapelController::class, 'store']);
+            Route::get('riwayat-presensi', [PresensiGuruMapelController::class, 'index']);
+            Route::get('riwayat-presensi/{id}', [PresensiGuruMapelController::class, 'show']);
+        });
     });
 });

@@ -20,7 +20,8 @@ class UpdateUserRequest extends FormRequest
             'username'     => ['required', 'string', 'max:50', 'unique:users,username,' . $userId],
             'password'     => ['nullable', 'string', 'min:6'],
             'nama_lengkap' => ['nullable', 'string', 'max:100'],
-            'role_id'      => ['required', 'integer', 'exists:roles,id'],
+            'role_ids'     => ['required', 'array', 'min:1'],
+            'role_ids.*'   => ['integer', 'exists:roles,id'],
             'is_active'    => ['nullable', 'integer', 'in:0,1'],
         ];
     }
@@ -36,9 +37,10 @@ class UpdateUserRequest extends FormRequest
             'password.min'      => 'Password minimal 6 karakter.',
             'nama_lengkap.string' => 'Nama lengkap harus berupa teks.',
             'nama_lengkap.max'    => 'Nama lengkap tidak boleh lebih dari 100 karakter.',
-            'role_id.required'  => 'Role wajib dipilih.',
-            'role_id.integer'   => 'Role ID harus berupa angka.',
-            'role_id.exists'    => 'Role tidak ditemukan.',
+            'role_ids.required' => 'Minimal satu role wajib dipilih.',
+            'role_ids.array'    => 'Format role harus berupa array.',
+            'role_ids.*.integer'=> 'Role ID harus berupa angka.',
+            'role_ids.*.exists' => 'Salah satu role tidak ditemukan.',
             'is_active.integer' => 'Status aktif harus berupa angka.',
             'is_active.in'      => 'Status tidak valid.',
         ];
@@ -50,7 +52,7 @@ class UpdateUserRequest extends FormRequest
             'username'     => 'Username',
             'password'     => 'Password',
             'nama_lengkap' => 'Nama lengkap',
-            'role_id'      => 'Role',
+            'role_ids'     => 'Role',
             'is_active'    => 'Status Aktif',
         ];
     }

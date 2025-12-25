@@ -12,14 +12,14 @@ class UserResource extends JsonResource
             'id'           => $this->id,
             'username'     => $this->username,
             'nama_lengkap' => $this->nama_lengkap,
-            'role_id'      => $this->role_id,
             'is_active'    => (int) $this->is_active,
             
-            // Mengambil data role secara langsung tanpa pengecekan whenLoaded
-            'role' => $this->role ? [
-                'id'   => $this->role->id,
-                'nama' => $this->role->role_name,
-            ] : null,
+            'roles' => $this->roles->map(function ($role) {
+                return [
+                    'id'   => $role->id,
+                    'nama' => $role->role_name,
+                ];
+            }),
 
             'guru' => $this->when($this->guru, function () {
                 return [
