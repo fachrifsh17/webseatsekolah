@@ -12,12 +12,27 @@ class ProfilSekolah extends Model
     protected $table = 'profil_sekolah';
 
     protected $fillable = [
+        'nama_sekolah',
         'sejarah',
         'visi',
         'misi',
         'npsn',
         'akreditasi',
         'sambutan_kepsek',
+        'guru_staf_id',
     ];
-    public $incrementing = false;
+
+    protected $casts = [
+        'guru_staf_id' => 'integer',
+        'npsn'         => 'string',
+        'akreditasi'   => 'string',
+    ];
+    public function guruStaf()
+    {
+        return $this->belongsTo(GuruStaf::class, 'guru_staf_id');
+    }
+    public function getKepalaSekolahAttribute(): ?string
+    {
+        return $this->guruStaf?->nama;
+    }
 }

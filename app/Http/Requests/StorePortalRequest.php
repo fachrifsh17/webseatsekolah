@@ -13,10 +13,8 @@ class StorePortalRequest extends FormRequest
 
     public function rules(): array
     {
-        $portalId = $this->route('portal');  
-
         return [
-            'nama_platform' => 'required|string|max:255|unique:portal_sosmed,nama_platform,' . $portalId,
+            'nama_platform' => 'required|string|max:255',
             'url_link'      => 'required|url|max:255',
             'tipe'          => 'required|in:Sosial Media,Website,Portal Lain',
         ];

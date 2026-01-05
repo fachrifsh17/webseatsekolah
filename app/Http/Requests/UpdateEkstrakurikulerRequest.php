@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class UpdateEkstrakurikulerRequest extends FormRequest
 {
@@ -14,14 +16,14 @@ class UpdateEkstrakurikulerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama_ekskul'  => ['required', 'string', 'max:100'],
-            'deskripsi'    => ['nullable', 'string'],
-            'hari'         => ['nullable', 'string', 'max:50'],
-            'jam_mulai'    => ['nullable', 'date_format:H:i'],
-            'jam_selesai'  => ['nullable', 'date_format:H:i', 'after:jam_mulai'],
-            'pembina_id'   => ['nullable', 'integer', 'exists:guru_staf,id'],
-            'foto'         => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
-            'keterangan'   => ['nullable', 'string', 'max:255'],
+            'nama_ekskul'  => ['sometimes', 'required', 'string', 'max:100'],
+            'deskripsi'    => ['sometimes', 'nullable', 'string'],
+            'hari'         => ['sometimes', 'nullable', 'string', 'max:50'],
+            'jam_mulai'    => ['sometimes', 'nullable', 'date_format:H:i'],
+            'jam_selesai'  => ['sometimes', 'nullable', 'date_format:H:i', 'after:jam_mulai', 'required_with:jam_mulai'],
+            'pembina_id'   => ['sometimes', 'nullable', 'integer', 'exists:guru_staf,id'],
+            'foto'         => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'keterangan'   => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
 
@@ -40,12 +42,13 @@ class UpdateEkstrakurikulerRequest extends FormRequest
             'jam_mulai.date_format'   => 'Format jam mulai harus HH:ii.',
             'jam_selesai.date_format' => 'Format jam selesai harus HH:ii.',
             'jam_selesai.after'       => 'Jam selesai harus setelah jam mulai.',
+            'jam_selesai.required_with' => 'Jam selesai wajib diisi jika jam mulai disertakan.',
 
             'pembina_id.integer' => 'ID pembina harus berupa angka.',
             'pembina_id.exists'  => 'Pembina tidak ditemukan dalam sistem.',
 
             'foto.image' => 'File foto harus berupa gambar.',
-            'foto.mimes' => 'Format foto hanya boleh JPG, JPEG, atau PNG.',
+            'foto.mimes' => 'Format foto hanya boleh JPG, JPEG, PNG, atau WEBP.',
             'foto.max'   => 'Ukuran foto maksimal 2MB.',
 
             'keterangan.string' => 'Keterangan harus berupa teks.',
@@ -65,5 +68,13 @@ class UpdateEkstrakurikulerRequest extends FormRequest
             'foto'        => 'Foto ekstrakurikuler',
             'keterangan'  => 'Keterangan',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => 'Validasi gagal',
+            'errors'  => $validator->errors()
+        ], 422));
     }
 }

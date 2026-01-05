@@ -6,17 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\DataKontak;
 use App\Http\Requests\UpdateDataKontakRequest;
 use App\Http\Resources\DataKontakResource;
+use Illuminate\Http\JsonResponse;
 
 class DataKontakController extends Controller
 {
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
+        $this->middleware('role:admin'); // lowercase agar konsisten
         $this->middleware('log.admin')->only(['update']);
     }
 
-    public function show(): DataKontakResource
+    // GET /api/admin/data-kontak
+    public function index(): JsonResponse
     {
         $dataKontak = DataKontak::firstOrCreate(
             ['id' => 1],
@@ -28,15 +30,30 @@ class DataKontakController extends Controller
             ]
         );
 
-        return new DataKontakResource($dataKontak);
+        return response()->json([
+            'success' => true,
+            'data'    => new DataKontakResource($dataKontak),
+        ]);
     }
 
-    public function update(UpdateDataKontakRequest $request): DataKontakResource
+    // PUT /api/admin/data-kontak
+    public function update(UpdateDataKontakRequest $request): JsonResponse
     {
-        $dataKontak = DataKontak::firstOrCreate(['id' => 1]);
+        $dataKontak = DataKontak::firstOrCreate(
+            ['id' => 1],
+            [
+                'alamat_lengkap' => '-',
+                'telepon'        => '-',
+                'email_resmi'    => '-',
+                'peta_embed_code'=> null,
+            ]
+        );
 
         $dataKontak->update($request->validated());
 
-        return new DataKontakResource($dataKontak);
+        return response()->json([
+            'success' => true,
+            'data'    => new DataKontakResource($dataKontak->fresh()),
+        ]);
     }
 }

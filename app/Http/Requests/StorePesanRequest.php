@@ -17,7 +17,7 @@ class StorePesanRequest extends FormRequest
             'nama_lengkap' => ['required', 'string', 'max:255'],
             'email'        => ['required', 'email', 'max:255'],
             'subjek'       => ['nullable', 'string', 'max:255'],
-            'pesan'        => ['required', 'string', 'min:10'],
+            'isi_pesan'    => ['required', 'string', 'min:10'],
         ];
     }
 
@@ -32,9 +32,9 @@ class StorePesanRequest extends FormRequest
             'email.max'             => 'Email tidak boleh lebih dari 255 karakter.',
             'subjek.string'         => 'Subjek harus berupa teks.',
             'subjek.max'            => 'Subjek tidak boleh lebih dari 255 karakter.',
-            'pesan.required'        => 'Isi pesan tidak boleh kosong.',
-            'pesan.string'          => 'Isi pesan harus berupa teks.',
-            'pesan.min'             => 'Pesan terlalu pendek, minimal 10 karakter.',
+            'isi_pesan.required'    => 'Isi pesan tidak boleh kosong.',
+            'isi_pesan.string'      => 'Isi pesan harus berupa teks.',
+            'isi_pesan.min'         => 'Pesan terlalu pendek, minimal 10 karakter.',
         ];
     }
 
@@ -44,7 +44,17 @@ class StorePesanRequest extends FormRequest
             'nama_lengkap' => 'Nama lengkap',
             'email'        => 'Alamat email',
             'subjek'       => 'Subjek',
-            'pesan'        => 'Isi pesan',
+            'isi_pesan'    => 'Isi pesan',
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'nama_lengkap' => $this->nama_lengkap ? trim($this->nama_lengkap) : null,
+            'email'        => $this->email ? strtolower(trim($this->email)) : null,
+            'subjek'       => $this->subjek ? trim($this->subjek) : null,
+            'isi_pesan'    => $this->isi_pesan ? trim($this->isi_pesan) : null,
+        ]);
     }
 }

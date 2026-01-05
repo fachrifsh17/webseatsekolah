@@ -91,11 +91,17 @@ class BannerController extends Controller
 
             $banner->delete();
 
-            return new JsonResponse(null, 204);
+            return response()->json([
+                'success'      => true,
+                'message'      => 'Banner berhasil dihapus',
+                'notification' => 'Berhasil dihapus',
+            ], 200);
         } catch (Throwable $e) {
-            return new JsonResponse([
-                'success' => false,
-                'message' => 'Gagal menghapus banner'
+            return response()->json([
+                'success'      => false,
+                'message'      => 'Gagal menghapus banner',
+                'notification' => 'Gagal menghapus',
+                'error'        => $e->getMessage(),
             ], 500);
         }
     }

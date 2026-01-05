@@ -17,7 +17,7 @@ class JurusanController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
+        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
@@ -26,7 +26,7 @@ class JurusanController extends Controller
         $data = Jurusan::paginate(12);
         return response()->json(JurusanResource::collection($data));
     }
-    
+
     public function show(Jurusan $jurusan): JsonResponse
     {
         return response()->json(new JurusanResource($jurusan));
@@ -43,8 +43,12 @@ class JurusanController extends Controller
         DB::beginTransaction();
         try {
             $jurusan = Jurusan::create($validated);
+            $jurusan->refresh();
             DB::commit();
-            return response()->json(new JurusanResource($jurusan), 201);
+            return response()->json([
+                'success' => true,
+                'data'    => new JurusanResource($jurusan)
+            ], 201);
         } catch (Throwable $e) {
             DB::rollBack();
             if (!empty($validated['foto'] ?? null)) {
@@ -74,8 +78,12 @@ class JurusanController extends Controller
         DB::beginTransaction();
         try {
             $jurusan->update($validated);
+            $jurusan->refresh();
             DB::commit();
-            return response()->json(new JurusanResource($jurusan));
+            return response()->json([
+                'success' => true,
+                'data'    => new JurusanResource($jurusan)
+            ]);
         } catch (Throwable $e) {
             DB::rollBack();
             if (!empty($validated['foto'] ?? null) && ($validated['foto'] !== $jurusan->foto)) {
@@ -99,7 +107,11 @@ class JurusanController extends Controller
             $jurusan->delete();
             DB::commit();
 
-            return response()->json(null, 204);
+            return response()->json([
+                'success'      => true,
+                'message'      => 'Jurusan berhasil dihapus',
+                'notification' => 'Berhasil dihapus'
+            ], 200);
         } catch (Throwable $e) {
             DB::rollBack();
             return response()->json([

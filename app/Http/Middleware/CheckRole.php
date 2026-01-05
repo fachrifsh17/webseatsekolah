@@ -5,6 +5,9 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CheckRole
 {
@@ -12,7 +15,6 @@ class CheckRole
     {
         $user = $request->user();
 
-        // 1. Pastikan user sudah login
         if (!$user) {
             return response()->json([
                 'success' => false,
@@ -20,32 +22,122 @@ class CheckRole
             ], 401);
         }
 
-        /**
-         * 2. Ambil SEMUA nama role dari relasi many-to-many.
-         * Kita gunakan pluck() untuk mengambil semua 'role_name'[cite: 3, 134].
-         */
-        $userRoles = $user->roles->pluck('role_name')->toArray(); 
+        $raw = implode(',', $roles);
+        $requireAll = false;
 
-        if (empty($userRoles)) {
+        if (str_starts_with($raw, 'all:')) {
+            $requireAll = true;
+            $raw = substr($raw, 4);
+        }
+
+        $allowedRoles = $this->normalizeRoles([$raw]);
+
+        if (empty($allowedRoles)) {
+            return $this->ensureResponse($next($request));
+        }
+
+        try {
+            $rolesCollection = $user->relationLoaded('roles') ? $user->roles : ($user->roles()->get() ?? collect());
+        } catch (\Throwable $e) {
+            $rolesCollection = collect();
+        }
+
+        $rolesCollection = collect($rolesCollection);
+
+        if ($rolesCollection->isEmpty()) {
             return response()->json([
                 'success' => false,
                 'message' => 'User tidak memiliki role apa pun.'
             ], 403);
         }
 
-        // 3. Pengecekan Case-Insensitive
-        // Kita cek apakah ada salah satu role user yang cocok dengan role yang diizinkan di route
-        $allowedRoles = array_map('strtolower', $roles);
-        $userRolesLower = array_map('strtolower', $userRoles);
+        $userRoleIdentifiers = $rolesCollection->map(function ($r) {
+            if (is_string($r)) {
+                return strtolower(trim($r));
+            }
 
-        // array_intersect mengecek apakah ada role yang beririsan
-        if (empty(array_intersect($userRolesLower, $allowedRoles))) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Anda tidak memiliki hak akses. Role Anda: ' . implode(', ', $userRoles)
-            ], 403);
+            $value = null;
+            if (!empty($r->slug)) $value = $r->slug;
+            elseif (!empty($r->name)) $value = $r->name;
+            elseif (!empty($r->role_name)) $value = $r->role_name;
+            elseif (!empty($r->nama)) $value = $r->nama;
+            elseif (isset($r->id)) $value = (string) $r->id;
+
+            return $value !== null ? strtolower((string) $value) : null;
+        })->filter()->unique()->values()->all();
+
+        if ($requireAll) {
+            $missing = array_diff($allowedRoles, $userRoleIdentifiers);
+            if (!empty($missing)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda harus memiliki semua role yang diperlukan.'
+                ], 403);
+            }
+        } else {
+            if (empty(array_intersect($userRoleIdentifiers, $allowedRoles))) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki hak akses untuk halaman ini.'
+                ], 403);
+            }
         }
 
-        return $next($request);
+        try {
+            return $this->ensureResponse($next($request));
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan pada server.'
+            ], 500);
+        }
+    }
+
+    protected function normalizeRoles(array $roles): array
+    {
+        $normalized = [];
+
+        foreach ($roles as $role) {
+            if (is_int($role)) {
+                $normalized[] = (string) $role;
+                continue;
+            }
+
+            if (!is_string($role)) {
+                continue;
+            }
+
+            foreach (explode(',', $role) as $part) {
+                $trimmed = trim($part);
+                if ($trimmed === '') {
+                    continue;
+                }
+
+                if (is_numeric($trimmed)) {
+                    $normalized[] = (string) $trimmed;
+                } else {
+                    $normalized[] = strtolower($trimmed);
+                }
+            }
+        }
+
+        return array_values(array_unique($normalized));
+    }
+
+    protected function ensureResponse($response): Response
+    {
+        if ($response instanceof Response) {
+            return $response;
+        }
+
+        if ($response instanceof JsonResponse || $response instanceof RedirectResponse || $response instanceof StreamedResponse) {
+            return $response;
+        }
+
+        if (is_array($response) || is_object($response)) {
+            return response()->json($response);
+        }
+
+        return response((string) $response);
     }
 }

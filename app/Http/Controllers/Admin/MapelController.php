@@ -10,13 +10,14 @@ use App\Http\Requests\UpdateMapelRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Throwable;
 
 class MapelController extends Controller
 {
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
+        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
@@ -25,40 +26,113 @@ class MapelController extends Controller
         $data = MataPelajaran::with('jurusan')->paginate(12);
         return MapelResource::collection($data);
     }
-    
-    public function show(MataPelajaran $mapel): JsonResponse
+
+    public function show(?MataPelajaran $mapel): JsonResponse
     {
-        return new JsonResponse(new MapelResource($mapel->load('jurusan')));
+        if (!$mapel) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data mata pelajaran tidak ditemukan',
+                'errors'  => ['id' => ['Mata pelajaran dengan ID tersebut tidak ada']]
+            ], 404);
+        }
+
+        return response()->json(new MapelResource($mapel->load('jurusan')));
     }
 
     public function store(StoreMapelRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        $item = DB::transaction(function () use ($validated) {
-            return MataPelajaran::create($validated);
-        });
+        if (MataPelajaran::where('nama_mapel', $validated['nama_mapel'])->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nama mata pelajaran sudah terdaftar.',
+                'errors'  => ['nama_mapel' => ['Nama mata pelajaran sudah terdaftar.']]
+            ], 409);
+        }
 
-        return new JsonResponse(new MapelResource($item->load('jurusan')), 201);
+        try {
+            $item = DB::transaction(fn() => MataPelajaran::create($validated));
+            return response()->json([
+                'success' => true,
+                'message' => 'Data mata pelajaran berhasil ditambahkan.',
+                'data'    => new MapelResource($item->load('jurusan'))
+            ], 201);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menambahkan mata pelajaran',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], 500);
+        }
     }
 
-    public function update(UpdateMapelRequest $request, MataPelajaran $mapel): JsonResponse
+    public function update(UpdateMapelRequest $request, ?MataPelajaran $mapel): JsonResponse
     {
+        if (!$mapel) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data mata pelajaran tidak ditemukan',
+                'errors'  => ['id' => ['Mata pelajaran dengan ID tersebut tidak ada']]
+            ], 404);
+        }
+
         $validated = $request->validated();
 
-        DB::transaction(function () use ($mapel, $validated) {
-            $mapel->update($validated);
-        });
+        if (!empty($validated['nama_mapel']) &&
+            MataPelajaran::where('nama_mapel', $validated['nama_mapel'])
+                ->where('id','<>',$mapel->id)
+                ->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nama mata pelajaran sudah terdaftar.',
+                'errors'  => ['nama_mapel' => ['Nama mata pelajaran sudah terdaftar.']]
+            ], 409);
+        }
 
-        return new JsonResponse(new MapelResource($mapel->load('jurusan')));
+        try {
+            DB::transaction(fn() => $mapel->update($validated));
+            $mapel->refresh();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data mata pelajaran berhasil diperbarui.',
+                'data'    => new MapelResource($mapel->load('jurusan'))
+            ], 200);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui mata pelajaran',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], 500);
+        }
     }
 
-    public function destroy(MataPelajaran $mapel): JsonResponse
+    public function destroy(?MataPelajaran $mapel): JsonResponse
     {
-        DB::transaction(function () use ($mapel) {
-            $mapel->delete();
-        });
+        if (!$mapel) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data mata pelajaran tidak ditemukan',
+                'errors'  => ['id' => ['Mata pelajaran dengan ID tersebut tidak ada']]
+            ], 404);
+        }
 
-        return new JsonResponse(null, 204);
+        try {
+            DB::transaction(fn() => $mapel->delete());
+
+            return response()->json([
+                'success'      => true,
+                'message'      => 'Data mata pelajaran berhasil dihapus',
+                'notification' => 'Berhasil dihapus'
+            ], 200);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus mata pelajaran',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], 500);
+        }
     }
 }

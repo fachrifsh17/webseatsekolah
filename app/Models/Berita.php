@@ -11,6 +11,8 @@ class Berita extends Model
 
     protected $table = 'berita';
 
+    public $timestamps = true;
+
     protected $fillable = [
         'judul',
         'isi_berita',
@@ -20,5 +22,7 @@ class Berita extends Model
 
     protected $casts = [
         'tanggal_publikasi' => 'date',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 }

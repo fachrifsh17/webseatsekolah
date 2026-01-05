@@ -2,13 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| API Routes - Sistem Informasi Sekolah Multi-Role
-|--------------------------------------------------------------------------
-*/
+Route::singularResourceParameters(false);
 
-// Import Controller API (Frontend/Public)
 use App\Http\Controllers\Api\{
     BeritaApiController, PengumumanApiController, GuruApiController,
     JurusanApiController, KurikulumApiController, KalenderApiController,
@@ -18,12 +13,11 @@ use App\Http\Controllers\Api\{
     SiswaApiController, OrangtuaApiController, PresensiApiController,
     JadwalProduktifApiController, PrestasiApiController, PoinSiswaApiController,
     PortalApiController, PPDBLinkApiController, KelasApiController,
-    TahunAjaranApiController, JamSekolahApiController, AuthApiController as ApiAuth,
+    AuthApiController as ApiAuth,
     DashboardApiController, SettingApiController,
     StrukturJabatanApiController, ProfilApiController
 };
 
-// Import Controller Admin (Backend/Manajemen)
 use App\Http\Controllers\Admin\{
     AuthController as AdminAuth, BeritaController, PengumumanController,
     GuruController, JurusanController, KurikulumController, KalenderController,
@@ -35,20 +29,20 @@ use App\Http\Controllers\Admin\{
     JadwalProduktifController, PoinSiswaController, PortalController,
     PpdbLinkController, KelasController, TahunAjaranController,
     JamSekolahController, GuruMapelController, DataKontakController,
-    PresensiGuruMapelController, SettingController
+    PresensiGuruMapelController, SettingController,
+    KenaikanKelasController,
 };
 
 /*
 |--------------------------------------------------------------------------
-| 1. PUBLIC ROUTES (Tanpa Login) -> /api/public/...
+| PUBLIC ROUTES -> /api/public/...
 |--------------------------------------------------------------------------
 */
 Route::prefix('public')->group(function () {
-    Route::post('login', [AdminAuth::class, 'login']);      // /api/public/login (admin/staf)
-    Route::post('login-api', [ApiAuth::class, 'login']);   // /api/public/login-api (siswa/ortu)
-    Route::post('register', [ApiAuth::class, 'register']); // /api/public/register
+    Route::post('login', [AdminAuth::class, 'login']);
+    Route::post('login-api', [ApiAuth::class, 'login']);
+    Route::post('register', [ApiAuth::class, 'register']);
 
-    // Konten publik
     Route::get('berita', [BeritaApiController::class, 'index']);
     Route::get('pengumuman', [PengumumanApiController::class, 'index']);
     Route::get('guru', [GuruApiController::class, 'index']);
@@ -67,42 +61,44 @@ Route::prefix('public')->group(function () {
     Route::get('kontak', [DataKontakApiController::class, 'show']);
     Route::get('profil-sekolah', [ProfilApiController::class, 'index']);
     Route::get('struktur', [StrukturJabatanApiController::class, 'index']);
+    Route::get('setting', [SettingApiController::class, 'index']);
     Route::post('pesan', [PesanApiController::class, 'store']);
 });
 
 /*
 |--------------------------------------------------------------------------
-| 2. PROTECTED ROUTES -> semua admin/manajemen di bawah /api/admin/...
-|    - auth.token dipakai untuk semua route yang butuh autentikasi
+| AUTH & SECURITY ROUTES -> /api/...
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth.token'])->group(function () {
+    Route::post('logout', [AdminAuth::class, 'logout']);
+    Route::get('me', [AdminAuth::class, 'me']);
+    Route::get('dashboard', [DashboardApiController::class, 'index']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN ROUTES -> /api/admin/... (auth.token + role)
 |--------------------------------------------------------------------------
 */
 Route::prefix('admin')->middleware(['auth.token'])->group(function () {
 
-    // Basic admin endpoints (di /api/admin/...)
-    Route::post('logout', [AdminAuth::class, 'logout']);
-    Route::get('dashboard', [DashboardApiController::class, 'index']);
-    Route::get('me', [AdminAuth::class, 'me']);
-
-    /*
-    |-----------------------------------------------------------------------
-    | Akses penuh: Admin
-    | Semua resource manajemen di /api/admin/...
-    |-----------------------------------------------------------------------
-    */
     Route::middleware(['role:Admin'])->group(function () {
-
-        // Rute spesifik (letakkan sebelum apiResource agar tidak bentrok)
         Route::get('logs', [LogAdminController::class, 'index']);
-        Route::match(['put', 'post'], 'profil-sekolah', [ProfilSekolahController::class, 'update']);
-        Route::post('setting/update', [SettingController::class, 'updateGeneral']);
+
+        Route::put('setting/general', [SettingController::class, 'updateGeneral']);
+        Route::put('profil-sekolah', [ProfilSekolahController::class, 'update']);
         Route::get('api-kelas-list', [KelasApiController::class, 'index']);
         Route::get('api-setting-list', [SettingApiController::class, 'index']);
+        Route::put('data-kontak', [DataKontakController::class, 'update']);
+        Route::put('ppdb-link', [PpdbLinkController::class, 'update']);
+        Route::put('jam-sekolah', [JamSekolahController::class, 'update']);
 
-        // CRUD Utama
-        Route::apiResource('users', UserController::class);
-        Route::apiResource('roles', RoleController::class);
+        Route::get('kenaikan-kelas', [KenaikanKelasController::class, 'index']);
+        Route::post('kenaikan-kelas/proses', [KenaikanKelasController::class, 'prosesMassal']);
 
-        // Manajemen Akademik
+        Route::apiResource('user', UserController::class);
+        Route::apiResource('role', RoleController::class);
         Route::apiResource('siswa', SiswaController::class);
         Route::apiResource('orangtua', OrangtuaController::class);
         Route::apiResource('guru', GuruController::class);
@@ -113,13 +109,10 @@ Route::prefix('admin')->middleware(['auth.token'])->group(function () {
         Route::apiResource('kelas', KelasController::class);
         Route::apiResource('mapel', MapelController::class);
         Route::apiResource('tahun-ajaran', TahunAjaranController::class);
-        Route::apiResource('jam-sekolah', JamSekolahController::class);
         Route::apiResource('jadwal-produktif', JadwalProduktifController::class);
         Route::apiResource('presensi', PresensiController::class);
         Route::apiResource('presensi-guru-mapel', PresensiGuruMapelController::class);
         Route::apiResource('poin-siswa', PoinSiswaController::class);
-
-        // Manajemen Konten Website
         Route::apiResource('portal', PortalController::class);
         Route::apiResource('berita', BeritaController::class);
         Route::apiResource('pengumuman', PengumumanController::class);
@@ -129,19 +122,11 @@ Route::prefix('admin')->middleware(['auth.token'])->group(function () {
         Route::apiResource('banner', BannerController::class);
         Route::apiResource('album', AlbumController::class);
         Route::apiResource('media', MediaController::class);
-        Route::apiResource('ppdb-link', PpdbLinkController::class);
         Route::apiResource('struktur-jabatan', StrukturJabatanController::class);
-        Route::apiResource('data-kontak', DataKontakController::class);
         Route::apiResource('pesan', PesanController::class)->except(['store']);
     });
 
-    /*
-    |-----------------------------------------------------------------------
-    | Akses terbatas: Guru
-    | Semua route guru berada di /api/admin/guru/...
-    |-----------------------------------------------------------------------
-    */
-    Route::prefix('guru')->middleware(['role:Guru'])->group(function () {
+    Route::prefix('guru')->middleware(['role:guru'])->group(function () {
         Route::get('data-siswa', [SiswaApiController::class, 'index']);
         Route::get('data-orangtua', [OrangtuaApiController::class, 'index']);
         Route::post('input-presensi', [PresensiController::class, 'store']);
@@ -151,13 +136,7 @@ Route::prefix('admin')->middleware(['auth.token'])->group(function () {
         Route::post('change-password', [ProfilApiController::class, 'changePassword']);
     });
 
-    /*
-    |-----------------------------------------------------------------------
-    | Akses terbatas: Siswa
-    | Semua route siswa berada di /api/admin/siswa/...
-    |-----------------------------------------------------------------------
-    */
-    Route::prefix('siswa')->middleware(['role:Siswa'])->group(function () {
+    Route::prefix('siswa')->middleware(['role:siswa'])->group(function () {
         Route::get('presensi-saya', [PresensiApiController::class, 'index']);
         Route::get('poin-saya', [PoinSiswaApiController::class, 'index']);
         Route::get('jadwal', [JadwalProduktifApiController::class, 'index']);
@@ -165,13 +144,7 @@ Route::prefix('admin')->middleware(['auth.token'])->group(function () {
         Route::post('change-password', [ProfilApiController::class, 'changePassword']);
     });
 
-    /*
-    |-----------------------------------------------------------------------
-    | Akses terbatas: Orangtua
-    | Semua route orangtua berada di /api/admin/ortu/...
-    |-----------------------------------------------------------------------
-    */
-    Route::prefix('ortu')->middleware(['role:Orangtua'])->group(function () {
+    Route::prefix('ortu')->middleware(['role:orangtua'])->group(function () {
         Route::get('presensi-anak', [PresensiApiController::class, 'index']);
         Route::get('poin-anak', [PoinSiswaApiController::class, 'index']);
         Route::post('change-password', [ProfilApiController::class, 'changePassword']);

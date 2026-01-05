@@ -14,25 +14,28 @@ class LogAktivitas
     {
         $response = $next($request);
 
-        if ($response->isSuccessful() && $request->user() && in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'])) {
-            
+        if ($response->isOk() 
+            && $request->user() 
+            && in_array($request->method(), ['POST','PUT','PATCH','DELETE'])) {
+
             $user = $request->user();
 
-            if ($user->role_id == 1 || $user->role_id == 2) {
-                
-                $routeName = $request->route() ? $request->route()->getName() : $request->path();
-                $roleLabel = ($user->role_id == 1) ? 'Admin' : 'Guru';
+            $roles = $user->roles()->pluck('role_name')->toArray();
+            $roleLabel = !empty($roles) ? implode(', ', $roles) : 'User';
 
-                try {
-                    LogAdmin::create([
-                        'user_id'    => $user->id,
-                        'aksi'       => "{$roleLabel} [{$user->username}] melakukan {$request->method()} pada modul: {$routeName}",
-                        'ip_address' => $request->ip(),
-                        'user_agent' => $request->userAgent()
-                    ]);
-                } catch (\Exception $e) {
-                    Log::error("Log Error: " . $e->getMessage());
-                }
+            $routeName = $request->route()?->getName() ?? $request->path();
+
+            try {
+                LogAdmin::create([
+                    'user_id'    => $user->id,
+                    'aksi'       => "{$roleLabel} [{$user->username}] melakukan {$request->method()} pada modul: {$routeName}",
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                ]);
+            } catch (\Exception $e) {
+                Log::error("Log Error: " . $e->getMessage(), [
+                    'trace' => $e->getTraceAsString(),
+                ]);
             }
         }
 

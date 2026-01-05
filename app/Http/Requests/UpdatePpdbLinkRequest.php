@@ -15,17 +15,16 @@ class UpdatePpdbLinkRequest extends FormRequest
     {
         return [
             'url_link'    => ['required', 'url', 'max:255'],
-            'status_ppdb' => ['required', 'in:Buka,Tutup,Segera'],
+            'status_ppdb' => ['required', 'string', 'in:Buka,Tutup,Segera'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'url_link.required' => 'Link PPDB wajib diisi.',
-            'url_link.url'      => 'Link PPDB harus berupa URL yang valid.',
-            'url_link.max'      => 'Link PPDB tidak boleh lebih dari 255 karakter.',
-
+            'url_link.required'    => 'Link PPDB wajib diisi.',
+            'url_link.url'         => 'Link PPDB harus berupa URL yang valid.',
+            'url_link.max'         => 'Link PPDB tidak boleh lebih dari 255 karakter.',
             'status_ppdb.required' => 'Status PPDB wajib dipilih.',
             'status_ppdb.in'       => 'Status PPDB hanya boleh bernilai Buka, Tutup, atau Segera.',
         ];

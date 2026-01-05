@@ -15,30 +15,54 @@ class PortalController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
+        $this->middleware('role:Admin'); 
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
     public function index(): JsonResponse
     {
         $data = PortalSosmed::paginate(12);
-        return new JsonResponse(PortalSosmedResource::collection($data));
+
+        return response()->json([
+            'success' => true,
+            'data' => PortalSosmedResource::collection($data),
+            'meta' => [
+                'current_page' => $data->currentPage(),
+                'last_page'    => $data->lastPage(),
+                'per_page'     => $data->perPage(),
+                'total'        => $data->total(),
+            ]
+        ]);
     }
     
     public function show(PortalSosmed $portal): JsonResponse
     {
-        return new JsonResponse(new PortalSosmedResource($portal));
+        return response()->json([
+            'success' => true,
+            'data' => new PortalSosmedResource($portal),
+        ]);
     }
 
     public function store(StorePortalRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
+        if (isset($validated['is_active'])) {
+            $validated['is_active'] = (int) $validated['is_active'];
+        }
+
+        if (!empty($validated['url_link'])) {
+            $validated['url_link'] = rtrim($validated['url_link'], '/');
+        }
+
         $item = DB::transaction(function () use ($validated) {
             return PortalSosmed::create($validated);
         });
 
-        return new JsonResponse(new PortalSosmedResource($item), 201);
+        return response()->json([
+            'success' => true,
+            'data' => new PortalSosmedResource($item->fresh()),
+        ], 201);
     }
 
     public function update(UpdatePortalRequest $request, PortalSosmed $portal): JsonResponse
@@ -49,7 +73,10 @@ class PortalController extends Controller
             $portal->update($validated);
         });
 
-        return new JsonResponse(new PortalSosmedResource($portal));
+        return response()->json([
+            'success' => true,
+            'data' => new PortalSosmedResource($portal->fresh()),
+        ]);
     }
 
     public function destroy(PortalSosmed $portal): JsonResponse
@@ -58,6 +85,9 @@ class PortalController extends Controller
             $portal->delete();
         });
 
-        return new JsonResponse(null, 204);
+        return response()->json([
+            'success' => true,
+            'message' => 'Portal berhasil dihapus',
+        ], 200);
     }
 }

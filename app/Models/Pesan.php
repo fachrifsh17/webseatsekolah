@@ -11,15 +11,19 @@ class Pesan extends Model
 
     protected $table = 'pesan_masuk';
 
+    public $timestamps = false;
+
     protected $fillable = [
         'nama_lengkap',
         'email',
         'subjek',
-        'pesan',
+        'isi_pesan',
         'status',
+        'tanggal_kirim',
     ];
 
     protected $casts = [
         'status' => 'string',
+        'tanggal_kirim' => 'date:Y-m-d',
     ];
 }

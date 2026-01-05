@@ -7,30 +7,34 @@ use Illuminate\Support\Facades\Log;
 
 class ExampleCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'example:run';
-
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
+    protected $signature = 'example:run {--force : Run even if conditions would normally prevent it}';
     protected $description = 'Contoh command sederhana untuk demonstrasi scheduling';
 
-    /**
-     * Execute the console command.
-     *
-     * @return int
-     */
     public function handle(): int
     {
-        Log::info('ExampleCommand dijalankan oleh scheduler.');
-        $this->info('ExampleCommand executed.');
+        try {
+            $context = [
+                'command' => $this->getName(),
+                'host' => gethostname(),
+            ];
 
-        return Command::SUCCESS;
+            Log::info('ExampleCommand started', $context);
+
+            $this->line('<fg=blue;options=bold>ExampleCommand executed.</>');
+
+            Log::info('ExampleCommand finished successfully', $context);
+
+            return parent::SUCCESS;
+        } catch (\Throwable $e) {
+            Log::error('ExampleCommand failed', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'command' => $this->getName(),
+            ]);
+
+            $this->error('ExampleCommand failed. Check logs for details.');
+
+            return parent::FAILURE;
+        }
     }
 }

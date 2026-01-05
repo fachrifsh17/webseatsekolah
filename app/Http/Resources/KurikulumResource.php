@@ -3,24 +3,23 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 class KurikulumResource extends JsonResource
 {
-    public function toArray($request)
+    public function toArray($request): array
     {
         return [
-            'id' => $this->id,
-            'judul' => $this->judul,
+            'id'                   => $this->id,
+            'judul'                => $this->judul,
             'penjelasan_kurikulum' => $this->penjelasan_kurikulum,
             
-            // Media/URL
-            'file_jadwal_url' => $this->file_jadwal_path 
-                                 ? asset('storage/' . $this->file_jadwal_path) 
-                                 : null,
+            'file_jadwal_url'      => $this->file_jadwal_path 
+                                      ? Storage::url($this->file_jadwal_path) 
+                                      : null,
             
-            // Metadata
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'created_at'           => $this->created_at?->format('Y-m-d H:i:s'),
+            'updated_at'           => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 }

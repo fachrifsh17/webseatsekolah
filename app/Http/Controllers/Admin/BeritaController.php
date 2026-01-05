@@ -10,25 +10,25 @@ use App\Http\Requests\UpdateBeritaRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\JsonResponse;
 use Throwable;
+use Illuminate\Support\Facades\Log;
 
 class BeritaController extends Controller
 {
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
+        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
     public function index(): JsonResponse
     {
-        $berita = Berita::with('kategori')->orderByDesc('tanggal_publikasi')->paginate(10);
+        $berita = Berita::orderByDesc('tanggal_publikasi')->paginate(10);
         return new JsonResponse(BeritaResource::collection($berita));
     }
-    
+
     public function show(Berita $berita): JsonResponse
     {
-        $berita->load('kategori');
         return new JsonResponse(new BeritaResource($berita));
     }
 
@@ -42,12 +42,14 @@ class BeritaController extends Controller
             }
 
             $berita = Berita::create($data);
-            
-            return new JsonResponse(new BeritaResource($berita->load('kategori')), 201);
+            $berita->refresh();
+
+            return new JsonResponse(new BeritaResource($berita), 201);
         } catch (Throwable $e) {
             if (!empty($data['foto'] ?? null)) {
                 Storage::disk('public')->delete($data['foto']);
             }
+            Log::error('Berita store error: '.$e->getMessage(), ['exception' => $e]);
             return new JsonResponse([
                 'success' => false,
                 'message' => 'Gagal menambahkan berita'
@@ -59,6 +61,13 @@ class BeritaController extends Controller
     {
         $data = $request->validated();
 
+        if (! $berita->exists) {
+            return new JsonResponse([
+                'success' => false,
+                'message' => 'Berita tidak ditemukan'
+            ], 404);
+        }
+
         try {
             if ($request->hasFile('foto')) {
                 if ($berita->foto) {
@@ -67,13 +76,26 @@ class BeritaController extends Controller
                 $data['foto'] = $request->file('foto')->store('uploads/berita', 'public');
             }
 
-            $berita->update($data);
-            
-            return new JsonResponse(new BeritaResource($berita->load('kategori')));
+            if (array_key_exists('id', $data)) {
+                unset($data['id']);
+            }
+
+            foreach ($data as $key => $value) {
+                if ($value === null || $value === '') {
+                    unset($data[$key]);
+                }
+            }
+
+            $berita->fill($data);
+            $berita->save();
+            $berita->refresh();
+
+            return new JsonResponse(new BeritaResource($berita));
         } catch (Throwable $e) {
             if (!empty($data['foto'] ?? null)) {
                 Storage::disk('public')->delete($data['foto']);
             }
+            Log::error('Berita update error: '.$e->getMessage(), ['exception' => $e]);
             return new JsonResponse([
                 'success' => false,
                 'message' => 'Gagal memperbarui berita'
@@ -87,11 +109,16 @@ class BeritaController extends Controller
             if ($berita->foto) {
                 Storage::disk('public')->delete($berita->foto);
             }
-            
+
             $berita->delete();
-            
-            return new JsonResponse(null, 204);
+
+            return new JsonResponse([
+                'success'      => true,
+                'message'      => 'Berita berhasil dihapus',
+                'notification' => 'Berhasil dihapus'
+            ], 200);
         } catch (Throwable $e) {
+            Log::error('Berita destroy error: '.$e->getMessage(), ['exception' => $e]);
             return new JsonResponse([
                 'success' => false,
                 'message' => 'Gagal menghapus berita'

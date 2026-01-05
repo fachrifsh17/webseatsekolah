@@ -16,16 +16,14 @@ class AuthApiController extends Controller
 {
     public function register(Request $request)
     {
-        // 1. Validasi: role_ids sekarang harus array
         $request->validate([
             'username'     => 'required|string|unique:users,username',
             'password'     => 'required|string|min:6|confirmed',
             'nama_lengkap' => 'required|string',
-            'role_ids'     => 'required|array', // Menggunakan array untuk many-to-many
+            'role_ids'     => 'required|array',
             'role_ids.*'   => 'integer|exists:roles,id',
         ]);
 
-        // 2. Gunakan Transaction agar jika simpan role gagal, user tidak jadi dibuat
         return DB::transaction(function () use ($request) {
             $user = User::create([
                 'username'     => $request->username,
@@ -34,13 +32,12 @@ class AuthApiController extends Controller
                 'is_active'    => 1,
             ]);
 
-            // 3. Simpan ke tabel jembatan user_roles
             $user->roles()->attach($request->role_ids);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Registrasi berhasil, akun sudah dibuat.',
-                'user'    => new UserResource($user->load('roles')) // Load 'roles' jamak
+                'user'    => new UserResource($user->load('roles'))
             ], Response::HTTP_CREATED);
         });
     }
@@ -52,7 +49,6 @@ class AuthApiController extends Controller
             'password' => 'required',
         ]);
 
-        // Cari user beserta roles-nya
         $user = User::with('roles')->where('username', $request->username)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
@@ -62,7 +58,6 @@ class AuthApiController extends Controller
             ], 401);
         }
 
-        // Hapus token lama jika ada
         AuthToken::where('user_id', $user->id)->delete();
 
         $plainAccessToken = Str::random(80);
@@ -88,7 +83,6 @@ class AuthApiController extends Controller
 
     public function me(Request $request)
     {
-        // Load roles jamak dan relasi lainnya
         return response()->json([
             'success' => true,
             'data'    => new UserResource($request->user()->load(['roles', 'guru', 'siswa', 'orangtua']))

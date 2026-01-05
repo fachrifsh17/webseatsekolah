@@ -3,24 +3,26 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class UpdateProfilSekolahRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return Auth::check() && Auth::user()->role === 'admin';
+        return true;
     }
 
     public function rules(): array
     {
         return [
+            'nama_sekolah'    => ['nullable', 'string', 'max:150'],
             'sejarah'         => ['nullable', 'string'],
             'visi'            => ['nullable', 'string'],
             'misi'            => ['nullable', 'string'],
-            'npsn'            => ['nullable', 'string', 'max:20'],
-            'akreditasi'      => ['nullable', 'string', 'max:10'],
-            'guru_staf_id'    => ['nullable', 'exists:guru_staf,id'],
+            'npsn'            => ['bail', 'nullable', 'string', 'max:20'],
+            'akreditasi'      => ['bail', 'nullable', 'string', 'max:10'],
+            'guru_staf_id'    => ['bail', 'nullable', 'integer', 'exists:guru_staf,id'],
             'sambutan_kepsek' => ['nullable', 'string'],
         ];
     }
@@ -28,25 +30,25 @@ class UpdateProfilSekolahRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'sejarah.string'         => 'Sejarah harus berupa teks.',
-            'visi.string'            => 'Visi harus berupa teks.',
-            'misi.string'            => 'Misi harus berupa teks.',
-
-            'npsn.string' => 'NPSN harus berupa teks.',
-            'npsn.max'    => 'NPSN maksimal 20 karakter.',
-
-            'akreditasi.string' => 'Akreditasi harus berupa teks.',
-            'akreditasi.max'    => 'Akreditasi maksimal 10 karakter.',
-
-            'guru_staf_id.exists' => 'Data guru/staf tidak ditemukan.',
-
-            'sambutan_kepsek.string' => 'Sambutan kepala sekolah harus berupa teks.',
+            'nama_sekolah.string'     => 'Nama sekolah harus berupa teks.',
+            'nama_sekolah.max'        => 'Nama sekolah maksimal 150 karakter.',
+            'sejarah.string'          => 'Sejarah harus berupa teks.',
+            'visi.string'             => 'Visi harus berupa teks.',
+            'misi.string'             => 'Misi harus berupa teks.',
+            'npsn.string'             => 'NPSN harus berupa teks.',
+            'npsn.max'                => 'NPSN maksimal 20 karakter.',
+            'akreditasi.string'       => 'Akreditasi harus berupa teks.',
+            'akreditasi.max'          => 'Akreditasi maksimal 10 karakter.',
+            'guru_staf_id.integer'    => 'Guru/Staf harus berupa angka.',
+            'guru_staf_id.exists'     => 'Data guru/staf tidak ditemukan.',
+            'sambutan_kepsek.string'  => 'Sambutan kepala sekolah harus berupa teks.',
         ];
     }
 
     public function attributes(): array
     {
         return [
+            'nama_sekolah'    => 'Nama sekolah',
             'sejarah'         => 'Sejarah sekolah',
             'visi'            => 'Visi sekolah',
             'misi'            => 'Misi sekolah',
@@ -55,5 +57,13 @@ class UpdateProfilSekolahRequest extends FormRequest
             'guru_staf_id'    => 'Guru/Staf',
             'sambutan_kepsek' => 'Sambutan kepala sekolah',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => 'Validasi gagal',
+            'errors'  => $validator->errors()
+        ], 422));
     }
 }

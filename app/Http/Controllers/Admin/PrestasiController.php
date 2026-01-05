@@ -17,7 +17,7 @@ class PrestasiController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
+        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
@@ -99,7 +99,11 @@ class PrestasiController extends Controller
             $prestasi->delete();
             DB::commit();
 
-            return response()->json(null, 204);
+            return response()->json([
+                'success'      => true,
+                'message'      => 'Prestasi berhasil dihapus',
+                'notification' => 'Berhasil dihapus'
+            ], 200);
         } catch (Throwable $e) {
             DB::rollBack();
             return response()->json([

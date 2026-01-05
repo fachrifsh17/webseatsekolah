@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class StoreGuruMapelRequest extends FormRequest
 {
@@ -14,18 +16,18 @@ class StoreGuruMapelRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'guru_staf_id'      => ['required', 'integer', 'exists:guru_staf,id'],
-            'mata_pelajaran_id' => ['required', 'integer', 'exists:mata_pelajaran,id'],
+            'guru_staf_id'      => ['bail','required','integer','exists:guru_staf,id'],
+            'mata_pelajaran_id' => ['bail','required','integer','exists:mata_pelajaran,id'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'guru_staf_id.required'      => 'Guru harus dipilih.',
+            'guru_staf_id.required'      => 'Guru wajib dipilih.',
             'guru_staf_id.integer'       => 'Guru harus berupa angka.',
             'guru_staf_id.exists'        => 'Data guru tidak ditemukan.',
-            'mata_pelajaran_id.required' => 'Mata pelajaran harus dipilih.',
+            'mata_pelajaran_id.required' => 'Mata pelajaran wajib dipilih.',
             'mata_pelajaran_id.integer'  => 'Mata pelajaran harus berupa angka.',
             'mata_pelajaran_id.exists'   => 'Data mata pelajaran tidak ditemukan.',
         ];
@@ -37,5 +39,13 @@ class StoreGuruMapelRequest extends FormRequest
             'guru_staf_id'      => 'Guru',
             'mata_pelajaran_id' => 'Mata pelajaran',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => 'Validasi gagal',
+            'errors'  => $validator->errors()
+        ], 422));
     }
 }

@@ -10,10 +10,6 @@ class Kernel extends ConsoleKernel
     /**
      * The Artisan commands provided by your application.
      *
-     * Tambahkan class command kustom di sini jika Anda membuat
-     * file di app/Console/Commands, misal:
-     * \App\Console\Commands\ExampleCommand::class,
-     *
      * @var array<int, class-string>
      */
     protected $commands = [
@@ -23,29 +19,33 @@ class Kernel extends ConsoleKernel
     /**
      * Define the application's command schedule.
      *
-     * Contoh:
-     * $schedule->command('example:run')->dailyAt('01:00');
-     *
      * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
      * @return void
      */
-    protected function schedule(Schedule $schedule)
+    protected function schedule(Schedule $schedule): void
     {
-        // Contoh jadwal aktif: jalankan command setiap hari jam 01:00
-        // $schedule->command('example:run')->dailyAt('01:00');
+        // Production schedule: run daily at 01:00 server time
+        $schedule->command('example:run')
+            ->dailyAt('01:00')
+            ->withoutOverlapping()
+            ->onOneServer()
+            ->timezone(config('app.timezone', 'UTC'));
 
-        // Contoh jadwal pengembangan: jalankan setiap menit (untuk testing)
-        // $schedule->command('example:run')->everyMinute();
+        // Development convenience: run every minute when in local environment
+        if ($this->app->environment('local')) {
+            $schedule->command('example:run')
+                ->everyMinute()
+                ->withoutOverlapping()
+                ->onOneServer();
+        }
     }
 
     /**
      * Register the commands for the application.
      *
-     * Pastikan file routes/console.php ada (default Laravel).
-     *
      * @return void
      */
-    protected function commands()
+    protected function commands(): void
     {
         $this->load(__DIR__ . '/Commands');
 

@@ -16,4 +16,5 @@ class Kurikulum extends Model
         'penjelasan_kurikulum',
         'file_jadwal_path',
     ];
+    public $timestamps = true;
 }

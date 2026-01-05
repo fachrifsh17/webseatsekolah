@@ -13,10 +13,15 @@ class JamSekolah extends Model
     protected $table = 'jam_sekolah';
 
     protected $fillable = [
+        'judul',
         'tahun_ajaran_id',
         'semester',
-        'keterangan',
         'file_path',
+    ];
+
+    protected $casts = [
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     public function tahunAjaran(): BelongsTo

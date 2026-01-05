@@ -16,8 +16,23 @@ class Role extends Model
         'role_name',
         'description',
     ];
+
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'user_roles', 'role_id', 'user_id');
+        return $this->belongsToMany(User::class, 'user_roles', 'role_id', 'user_id')->withTimestamps();
+    }
+
+    public function hasUser($user): bool
+    {
+        $id = $user instanceof User ? $user->id : (int) $user;
+        if ($this->relationLoaded('users')) {
+            return $this->users->contains('id', $id);
+        }
+        return $this->users()->where('users.id', $id)->exists();
+    }
+
+    public function scopeByName($query, string $name)
+    {
+        return $query->where('role_name', $name);
     }
 }

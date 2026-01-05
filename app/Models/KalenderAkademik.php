@@ -19,7 +19,7 @@ class KalenderAkademik extends Model
     ];
 
     protected $casts = [
-        'tanggal_mulai' => 'date',
-        'tanggal_selesai' => 'date',
+        'tanggal_mulai'   => 'datetime:Y-m-d',
+        'tanggal_selesai' => 'datetime:Y-m-d',
     ];
 }

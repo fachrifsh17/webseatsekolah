@@ -9,8 +9,11 @@ class LogAdmin extends Model
 {
     use HasFactory;
 
+    // Pastikan sesuai dengan nama tabel di database
     protected $table = 'log_admin';
-    public $timestamps = true; 
+
+    // Jika tabel punya kolom created_at & updated_at biarkan true, kalau tidak ada set false
+    public $timestamps = true;
 
     protected $fillable = [
         'user_id',
@@ -19,9 +22,6 @@ class LogAdmin extends Model
         'user_agent',
     ];
 
-    /**
-     * Relasi ke model User
-     */
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');

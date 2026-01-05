@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class UpdateStrukturJabatanRequest extends FormRequest
 {
@@ -14,10 +16,10 @@ class UpdateStrukturJabatanRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'guru_staf_id'           => ['required', 'integer', 'exists:guru_staf,id'],
-            'nama_jabatan_struktural'=> ['required', 'string', 'max:100'],
-            'periode_mulai'          => ['nullable', 'date'],
-            'urutan_tampil'          => ['nullable', 'integer'],
+            'guru_staf_id'           => ['sometimes', 'required', 'integer', 'exists:guru_staf,id'],
+            'nama_jabatan_struktural'=> ['sometimes', 'required', 'string', 'max:100'],
+            'periode_mulai'          => ['sometimes', 'nullable', 'date'],
+            'urutan_tampil'          => ['sometimes', 'nullable', 'integer'],
         ];
     }
 
@@ -46,5 +48,13 @@ class UpdateStrukturJabatanRequest extends FormRequest
             'periode_mulai'           => 'Periode mulai',
             'urutan_tampil'           => 'Urutan tampil',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => 'Validasi gagal',
+            'errors'  => $validator->errors()
+        ], 422));
     }
 }

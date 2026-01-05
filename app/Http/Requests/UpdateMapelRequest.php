@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class UpdateMapelRequest extends FormRequest
 {
@@ -14,10 +16,10 @@ class UpdateMapelRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama_mapel'     => ['sometimes', 'required', 'string', 'max:100'],
-            'jurusan_id'     => ['nullable', 'integer', 'exists:jurusan,id'],
-            'tipe_mapel'     => ['nullable', 'in:umum,khusus'],
-            'kategori_mapel' => ['nullable', 'in:normatif,adaptif,produktif'],
+            'nama_mapel'     => ['bail','sometimes','required','string','max:100'],
+            'jurusan_id'     => ['nullable','integer','exists:jurusan,id'],
+            'tipe_mapel'     => ['nullable','in:umum,khusus'],
+            'kategori_mapel' => ['nullable','in:normatif,adaptif,produktif'],
         ];
     }
 
@@ -27,13 +29,10 @@ class UpdateMapelRequest extends FormRequest
             'nama_mapel.required' => 'Nama mata pelajaran wajib diisi.',
             'nama_mapel.string'   => 'Nama mata pelajaran harus berupa teks.',
             'nama_mapel.max'      => 'Nama mata pelajaran tidak boleh lebih dari 100 karakter.',
-
-            'jurusan_id.integer' => 'Jurusan ID harus berupa angka.',
-            'jurusan_id.exists'  => 'Jurusan yang dipilih tidak valid.',
-
-            'tipe_mapel.in' => 'Tipe mata pelajaran hanya boleh bernilai umum atau khusus.',
-
-            'kategori_mapel.in' => 'Kategori mata pelajaran hanya boleh normatif, adaptif, atau produktif.',
+            'jurusan_id.integer'  => 'Jurusan harus berupa angka.',
+            'jurusan_id.exists'   => 'Jurusan yang dipilih tidak valid.',
+            'tipe_mapel.in'       => 'Tipe mata pelajaran hanya boleh bernilai umum atau khusus.',
+            'kategori_mapel.in'   => 'Kategori mata pelajaran hanya boleh normatif, adaptif, atau produktif.',
         ];
     }
 
@@ -45,5 +44,13 @@ class UpdateMapelRequest extends FormRequest
             'tipe_mapel'     => 'Tipe mata pelajaran',
             'kategori_mapel' => 'Kategori mata pelajaran',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => 'Validasi gagal',
+            'errors'  => $validator->errors()
+        ], 422));
     }
 }

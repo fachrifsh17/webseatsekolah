@@ -10,7 +10,7 @@ class StoreTahunAjaranRequest extends FormRequest
     public function authorize(): bool
     {
         // Hanya admin yang boleh menambahkan tahun ajaran
-        return Auth::check() && Auth::user()->role === 'admin';
+        return true;
     }
 
     public function rules(): array

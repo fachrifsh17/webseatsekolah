@@ -19,29 +19,24 @@ class Kelas extends Model
         'wali_kelas_id',
         'tahun_ajaran_id',
     ];
-
     public function waliKelas(): BelongsTo
     {
-        return $this->belongsTo(GuruStaf::class, 'wali_kelas_id');
+        return $this->belongsTo(\App\Models\GuruStaf::class, 'wali_kelas_id');
     }
-
     public function jurusan(): BelongsTo
     {
-        return $this->belongsTo(Jurusan::class, 'jurusan_id');
+        return $this->belongsTo(\App\Models\Jurusan::class, 'jurusan_id');
     }
-
     public function tahunAjaran(): BelongsTo
     {
-        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id');
+        return $this->belongsTo(\App\Models\TahunAjaran::class, 'tahun_ajaran_id');
     }
-
     public function siswa(): HasMany
     {
-        return $this->hasMany(Siswa::class, 'kelas_id');
+        return $this->hasMany(\App\Models\Siswa::class, 'kelas_id');
     }
-    
     public function presensi(): HasMany
     {
-        return $this->hasMany(Presensi::class, 'kelas_id');
+        return $this->hasMany(\App\Models\Presensi::class, 'kelas_id');
     }
 }

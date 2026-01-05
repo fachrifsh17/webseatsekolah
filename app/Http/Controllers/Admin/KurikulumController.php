@@ -9,6 +9,7 @@ use App\Http\Requests\StoreKurikulumRequest;
 use App\Http\Requests\UpdateKurikulumRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Throwable;
 
@@ -47,6 +48,7 @@ class KurikulumController extends Controller
             return response()->json(new KurikulumResource($kurikulum), 201);
         } catch (Throwable $e) {
             DB::rollBack();
+            Log::error('Kurikulum store error: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
             if (!empty($validated['file_jadwal_path'] ?? null)) {
                 Storage::disk('public')->delete($validated['file_jadwal_path']);
             }
@@ -78,6 +80,7 @@ class KurikulumController extends Controller
             return response()->json(new KurikulumResource($kurikulum));
         } catch (Throwable $e) {
             DB::rollBack();
+            Log::error('Kurikulum update error: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
             if (!empty($validated['file_jadwal_path'] ?? null) && ($validated['file_jadwal_path'] !== $kurikulum->file_jadwal_path)) {
                 Storage::disk('public')->delete($validated['file_jadwal_path']);
             }
@@ -99,9 +102,14 @@ class KurikulumController extends Controller
             $kurikulum->delete();
             DB::commit();
 
-            return response()->json(null, 204);
+            return response()->json([
+                'success'      => true,
+                'message'      => 'Data kurikulum berhasil dihapus',
+                'notification' => 'Berhasil dihapus'
+            ], 200);
         } catch (Throwable $e) {
             DB::rollBack();
+            Log::error('Kurikulum destroy error: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus kurikulum'

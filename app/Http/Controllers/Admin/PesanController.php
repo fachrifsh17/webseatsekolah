@@ -47,6 +47,10 @@ class PesanController extends Controller
             $pesan->delete();
         });
 
-        return new JsonResponse(null, 204);
+        return new JsonResponse([
+            'success'      => true,
+            'message'      => 'Pesan berhasil dihapus',
+            'notification' => 'Berhasil dihapus'
+        ], 200);
     }
 }

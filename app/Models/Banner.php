@@ -19,17 +19,20 @@ class Banner extends Model
     ];
 
     protected $casts = [
-        'aktif_sampai' => 'datetime', 
+        'aktif_sampai' => 'date', // hanya tanggal
     ];
 
+    protected $appends = ['foto_url']; // otomatis ikut di JSON
+
     // Scope untuk banner aktif
-    public function scopeAktif($query)
+    public function scopeAktif($query, $date = null)
     {
-        return $query->where('aktif_sampai', '>=', now());
+        $date = $date ?? now();
+        return $query->where('aktif_sampai', '>=', $date);
     }
 
     // Accessor untuk foto_url
-    public function getFotoUrlAttribute()
+    public function getFotoUrlAttribute(): ?string
     {
         return $this->foto ? asset('storage/'.$this->foto) : null;
     }

@@ -58,6 +58,10 @@ class PengumumanController extends Controller
             $pengumuman->delete();
         });
 
-        return new JsonResponse(null, 204);
+        return new JsonResponse([
+            'success'      => true,
+            'message'      => 'Pengumuman berhasil dihapus',
+            'notification' => 'Berhasil dihapus'
+        ], 200);
     }
 }

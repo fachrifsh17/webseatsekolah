@@ -22,7 +22,12 @@ class GuruStaf extends Model
         'jabatan_fungsional',
         'status_kepegawaian',
         'foto',
-        'jurusan_id'
+        'jurusan_id',
+    ];
+
+    protected $casts = [
+        'user_id'    => 'integer',
+        'jurusan_id' => 'integer',
     ];
 
     public function user(): BelongsTo
@@ -37,26 +42,31 @@ class GuruStaf extends Model
 
     public function kelas(): HasOne
     {
-        return $this->hasOne(Kelas::class, 'wali_kelas_id');
+        return $this->hasOne(Kelas::class, 'wali_kelas_id', 'id');
     }
 
     public function guruMapel(): HasMany
     {
-        return $this->hasMany(GuruMapel::class, 'guru_staf_id');
+        return $this->hasMany(GuruMapel::class, 'guru_staf_id', 'id');
     }
 
     public function strukturJabatan(): HasMany
     {
-        return $this->hasMany(StrukturJabatan::class, 'guru_staf_id');
+        return $this->hasMany(StrukturJabatan::class, 'guru_staf_id', 'id');
     }
 
     public function presensi(): HasMany
     {
-        return $this->hasMany(Presensi::class, 'guru_id');
+        return $this->hasMany(Presensi::class, 'guru_id', 'id');
     }
 
     public function poinSiswa(): HasMany
     {
-        return $this->hasMany(PoinSiswa::class, 'guru_id');
+        return $this->hasMany(PoinSiswa::class, 'guru_id', 'id');
+    }
+
+    public function profilSekolah(): HasOne
+    {
+        return $this->hasOne(ProfilSekolah::class, 'guru_staf_id', 'id');
     }
 }

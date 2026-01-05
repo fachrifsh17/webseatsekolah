@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class StoreEkstrakurikulerRequest extends FormRequest
 {
@@ -58,5 +60,13 @@ class StoreEkstrakurikulerRequest extends FormRequest
             'foto'        => 'Foto',
             'keterangan'  => 'Keterangan',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => 'Validasi gagal',
+            'errors'  => $validator->errors()
+        ], 422));
     }
 }

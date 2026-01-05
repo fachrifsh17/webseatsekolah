@@ -2,28 +2,39 @@
 
 namespace App\Http\Resources;
 
-use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Carbon\Carbon;
 
 class BeritaResource extends JsonResource
 {
-    public function toArray(Request $request): array
+    public function toArray($request): array
     {
         return [
-            'id'                => $this->id,
-            'judul'             => $this->judul,
-            'isi_berita'        => $this->isi_berita,
-            'tanggal_publikasi' => $this->tanggal_publikasi,
-            'kategori_id'       => $this->kategori_id,
-            // Menampilkan data kategori secara langsung tanpa pengecekan load
-            'kategori'          => [
-                'id'   => $this->kategori->id ?? null,
-                'nama' => $this->kategori->nama_kategori ?? null,
-            ],
-            // Mengubah path foto menjadi URL lengkap
-            'foto'              => $this->foto ? asset('storage/' . $this->foto) : null,
-            'created_at'        => $this->created_at,
-            'updated_at'        => $this->updated_at,
+            'id' => $this->id,
+            'judul' => $this->judul,
+            'isi_berita' => $this->isi_berita,
+            'tanggal_publikasi' => $this->formatTanggalPublikasi(),
+            'foto' => $this->foto,
+            'created_at' => $this->created_at ? $this->created_at->toIso8601String() : null,
+            'updated_at' => $this->updated_at ? $this->updated_at->toIso8601String() : null,
         ];
+    }
+
+    protected function formatTanggalPublikasi(): ?string
+    {
+        $value = $this->tanggal_publikasi;
+
+        if (! $value) {
+            return null;
+        }
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d'); 
+        }
+        try {
+            $dt = Carbon::parse($value);
+            return $dt->format('Y-m-d');
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 }

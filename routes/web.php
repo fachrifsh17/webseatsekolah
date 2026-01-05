@@ -1,14 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-
-/*
-|--------------------------------------------------------------------------
-| API Routes - Sistem Informasi Sekolah Multi-Role
-|--------------------------------------------------------------------------
-*/
-
-// Import Controller Admin (Backend/Manajemen)
 use App\Http\Controllers\Admin\{
     AuthController,
     DashboardController,
@@ -35,47 +27,30 @@ use App\Http\Controllers\Admin\{
     UserController,
     LogAdminController,
     PesanController,
-    PresensiGuruMapelController
+    PresensiGuruMapelController,
+    KenaikanKelasController
 };
 
 /*
 |--------------------------------------------------------------------------
-| 1) PUBLIC ROUTES -> /api/public/...
+| PUBLIC ROUTES -> /api/public/...
 |--------------------------------------------------------------------------
 */
 Route::prefix('public')->group(function () {
-    Route::post('login', [AuthController::class, 'login']); // /api/public/login
-    // Tambahkan endpoint publik lain di sini (login-api, register, dsb) jika perlu
+    Route::post('login', [AuthController::class, 'login']);
 });
 
 /*
 |--------------------------------------------------------------------------
-| 2) PROTECTED ROUTES -> semua admin/manajemen di bawah /api/admin/...
-|    - auth.token dipakai untuk semua route yang butuh autentikasi
+| ADMIN ROUTES -> /api/admin/... (auth.token + role:Admin)
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth.token'])->group(function () {
+Route::prefix('admin')->middleware(['auth.token'])->group(function () {
+    Route::post('logout', [AuthController::class, 'logout']);
+    Route::get('dashboard', [DashboardController::class, 'index']);
+    Route::get('me', [AuthController::class, 'me']);
 
-    /*
-    |-----------------------------------------------------------------------
-    | Basic admin endpoints di /api/admin/...
-    |-----------------------------------------------------------------------
-    */
-    Route::prefix('admin')->group(function () {
-        Route::post('logout', [AuthController::class, 'logout']);        // /api/admin/logout
-        Route::get('dashboard', [DashboardController::class, 'index']);  // /api/admin/dashboard
-        Route::get('me', [AuthController::class, 'me']);                // /api/admin/me
-    });
-
-    /*
-    |-----------------------------------------------------------------------
-    | Akses penuh Admin
-    | Semua resource manajemen di /api/admin/...
-    |-----------------------------------------------------------------------
-    */
-    Route::prefix('admin')->middleware(['role:Admin'])->as('admin.')->group(function () {
-
-        // CRUD Resources
+    Route::middleware(['role:Admin'])->as('admin.')->group(function () {
         Route::apiResources([
             'berita'              => BeritaController::class,
             'pengumuman'          => PengumumanController::class,
@@ -97,45 +72,41 @@ Route::middleware(['auth.token'])->group(function () {
             'presensi-guru-mapel' => PresensiGuruMapelController::class,
         ]);
 
-        // Resource dengan parameter khusus
+        // Kenaikan Kelas Massal
+        Route::get('kenaikan-kelas', [KenaikanKelasController::class, 'index']);
+        Route::post('kenaikan-kelas/proses', [KenaikanKelasController::class, 'prosesMassal']);
+
         Route::apiResource('struktur', StrukturJabatanController::class)
             ->parameters(['struktur' => 'strukturJabatan']);
 
-        // Monitoring & Pesan
         Route::apiResource('log', LogAdminController::class)->only(['index', 'show']);
         Route::apiResource('pesan', PesanController::class)->only(['index', 'show', 'destroy']);
         Route::patch('pesan/{pesan}/status', [PesanController::class, 'updateStatus']);
 
-        // Data tunggal: profil & setting
+        // Profil Sekolah
         Route::get('profil', [ProfilSekolahController::class, 'index']);
         Route::put('profil', [ProfilSekolahController::class, 'update']);
 
+        // Setting
         Route::get('setting', [SettingController::class, 'index']);
         Route::put('setting/general', [SettingController::class, 'updateGeneral']);
         Route::put('setting/kontak', [SettingController::class, 'updateKontak']);
 
+        // Data Kontak
         Route::get('datakontak', [DataKontakController::class, 'index']);
         Route::put('datakontak', [DataKontakController::class, 'update']);
     });
 
     /*
-    |-----------------------------------------------------------------------
-    | Akses terbatas Guru
-    | Semua route guru berada di /api/admin/guru/...
-    |-----------------------------------------------------------------------
+    |--------------------------------------------------------------------------
+    | GURU ROUTES -> /api/admin/guru/... (auth.token + role:Guru)
+    |--------------------------------------------------------------------------
     */
-    Route::prefix('admin')->group(function () {
-        Route::prefix('guru')->middleware(['role:Guru'])->as('guru.')->group(function () {
-            // Guru boleh mengelola berita terbatas
-            Route::apiResource('berita', BeritaController::class)->only(['index', 'store', 'show', 'update']);
-
-            // Profil guru
-            Route::get('profil-saya', [UserController::class, 'show']);
-
-            // Presensi mapel
-            Route::post('input-presensi-mapel', [PresensiGuruMapelController::class, 'store']);
-            Route::get('riwayat-presensi', [PresensiGuruMapelController::class, 'index']);
-            Route::get('riwayat-presensi/{id}', [PresensiGuruMapelController::class, 'show']);
-        });
+    Route::prefix('guru')->middleware(['role:Guru'])->as('guru.')->group(function () {
+        Route::apiResource('berita', BeritaController::class)->only(['index', 'store', 'show', 'update']);
+        Route::get('profil-saya', [UserController::class, 'show']);
+        Route::post('input-presensi-mapel', [PresensiGuruMapelController::class, 'store']);
+        Route::get('riwayat-presensi', [PresensiGuruMapelController::class, 'index']);
+        Route::get('riwayat-presensi/{id}', [PresensiGuruMapelController::class, 'show']);
     });
 });

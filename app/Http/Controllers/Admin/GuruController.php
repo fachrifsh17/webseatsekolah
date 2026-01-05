@@ -25,13 +25,20 @@ class GuruController extends Controller
     public function index(): JsonResponse
     {
         $data = GuruStaf::with(['jurusan', 'user'])->paginate(12);
-        return new JsonResponse(GuruResource::collection($data));
+        return GuruResource::collection($data)->response();
     }
 
-    public function show(GuruStaf $guru): JsonResponse
+    public function show(?GuruStaf $guru): JsonResponse
     {
+        if (!$guru) {
+            return response()->json([
+                'message' => 'Data guru tidak ditemukan',
+                'errors'  => ['id' => ['Guru dengan ID tersebut tidak ada']]
+            ], 404);
+        }
+
         $guru->load(['jurusan', 'user']);
-        return new JsonResponse(new GuruResource($guru));
+        return response()->json(new GuruResource($guru));
     }
 
     public function store(StoreGuruRequest $request): JsonResponse
@@ -46,25 +53,41 @@ class GuruController extends Controller
             $validated['user_id'] = Auth::id();
         }
 
-        try {
-            $guru = DB::transaction(function () use ($validated) {
-                return GuruStaf::create($validated);
-            });
+        foreach (['nip', 'nuptk', 'user_id'] as $field) {
+            if (!empty($validated[$field]) && GuruStaf::where($field, $validated[$field])->exists()) {
+                if (!empty($validated['foto'])) {
+                    Storage::disk('public')->delete($validated['foto']);
+                }
+                return response()->json([
+                    'message' => strtoupper($field) . ' sudah terdaftar.',
+                    'errors'  => [$field => [strtoupper($field) . ' sudah terdaftar.']]
+                ], 409);
+            }
+        }
 
-            return new JsonResponse(new GuruResource($guru->load(['jurusan', 'user'])));
+        try {
+            $guru = DB::transaction(fn() => GuruStaf::create($validated));
+            return response()->json(new GuruResource($guru->load(['jurusan', 'user'])), 201);
         } catch (Throwable $e) {
             if (!empty($validated['foto'] ?? null)) {
                 Storage::disk('public')->delete($validated['foto']);
             }
-            return new JsonResponse([
-                'success' => false,
-                'message' => 'Gagal membuat data guru'
+            return response()->json([
+                'message' => 'Gagal membuat data guru',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], 500);
         }
     }
 
-    public function update(UpdateGuruRequest $request, GuruStaf $guru): JsonResponse
+    public function update(UpdateGuruRequest $request, ?GuruStaf $guru): JsonResponse
     {
+        if (!$guru) {
+            return response()->json([
+                'message' => 'Data guru tidak ditemukan',
+                'errors'  => ['id' => ['Guru dengan ID tersebut tidak ada']]
+            ], 404);
+        }
+
         $validated = $request->validated();
         $oldFoto = $guru->foto;
 
@@ -72,45 +95,75 @@ class GuruController extends Controller
             $validated['foto'] = $request->file('foto')->store('uploads/guru', 'public');
         }
 
-        try {
-            DB::transaction(function () use ($guru, $validated) {
-                $guru->update($validated);
-            });
+        if ($request->filled('foto') && $request->foto === 'null') {
+            if ($oldFoto) {
+                Storage::disk('public')->delete($oldFoto);
+            }
+            $validated['foto'] = null;
+        }
 
-            if (!empty($validated['foto']) && $oldFoto) {
+        foreach (['nip', 'nuptk', 'user_id'] as $field) {
+            if (!empty($validated[$field]) &&
+                GuruStaf::where($field, $validated[$field])
+                    ->where('id', '<>', $guru->id)
+                    ->exists()) {
+                if (!empty($validated['foto']) && $validated['foto'] !== $oldFoto) {
+                    Storage::disk('public')->delete($validated['foto']);
+                }
+                return response()->json([
+                    'message' => strtoupper($field) . ' sudah terdaftar.',
+                    'errors'  => [$field => [strtoupper($field) . ' sudah terdaftar.']]
+                ], 409);
+            }
+        }
+
+        try {
+            DB::transaction(fn() => $guru->update($validated));
+            $guru->refresh();
+
+            if (!empty($validated['foto']) && $oldFoto && $validated['foto'] !== $oldFoto) {
                 Storage::disk('public')->delete($oldFoto);
             }
 
-            return new JsonResponse(new GuruResource($guru->load(['jurusan', 'user'])));
+            return response()->json(new GuruResource($guru->load(['jurusan', 'user'])), 200);
         } catch (Throwable $e) {
-            if (!empty($validated['foto'] ?? null)) {
+            if (!empty($validated['foto'] ?? null) && $validated['foto'] !== $oldFoto) {
                 Storage::disk('public')->delete($validated['foto']);
             }
-            return new JsonResponse([
-                'success' => false,
-                'message' => 'Gagal memperbarui data guru'
+            return response()->json([
+                'message' => 'Gagal memperbarui data guru',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], 500);
         }
     }
 
-    public function destroy(GuruStaf $guru): JsonResponse
+    public function destroy(?GuruStaf $guru): JsonResponse
     {
+        if (!$guru) {
+            return response()->json([
+                'message' => 'Data guru tidak ditemukan',
+                'errors'  => ['id' => ['Guru dengan ID tersebut tidak ada']]
+            ], 404);
+        }
+
         $oldFoto = $guru->foto;
 
         try {
-            DB::transaction(function () use ($guru) {
-                $guru->delete();
-            });
+            DB::transaction(fn() => $guru->delete());
 
             if ($oldFoto) {
                 Storage::disk('public')->delete($oldFoto);
             }
 
-            return new JsonResponse(null, 204);
+            return response()->json([
+                'success'      => true,
+                'message'      => 'Data guru berhasil dihapus',
+                'notification' => 'Berhasil dihapus'
+            ], 200);
         } catch (Throwable $e) {
-            return new JsonResponse([
-                'success' => false,
-                'message' => 'Gagal menghapus data guru'
+            return response()->json([
+                'message' => 'Gagal menghapus data guru',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], 500);
         }
     }

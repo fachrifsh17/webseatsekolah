@@ -9,7 +9,7 @@ class UpdateTahunAjaranRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return Auth::check() && Auth::user()->role === 'admin';
+        return true;
     }
 
     public function rules(): array

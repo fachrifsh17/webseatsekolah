@@ -14,7 +14,7 @@ class UpdateJurusanRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama_jurusan' => ['sometimes', 'required', 'string', 'max:100'],
+            'nama_jurusan' => ['required', 'string', 'max:100'],
             'deskripsi'    => ['nullable', 'string'],
             'foto'         => ['nullable', 'file', 'image', 'max:5120'],
         ];
@@ -26,12 +26,10 @@ class UpdateJurusanRequest extends FormRequest
             'nama_jurusan.required' => 'Nama jurusan wajib diisi.',
             'nama_jurusan.string'   => 'Nama jurusan harus berupa teks.',
             'nama_jurusan.max'      => 'Nama jurusan tidak boleh lebih dari 100 karakter.',
-
-            'deskripsi.string' => 'Deskripsi harus berupa teks.',
-
-            'foto.file'  => 'Foto harus berupa file.',
-            'foto.image' => 'Foto harus berupa gambar.',
-            'foto.max'   => 'Ukuran foto maksimal 5MB.',
+            'deskripsi.string'      => 'Deskripsi harus berupa teks.',
+            'foto.file'             => 'Foto harus berupa file.',
+            'foto.image'            => 'Foto harus berupa gambar.',
+            'foto.max'              => 'Ukuran foto maksimal 5MB.',
         ];
     }
 
@@ -44,3 +42,4 @@ class UpdateJurusanRequest extends FormRequest
         ];
     }
 }
+    

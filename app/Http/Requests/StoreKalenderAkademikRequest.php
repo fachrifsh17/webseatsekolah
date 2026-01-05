@@ -17,7 +17,7 @@ class StoreKalenderAkademikRequest extends FormRequest
             'kegiatan'        => ['required', 'string', 'max:255'],
             'tanggal_mulai'   => ['required', 'date'],
             'tanggal_selesai' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
-            'kategori'        => ['required', 'string', 'max:50'],
+            'kategori'        => ['required', 'in:Akademik,Libur,Ujian,Event'],
         ];
     }
 
@@ -31,9 +31,8 @@ class StoreKalenderAkademikRequest extends FormRequest
             'tanggal_mulai.date'             => 'Format tanggal mulai tidak valid.',
             'tanggal_selesai.date'           => 'Tanggal selesai harus berupa format tanggal yang valid.',
             'tanggal_selesai.after_or_equal' => 'Tanggal selesai tidak boleh mendahului tanggal mulai.',
-            'kategori.required'              => 'Kategori kegiatan (misal: Libur, Ujian, Event) wajib dipilih.',
-            'kategori.string'                => 'Kategori kegiatan harus berupa teks.',
-            'kategori.max'                   => 'Kategori kegiatan tidak boleh lebih dari 50 karakter.',
+            'kategori.required'              => 'Kategori kegiatan wajib dipilih.',
+            'kategori.in'                    => 'Kategori harus salah satu dari: Akademik, Libur, Ujian, Event.',
         ];
     }
 

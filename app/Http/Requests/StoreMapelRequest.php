@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class StoreMapelRequest extends FormRequest
 {
@@ -14,10 +16,10 @@ class StoreMapelRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama_mapel'     => ['required', 'string', 'max:100'],
-            'jurusan_id'     => ['nullable', 'integer', 'exists:jurusan,id'],
-            'tipe_mapel'     => ['nullable', 'in:umum,khusus'],
-            'kategori_mapel' => ['nullable', 'in:normatif,adaptif,produktif'],
+            'nama_mapel'     => ['bail','required','string','max:100'],
+            'jurusan_id'     => ['nullable','integer','exists:jurusan,id'],
+            'tipe_mapel'     => ['nullable','in:umum,khusus'],
+            'kategori_mapel' => ['nullable','in:normatif,adaptif,produktif'],
         ];
     }
 
@@ -29,8 +31,8 @@ class StoreMapelRequest extends FormRequest
             'nama_mapel.max'      => 'Nama mata pelajaran tidak boleh lebih dari 100 karakter.',
             'jurusan_id.integer'  => 'Jurusan harus berupa angka.',
             'jurusan_id.exists'   => 'Jurusan yang dipilih tidak valid.',
-            'tipe_mapel.in'       => 'Tipe mapel harus berupa: umum atau khusus.',
-            'kategori_mapel.in'   => 'Kategori harus berupa: normatif, adaptif, atau produktif.',
+            'tipe_mapel.in'       => 'Tipe mata pelajaran harus berupa: umum atau khusus.',
+            'kategori_mapel.in'   => 'Kategori mata pelajaran harus berupa: normatif, adaptif, atau produktif.',
         ];
     }
 
@@ -42,5 +44,13 @@ class StoreMapelRequest extends FormRequest
             'tipe_mapel'     => 'Tipe mata pelajaran',
             'kategori_mapel' => 'Kategori mata pelajaran',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => 'Validasi gagal',
+            'errors'  => $validator->errors()
+        ], 422));
     }
 }

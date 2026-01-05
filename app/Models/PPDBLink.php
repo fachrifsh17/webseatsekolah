@@ -16,9 +16,7 @@ class PpdbLink extends Model
         'status_ppdb',
     ];
 
-    public $incrementing = false;
-    
     protected $casts = [
-        'status_ppdb' => 'boolean',
+        'updated_at' => 'datetime',
     ];
 }

@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\KalenderAkademik;
 use App\Http\Resources\KalenderAkademikResource;
-use App\Http\Requests\StoreKalenderRequest;
-use App\Http\Requests\UpdateKalenderRequest;
+use App\Http\Requests\StoreKalenderAkademikRequest;
+use App\Http\Requests\UpdateKalenderAkademikRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 
@@ -30,34 +30,32 @@ class KalenderController extends Controller
         return response()->json(new KalenderAkademikResource($kalender));
     }
 
-    public function store(StoreKalenderRequest $request): JsonResponse
+    public function store(StoreKalenderAkademikRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        DB::beginTransaction();
-        $item = KalenderAkademik::create($validated);
-        DB::commit();
+        $item = DB::transaction(fn () => KalenderAkademik::create($validated));
 
         return response()->json(new KalenderAkademikResource($item), 201);
     }
 
-    public function update(UpdateKalenderRequest $request, KalenderAkademik $kalender): JsonResponse
+    public function update(UpdateKalenderAkademikRequest $request, KalenderAkademik $kalender): JsonResponse
     {
         $validated = $request->validated();
 
-        DB::beginTransaction();
-        $kalender->update($validated);
-        DB::commit();
+        DB::transaction(fn () => $kalender->update($validated));
 
         return response()->json(new KalenderAkademikResource($kalender));
     }
 
     public function destroy(KalenderAkademik $kalender): JsonResponse
     {
-        DB::beginTransaction();
-        $kalender->delete();
-        DB::commit();
+        DB::transaction(fn () => $kalender->delete());
 
-        return response()->json(null, 204);
+        return response()->json([
+            'success'      => true,
+            'message'      => 'Data kalender akademik berhasil dihapus',
+            'notification' => 'Berhasil dihapus'
+        ], 200);
     }
 }

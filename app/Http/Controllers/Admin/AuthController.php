@@ -9,6 +9,8 @@ use App\Models\AuthToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
 use App\Http\Resources\UserResource;
+use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
@@ -23,22 +25,17 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => new UserResource($user)
-        ]);
+            'data' => new UserResource($user->load(['roles', 'guru', 'siswa', 'orangtua']))
+        ], Response::HTTP_OK);
     }
 
     public function refresh(Request $request): JsonResponse
     {
-        $refreshToken = $request->input('refresh_token');
+        $request->validate([
+            'refresh_token' => 'required|string',
+        ]);
 
-        if (!$refreshToken) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Refresh token diperlukan.'
-            ], 400);
-        }
-
-        $hash = hash('sha256', $refreshToken);
+        $hash = hash('sha256', $request->input('refresh_token'));
 
         $tokenRecord = AuthToken::where('refresh_token', $hash)
             ->where('refresh_expires_at', '>', now())
@@ -49,7 +46,7 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Refresh token tidak valid atau sudah kadaluwarsa.'
-            ], 401);
+            ], Response::HTTP_UNAUTHORIZED);
         }
 
         $newAccessToken = Str::random(80);
@@ -59,11 +56,14 @@ class AuthController extends Controller
             'expires_at' => now()->addHour()
         ]);
 
+        Log::info('Access token refreshed', ['auth_token_id' => $tokenRecord->id, 'user_id' => $tokenRecord->user_id]);
+
         return response()->json([
             'success' => true,
             'access_token' => $newAccessToken,
-            'token_type' => 'Bearer'
-        ]);
+            'token_type' => 'Bearer',
+            'expires_in' => 3600
+        ], Response::HTTP_OK);
     }
 
     public function logout(Request $request): JsonResponse
@@ -74,7 +74,7 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Token tidak ditemukan pada header Authorization.'
-            ], 400);
+            ], Response::HTTP_BAD_REQUEST);
         }
 
         $hash = hash('sha256', $token);
@@ -87,7 +87,7 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Token tidak valid atau sudah dicabut.'
-            ], 400);
+            ], Response::HTTP_BAD_REQUEST);
         }
 
         Auth::logout();
@@ -95,6 +95,6 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Berhasil logout, token telah dicabut.'
-        ]);
+        ], Response::HTTP_OK);
     }
 }

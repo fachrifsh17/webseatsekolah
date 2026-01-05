@@ -23,12 +23,25 @@ class FasilitasController extends Controller
     public function index(): JsonResponse
     {
         $data = Fasilitas::paginate(12);
-        return new JsonResponse(FasilitasResource::collection($data));
+
+        return response()->json([
+            'success' => true,
+            'data'    => FasilitasResource::collection($data),
+            'meta'    => [
+                'current_page' => $data->currentPage(),
+                'last_page'    => $data->lastPage(),
+                'per_page'     => $data->perPage(),
+                'total'        => $data->total(),
+            ],
+        ]);
     }
     
     public function show(Fasilitas $fasilitas): JsonResponse
     {
-        return new JsonResponse(new FasilitasResource($fasilitas));
+        return response()->json([
+            'success' => true,
+            'data'    => new FasilitasResource($fasilitas),
+        ]);
     }
 
     public function store(StoreFasilitasRequest $request): JsonResponse
@@ -42,14 +55,18 @@ class FasilitasController extends Controller
 
             $fasilitas = Fasilitas::create($validated);
 
-            return new JsonResponse(new FasilitasResource($fasilitas), 201);
+            return response()->json([
+                'success' => true,
+                'message' => 'Fasilitas berhasil ditambahkan.',
+                'data'    => new FasilitasResource($fasilitas),
+            ], 201);
         } catch (Throwable $e) {
             if (!empty($validated['foto'] ?? null)) {
                 Storage::disk('public')->delete($validated['foto']);
             }
-            return new JsonResponse([
+            return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan fasilitas'
+                'message' => 'Gagal menambahkan fasilitas.',
             ], 500);
         }
     }
@@ -68,14 +85,18 @@ class FasilitasController extends Controller
 
             $fasilitas->update($validated);
 
-            return new JsonResponse(new FasilitasResource($fasilitas));
+            return response()->json([
+                'success' => true,
+                'message' => 'Fasilitas berhasil diperbarui.',
+                'data'    => new FasilitasResource($fasilitas),
+            ]);
         } catch (Throwable $e) {
             if (!empty($validated['foto'] ?? null)) {
                 Storage::disk('public')->delete($validated['foto']);
             }
-            return new JsonResponse([
+            return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui fasilitas'
+                'message' => 'Gagal memperbarui fasilitas.',
             ], 500);
         }
     }
@@ -89,11 +110,14 @@ class FasilitasController extends Controller
 
             $fasilitas->delete();
 
-            return new JsonResponse(null, 204);
+            return response()->json([
+                'success' => true,
+                'message' => 'Fasilitas berhasil dihapus.'
+            ], 200);
         } catch (Throwable $e) {
-            return new JsonResponse([
+            return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus fasilitas'
+                'message' => 'Gagal menghapus fasilitas.',
             ], 500);
         }
     }

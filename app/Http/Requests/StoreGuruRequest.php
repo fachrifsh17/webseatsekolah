@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class StoreGuruRequest extends FormRequest
 {
@@ -14,15 +16,24 @@ class StoreGuruRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id'            => 'required|integer|exists:users,id|unique:guru_staf,user_id',
-            'nip'                => 'nullable|string|max:18|unique:guru_staf,nip',
-            'nuptk'              => 'nullable|string|max:16|unique:guru_staf,nuptk',
-            'nama'               => 'required|string|max:100',
-            'jabatan_fungsional' => 'nullable|string|max:100',
-            'status_kepegawaian' => 'nullable|string|max:50',
-            'foto'               => 'nullable|file|image|max:5120',
-            'jurusan_id'         => 'nullable|integer|exists:jurusan,id',
+            'user_id'            => ['bail','required','integer','exists:users,id'],
+            'nip'                => ['nullable','string','max:18'],
+            'nuptk'              => ['nullable','string','max:16'],
+            'nama'               => ['required','string','max:100'],
+            'jabatan_fungsional' => ['nullable','string','max:100'],
+            'status_kepegawaian' => ['nullable','string','max:50'],
+            'foto'               => ['nullable','file','image','mimes:jpg,jpeg,png','max:5120'],
+            'jurusan_id'         => ['nullable','integer','exists:jurusan,id'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'nip'   => $this->filled('nip') ? trim($this->nip) : null,
+            'nuptk' => $this->filled('nuptk') ? trim($this->nuptk) : null,
+            'nama'  => $this->filled('nama') ? trim($this->nama) : null,
+        ]);
     }
 
     public function messages(): array
@@ -31,22 +42,28 @@ class StoreGuruRequest extends FormRequest
             'user_id.required' => 'User wajib dipilih.',
             'user_id.integer'  => 'User harus berupa angka.',
             'user_id.exists'   => 'User tidak ditemukan.',
-            'user_id.unique'   => 'User sudah terdaftar sebagai guru/staf.',
-            'nip.string'       => 'NIP harus berupa teks.',
-            'nip.max'          => 'NIP tidak boleh lebih dari 18 karakter.',
-            'nip.unique'       => 'NIP sudah terdaftar.',
-            'nuptk.string'     => 'NUPTK harus berupa teks.',
-            'nuptk.max'        => 'NUPTK tidak boleh lebih dari 16 karakter.',
-            'nuptk.unique'     => 'NUPTK sudah terdaftar.',
-            'nama.required'    => 'Nama guru wajib diisi.',
-            'nama.string'      => 'Nama guru harus berupa teks.',
-            'nama.max'         => 'Nama guru tidak boleh lebih dari 100 karakter.',
+
+            'nip.string' => 'NIP harus berupa teks.',
+            'nip.max'    => 'NIP tidak boleh lebih dari 18 karakter.',
+
+            'nuptk.string' => 'NUPTK harus berupa teks.',
+            'nuptk.max'    => 'NUPTK tidak boleh lebih dari 16 karakter.',
+
+            'nama.required' => 'Nama guru wajib diisi.',
+            'nama.string'   => 'Nama guru harus berupa teks.',
+            'nama.max'      => 'Nama guru tidak boleh lebih dari 100 karakter.',
+
             'jabatan_fungsional.string' => 'Jabatan fungsional harus berupa teks.',
             'jabatan_fungsional.max'    => 'Jabatan fungsional tidak boleh lebih dari 100 karakter.',
+
             'status_kepegawaian.string' => 'Status kepegawaian harus berupa teks.',
             'status_kepegawaian.max'    => 'Status kepegawaian tidak boleh lebih dari 50 karakter.',
-            'foto.image'       => 'File harus berupa gambar.',
-            'foto.max'         => 'Ukuran foto maksimal adalah 5MB.',
+
+            'foto.file'  => 'File harus berupa berkas.',
+            'foto.image' => 'File harus berupa gambar.',
+            'foto.mimes' => 'Format foto harus jpg, jpeg, atau png.',
+            'foto.max'   => 'Ukuran foto maksimal adalah 5MB.',
+
             'jurusan_id.integer' => 'Jurusan harus berupa angka.',
             'jurusan_id.exists'  => 'Jurusan yang dipilih tidak ditemukan.',
         ];
@@ -64,5 +81,13 @@ class StoreGuruRequest extends FormRequest
             'foto'               => 'Foto',
             'jurusan_id'         => 'Jurusan',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => 'Validasi gagal',
+            'errors'  => $validator->errors()
+        ], 422));
     }
 }
