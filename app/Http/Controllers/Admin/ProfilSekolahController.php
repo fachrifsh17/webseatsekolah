@@ -8,7 +8,9 @@ use App\Http\Resources\ProfilSekolahResource;
 use App\Http\Requests\UpdateProfilSekolahRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class ProfilSekolahController extends Controller
 {
@@ -46,16 +48,20 @@ class ProfilSekolahController extends Controller
                 'message'      => 'Profil sekolah berhasil diperbarui',
                 'notification' => 'Berhasil diperbarui',
                 'data'         => new ProfilSekolahResource($profil->fresh(['guruStaf'])),
-            ], 200);
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
+            Log::error('Failed to update profil sekolah', [
+                'payload' => $validated,
+                'error'   => $e->getMessage()
+            ]);
 
             return response()->json([
                 'success'      => false,
                 'message'      => 'Gagal menyimpan profil sekolah',
                 'notification' => 'Gagal menyimpan',
-                'error'        => $e->getMessage(),
-            ], 500);
+                'errors'       => ['exception' => [$e->getMessage()]],
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -74,16 +80,19 @@ class ProfilSekolahController extends Controller
                 'success'      => true,
                 'message'      => 'Profil sekolah berhasil dihapus',
                 'notification' => 'Berhasil dihapus',
-            ], 200);
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
+            Log::error('Failed to delete profil sekolah', [
+                'error' => $e->getMessage()
+            ]);
 
             return response()->json([
                 'success'      => false,
                 'message'      => 'Gagal menghapus profil sekolah',
-                'notification' => 'Gagal menghapus',
-                'error'        => $e->getMessage(),
-            ], 500);
+                'notification' => 'Gagal dihapus',
+                'errors'       => ['exception' => [$e->getMessage()]],
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

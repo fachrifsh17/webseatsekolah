@@ -8,6 +8,10 @@ use App\Http\Requests\StoreTahunAjaranRequest;
 use App\Http\Requests\UpdateTahunAjaranRequest;
 use App\Http\Resources\TahunAjaranResource;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class TahunAjaranController extends Controller
 {
@@ -20,61 +24,115 @@ class TahunAjaranController extends Controller
 
     public function index(): JsonResponse
     {
-        $tahunAjaran = TahunAjaran::orderBy('nama', 'desc')->get();
-        return new JsonResponse(TahunAjaranResource::collection($tahunAjaran));
+        try {
+            $tahunAjaran = TahunAjaran::orderBy('nama', 'desc')->get();
+
+            return response()->json([
+                'success' => true,
+                'data'    => TahunAjaranResource::collection($tahunAjaran),
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch tahun ajaran', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil daftar tahun ajaran',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function store(StoreTahunAjaranRequest $request): JsonResponse
     {
-        if ($request->aktif) {
-            TahunAjaran::where('aktif', true)->update(['aktif' => false]);
+        try {
+            $tahunAjaran = DB::transaction(function () use ($request) {
+                if ($request->aktif) {
+                    TahunAjaran::where('aktif', true)->update(['aktif' => false]);
+                }
+                return TahunAjaran::create($request->validated());
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Tahun ajaran berhasil ditambahkan.',
+                'data'    => new TahunAjaranResource($tahunAjaran)
+            ], Response::HTTP_CREATED);
+        } catch (Throwable $e) {
+            Log::error('Failed to create tahun ajaran', ['payload' => $request->validated(), 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menambahkan tahun ajaran',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        $tahunAjaran = TahunAjaran::create($request->validated());
-
-        return new JsonResponse([
-            'success' => true,
-            'message' => 'Tahun ajaran berhasil ditambahkan.',
-            'data'    => new TahunAjaranResource($tahunAjaran)
-        ], 201);
     }
 
     public function show(TahunAjaran $tahunAjaran): JsonResponse
     {
-        return new JsonResponse(new TahunAjaranResource($tahunAjaran));
+        try {
+            return response()->json([
+                'success' => true,
+                'data'    => new TahunAjaranResource($tahunAjaran),
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch tahun ajaran detail', ['tahun_ajaran_id' => (string) $tahunAjaran->id, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil detail tahun ajaran',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function update(UpdateTahunAjaranRequest $request, TahunAjaran $tahunAjaran): JsonResponse
     {
-        if ($request->aktif) {
-            TahunAjaran::where('id', '!=', $tahunAjaran->id)
-                ->where('aktif', true)
-                ->update(['aktif' => false]);
+        try {
+            DB::transaction(function () use ($request, $tahunAjaran) {
+                if ($request->aktif) {
+                    TahunAjaran::where('id', '!=', (string) $tahunAjaran->id)
+                        ->where('aktif', true)
+                        ->update(['aktif' => false]);
+                }
+                $tahunAjaran->update($request->validated());
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Tahun ajaran berhasil diperbarui.',
+                'data'    => new TahunAjaranResource($tahunAjaran->refresh())
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to update tahun ajaran', ['tahun_ajaran_id' => (string) $tahunAjaran->id, 'payload' => $request->validated(), 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui tahun ajaran',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        $tahunAjaran->update($request->validated());
-
-        return new JsonResponse([
-            'success' => true,
-            'message' => 'Tahun ajaran berhasil diperbarui.',
-            'data'    => new TahunAjaranResource($tahunAjaran)
-        ]);
     }
 
     public function destroy(TahunAjaran $tahunAjaran): JsonResponse
     {
         if ($tahunAjaran->kelas()->count() > 0) {
-            return new JsonResponse([
+            return response()->json([
                 'success' => false,
                 'message' => 'Tidak dapat menghapus tahun ajaran yang masih memiliki data kelas.'
-            ], 422);
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $tahunAjaran->delete();
+        try {
+            DB::transaction(fn() => $tahunAjaran->delete());
 
-        return new JsonResponse([
-            'success' => true,
-            'message' => 'Tahun ajaran berhasil dihapus.'
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Tahun ajaran berhasil dihapus.'
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to delete tahun ajaran', ['tahun_ajaran_id' => (string) $tahunAjaran->id, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus tahun ajaran',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 }

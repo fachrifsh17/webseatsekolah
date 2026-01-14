@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\JamSekolah;
+use App\Models\TahunAjaran;
 use App\Http\Resources\JamSekolahResource;
 use App\Http\Requests\UpdateJamSekolahRequest;
 use Illuminate\Support\Facades\Storage;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class JamSekolahController extends Controller
 {
@@ -25,19 +27,23 @@ class JamSekolahController extends Controller
     {
         $validated = $request->validated();
 
+        $tahunAktif = TahunAjaran::where('is_active', true)->first();
+
+        if (!$tahunAktif) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal: Tidak ada Tahun Ajaran yang aktif (is_active = true).'
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        $validated['tahun_ajaran_id'] = $tahunAktif->id;
+
         $fileKey = $request->hasFile('file_path') ? 'file_path' : ($request->hasFile('file') ? 'file' : null);
         if ($fileKey) {
             $newPath = $request->file($fileKey)->store('jam_sekolah', 'public');
             if ($newPath) {
                 $validated['file_path'] = $newPath;
             }
-        }
-
-        if (empty($validated)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tidak ada data untuk diperbarui.'
-            ], 422);
         }
 
         DB::beginTransaction();
@@ -49,9 +55,9 @@ class JamSekolahController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Jadwal jam sekolah berhasil dibuat.',
+                    'message' => 'Jadwal jam sekolah berhasil dibuat otomatis untuk tahun aktif.',
                     'data'    => new JamSekolahResource($jamSekolah)
-                ], 201);
+                ], Response::HTTP_CREATED);
             }
 
             $oldPath = $jamSekolah->file_path;
@@ -67,7 +73,7 @@ class JamSekolahController extends Controller
                 'success' => true,
                 'message' => 'Jadwal jam sekolah berhasil diperbarui.',
                 'data'    => new JamSekolahResource($jamSekolah)
-            ], 200);
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
 
@@ -75,12 +81,16 @@ class JamSekolahController extends Controller
                 Storage::disk('public')->delete($validated['file_path']);
             }
 
-            Log::error('JamSekolah upsert error: '.$e->getMessage(), ['exception' => $e]);
+            Log::error('JamSekolah upsert error', [
+                'jam_sekolah_id' => $jamSekolah ? (string) $jamSekolah->id : null,
+                'error'          => $e->getMessage()
+            ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memproses jadwal jam sekolah.'
-            ], 500);
+                'message' => 'Gagal memproses jadwal jam sekolah.',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

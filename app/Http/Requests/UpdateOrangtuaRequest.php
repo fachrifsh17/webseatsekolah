@@ -4,58 +4,86 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Symfony\Component\HttpFoundation\Response;
 
 class UpdateOrangtuaRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return Auth::check() && (Auth::user()->role === 'admin' || Auth::user()->role === 'guru');
+        return true;
     }
 
     public function rules(): array
     {
-        $id = $this->route('orangtua');
+        $orangtuaId = $this->route('orangtua') instanceof \App\Models\Orangtua
+            ? $this->route('orangtua')->id
+            : $this->route('orangtua');
 
         return [
-            'user_id'   => ['sometimes', 'required', 'exists:users,id', 'unique:orangtua,user_id,' . $id],
-            'nama_ayah' => ['sometimes', 'required', 'string', 'max:150'],
-            'nama_ibu'  => ['sometimes', 'required', 'string', 'max:150'],
-            'no_hp'     => ['sometimes', 'required', 'string', 'max:15'],
-            'alamat'    => ['nullable', 'string'],
+            'user_id'       => ['sometimes','required','string','exists:users,id','unique:orangtua,user_id,'.$orangtuaId],
+            'nama_lengkap'  => ['sometimes','required','string','max:150'],
+            'telepon'       => ['sometimes','required','string','max:15'],
+            'is_active'     => ['nullable','integer','in:0,1'],
+
+            'anak'                => ['nullable','array'],
+            'anak.*.siswa_id'     => ['required','string','exists:siswa,id'],
+            'anak.*.hubungan'     => ['nullable','in:ayah,ibu,wali'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'nama_lengkap' => $this->filled('nama_lengkap') ? trim($this->nama_lengkap) : null,
+            'telepon'      => $this->filled('telepon') ? trim($this->telepon) : null,
+        ]);
     }
 
     public function messages(): array
     {
         return [
-            'user_id.required' => 'User ID wajib diisi.',
-            'user_id.exists'   => 'User ID tidak ditemukan.',
-            'user_id.unique'   => 'Akun ini sudah digunakan oleh data orang tua lain.',
+            'user_id.required'          => 'Akun pengguna wajib dihubungkan.',
+            'user_id.string'            => 'User harus berupa ID string.',
+            'user_id.exists'            => 'User tidak ditemukan.',
+            'user_id.unique'            => 'Akun ini sudah digunakan oleh orang tua lain.',
 
-            'nama_ayah.required' => 'Nama ayah wajib diisi.',
-            'nama_ayah.string'   => 'Nama ayah harus berupa teks.',
-            'nama_ayah.max'      => 'Nama ayah tidak boleh lebih dari 150 karakter.',
+            'nama_lengkap.required'     => 'Nama lengkap wajib diisi.',
+            'nama_lengkap.max'          => 'Nama lengkap tidak boleh lebih dari 150 karakter.',
 
-            'nama_ibu.required' => 'Nama ibu wajib diisi.',
-            'nama_ibu.string'   => 'Nama ibu harus berupa teks.',
-            'nama_ibu.max'      => 'Nama ibu tidak boleh lebih dari 150 karakter.',
+            'telepon.required'          => 'Nomor telepon wajib diisi.',
+            'telepon.max'               => 'Nomor telepon maksimal 15 karakter.',
 
-            'no_hp.required' => 'Nomor HP wajib diisi.',
-            'no_hp.string'   => 'Nomor HP harus berupa teks.',
-            'no_hp.max'      => 'Nomor HP maksimal 15 karakter.',
+            'is_active.integer'         => 'Status aktif harus berupa angka.',
+            'is_active.in'              => 'Status aktif tidak valid. Gunakan 0 atau 1.',
 
-            'alamat.string' => 'Alamat harus berupa teks.',
+            'anak.array'                => 'Format data anak tidak valid.',
+            'anak.*.siswa_id.required'  => 'Siswa wajib dipilih.',
+            'anak.*.siswa_id.string'    => 'Siswa harus berupa ID string.',
+            'anak.*.siswa_id.exists'    => 'Data siswa tidak ditemukan.',
+            'anak.*.hubungan.in'        => 'Hubungan harus ayah, ibu, atau wali.',
         ];
     }
 
     public function attributes(): array
     {
         return [
-            'user_id'   => 'User ID',
-            'nama_ayah' => 'Nama ayah',
-            'nama_ibu'  => 'Nama ibu',
-            'no_hp'     => 'Nomor HP',
-            'alamat'    => 'Alamat',
+            'user_id'           => 'Akun pengguna',
+            'nama_lengkap'      => 'Nama lengkap',
+            'telepon'           => 'Telepon',
+            'is_active'         => 'Status Aktif',
+            'anak'              => 'Anak',
+            'anak.*.siswa_id'   => 'Siswa',
+            'anak.*.hubungan'   => 'Hubungan',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => 'Validasi gagal',
+            'errors'  => $validator->errors()
+        ], Response::HTTP_UNPROCESSABLE_ENTITY));
     }
 }

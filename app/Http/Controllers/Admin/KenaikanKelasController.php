@@ -9,6 +9,7 @@ use App\Http\Requests\KenaikanKelasRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class KenaikanKelasController extends Controller
 {
@@ -21,12 +22,13 @@ class KenaikanKelasController extends Controller
 
     public function index(): JsonResponse
     {
-        $data = Kelas::with(['jurusan', 'tahunAjaran'])->get(); 
-        
+        $data = Kelas::with(['jurusan', 'tahunAjaran'])->get();
+
         return response()->json([
+            'success' => true,
             'message' => 'Daftar kelas untuk pemetaan kenaikan',
             'data'    => $data
-        ]);
+        ], Response::HTTP_OK);
     }
 
     public function prosesMassal(KenaikanKelasRequest $request): JsonResponse
@@ -36,55 +38,56 @@ class KenaikanKelasController extends Controller
         $konflikKelas = [];
 
         try {
-            DB::beginTransaction();
+            DB::transaction(function () use ($validated, &$totalSiswaTerpindah, &$konflikKelas) {
+                foreach ($validated['mapping'] as $map) {
+                    $kelasLama = Kelas::find($map['kelas_lama_id']);
+                    $kelasBaru = Kelas::find($map['kelas_baru_id']);
 
-            foreach ($validated['mapping'] as $map) {
-                // 1. Cek apakah masih ada siswa aktif di kelas asal
-                $siswaAktif = Siswa::where('kelas_id', $map['kelas_lama_id'])
-                    ->where('status_aktif', '1')
-                    ->count();
+                    if (!$kelasLama || !$kelasBaru || $kelasLama->id === $kelasBaru->id) {
+                        $konflikKelas[] = "Mapping kelas tidak valid untuk ID {$map['kelas_lama_id']} → {$map['kelas_baru_id']}.";
+                        continue;
+                    }
 
-                // 2. Jika tidak ada siswa, tandai sebagai konflik/sudah diproses
-                if ($siswaAktif === 0) {
-                    $namaKelas = Kelas::find($map['kelas_lama_id'])->nama_kelas ?? 'ID ' . $map['kelas_lama_id'];
-                    $konflikKelas[] = "Kelas $namaKelas tidak memiliki siswa aktif untuk dipindahkan (mungkin sudah diproses).";
-                    continue;
+                    
+                    $siswaCount = Siswa::where('kelas_id', $kelasLama->id)->count();
+
+                    if ($siswaCount === 0) {
+                        $konflikKelas[] = "Kelas {$kelasLama->nama_kelas} tidak memiliki siswa untuk dipindahkan.";
+                        continue;
+                    }
+
+                
+                    $count = Siswa::where('kelas_id', $kelasLama->id)
+                        ->update(['kelas_id' => $kelasBaru->id]);
+
+                    $totalSiswaTerpindah += $count;
+
+                
+                    $kelasLama->is_active = false;
+                    $kelasLama->save();
                 }
 
-                // 3. Eksekusi pemindahan
-                $count = Siswa::where('kelas_id', $map['kelas_lama_id'])
-                    ->where('status_aktif', '1') 
-                    ->update(['kelas_id' => $map['kelas_baru_id']]);
-                
-                $totalSiswaTerpindah += $count;
-            }
-
-            // 4. Jika ada kelas yang konflik dan tidak ada siswa sama sekali yang pindah
-            if (count($konflikKelas) > 0 && $totalSiswaTerpindah === 0) {
-                DB::rollBack();
-                return response()->json([
-                    'message' => 'Konflik data terdeteksi',
-                    'errors'  => ['mapping' => $konflikKelas]
-                ], 409); // Status 409 Conflict
-            }
-
-            DB::commit();
+                if (count($konflikKelas) > 0 && $totalSiswaTerpindah === 0) {
+                    throw new \Exception('Konflik data terdeteksi, tidak ada siswa yang dipindahkan.');
+                }
+            });
 
             return response()->json([
+                'success' => true,
                 'message' => 'Proses kenaikan kelas selesai',
                 'detail'  => [
                     'total_siswa_dipindahkan' => $totalSiswaTerpindah,
                     'jumlah_kelas_diproses'   => count($validated['mapping']),
                     'peringatan_konflik'      => $konflikKelas
                 ]
-            ], 200);
+            ], Response::HTTP_OK);
 
         } catch (Throwable $e) {
-            DB::rollBack();
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal memproses kenaikan kelas',
                 'errors'  => ['exception' => [$e->getMessage()]]
-            ], 500);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

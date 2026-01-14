@@ -2,29 +2,28 @@
 
 namespace App\Http\Resources;
 
-// Asumsi Anda memiliki AlbumResource
-use App\Http\Resources\AlbumResource; 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 class MediaResource extends JsonResource
 {
-    public function toArray($request)
+    public function toArray($request): array
     {
-        $mediaUrl = $this->media_path ? asset('storage/' . $this->media_path) : null;
-        
         return [
-            'id' => $this->id,
-            'album_id' => $this->album_id,
-            'media_url' => $mediaUrl,
+            'id'          => $this->id,
+            'album_id'    => $this->album_id,
+            'media_url'   => $this->media_path ? Storage::url($this->media_path) : null,
             'jenis_media' => $this->jenis_media,
-            'keterangan' => $this->keterangan,
-            
+            'keterangan'  => $this->keterangan,
+
             // Relasi Album
-            'album' => new AlbumResource($this->whenLoaded('album')),
-            
+            'album'       => $this->whenLoaded('album', function () {
+                return new AlbumResource($this->album);
+            }),
+
             // Metadata
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'created_at'  => $this->created_at?->format('Y-m-d H:i:s'),
+            'updated_at'  => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 }

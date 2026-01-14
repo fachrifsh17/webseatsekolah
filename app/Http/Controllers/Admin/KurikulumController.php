@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class KurikulumController extends Controller
 {
@@ -24,13 +25,48 @@ class KurikulumController extends Controller
 
     public function index(): JsonResponse
     {
-        $data = Kurikulum::paginate(12);
-        return response()->json(KurikulumResource::collection($data));
+        try {
+            $perPage = min((int) request()->get('per_page', 12), 100);
+            $data    = Kurikulum::paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'data'    => KurikulumResource::collection($data),
+                'meta'    => [
+                    'current_page' => $data->currentPage(),
+                    'last_page'    => $data->lastPage(),
+                    'per_page'     => $data->perPage(),
+                    'total'        => $data->total(),
+                ],
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch kurikulum list', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil daftar kurikulum',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
     
     public function show(Kurikulum $kurikulum): JsonResponse
     {
-        return response()->json(new KurikulumResource($kurikulum));
+        try {
+            return response()->json([
+                'success' => true,
+                'data'    => new KurikulumResource($kurikulum),
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch kurikulum detail', [
+                'kurikulum_id' => (string) $kurikulum->id,
+                'error'        => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil detail kurikulum',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function store(StoreKurikulumRequest $request): JsonResponse
@@ -45,17 +81,23 @@ class KurikulumController extends Controller
         try {
             $kurikulum = Kurikulum::create($validated);
             DB::commit();
-            return response()->json(new KurikulumResource($kurikulum), 201);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Kurikulum berhasil ditambahkan.',
+                'data'    => new KurikulumResource($kurikulum),
+            ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Kurikulum store error: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            Log::error('Failed to create kurikulum', ['payload' => $validated, 'error' => $e->getMessage()]);
             if (!empty($validated['file_jadwal_path'] ?? null)) {
                 Storage::disk('public')->delete($validated['file_jadwal_path']);
             }
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat kurikulum'
-            ], 500);
+                'message' => 'Gagal membuat kurikulum',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -77,17 +119,27 @@ class KurikulumController extends Controller
         try {
             $kurikulum->update($validated);
             DB::commit();
-            return response()->json(new KurikulumResource($kurikulum));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Kurikulum berhasil diperbarui.',
+                'data'    => new KurikulumResource($kurikulum),
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Kurikulum update error: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            Log::error('Failed to update kurikulum', [
+                'kurikulum_id' => (string) $kurikulum->id,
+                'payload'      => $validated,
+                'error'        => $e->getMessage()
+            ]);
             if (!empty($validated['file_jadwal_path'] ?? null) && ($validated['file_jadwal_path'] !== $kurikulum->file_jadwal_path)) {
                 Storage::disk('public')->delete($validated['file_jadwal_path']);
             }
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui kurikulum'
-            ], 500);
+                'message' => 'Gagal memperbarui kurikulum',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -106,14 +158,19 @@ class KurikulumController extends Controller
                 'success'      => true,
                 'message'      => 'Data kurikulum berhasil dihapus',
                 'notification' => 'Berhasil dihapus'
-            ], 200);
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Kurikulum destroy error: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            Log::error('Failed to delete kurikulum', [
+                'kurikulum_id' => (string) $kurikulum->id,
+                'error'        => $e->getMessage()
+            ]);
             return response()->json([
-                'success' => false,
-                'message' => 'Gagal menghapus kurikulum'
-            ], 500);
+                'success'      => false,
+                'message'      => 'Gagal menghapus kurikulum',
+                'notification' => 'Gagal dihapus',
+                'errors'       => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

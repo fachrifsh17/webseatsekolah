@@ -11,12 +11,33 @@ class TahunAjaran extends Model
     use HasFactory;
 
     protected $table = 'tahun_ajaran';
+    protected $primaryKey = 'id';
+    public $incrementing = false;
+    protected $keyType = 'string';
 
     protected $fillable = [
+        'id',
         'nama',
         'semester',
-        'aktif'
+        'is_active'
     ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+    ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $lastId = static::max('id');
+                $num = $lastId ? (int) substr($lastId, 2) + 1 : 1;
+                $model->id = 'TA' . str_pad($num, 3, '0', STR_PAD_LEFT);
+            }
+        });
+    }
 
     public function kelas(): HasMany
     {

@@ -8,9 +8,10 @@ use App\Http\Resources\BeritaResource;
 use App\Http\Requests\StoreBeritaRequest;
 use App\Http\Requests\UpdateBeritaRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Throwable;
-use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\Response;
 
 class BeritaController extends Controller
 {
@@ -23,13 +24,48 @@ class BeritaController extends Controller
 
     public function index(): JsonResponse
     {
-        $berita = Berita::orderByDesc('tanggal_publikasi')->paginate(10);
-        return new JsonResponse(BeritaResource::collection($berita));
+        try {
+            $perPage = min((int) request()->get('per_page', 10), 100);
+            $berita  = Berita::orderByDesc('tanggal_publikasi')->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'data'    => BeritaResource::collection($berita),
+                'meta'    => [
+                    'current_page' => $berita->currentPage(),
+                    'last_page'    => $berita->lastPage(),
+                    'per_page'     => $berita->perPage(),
+                    'total'        => $berita->total(),
+                ],
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch berita list', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil daftar berita',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function show(Berita $berita): JsonResponse
     {
-        return new JsonResponse(new BeritaResource($berita));
+        try {
+            return response()->json([
+                'success' => true,
+                'data'    => new BeritaResource($berita),
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch berita detail', [
+                'berita_id' => (string) $berita->id,
+                'error'     => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil detail berita',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function store(StoreBeritaRequest $request): JsonResponse
@@ -41,19 +77,23 @@ class BeritaController extends Controller
                 $data['foto'] = $request->file('foto')->store('uploads/berita', 'public');
             }
 
-            $berita = Berita::create($data);
-            $berita->refresh();
+            $berita = Berita::create($data)->fresh();
 
-            return new JsonResponse(new BeritaResource($berita), 201);
+            return response()->json([
+                'success' => true,
+                'message' => 'Berita berhasil ditambahkan.',
+                'data'    => new BeritaResource($berita),
+            ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             if (!empty($data['foto'] ?? null)) {
                 Storage::disk('public')->delete($data['foto']);
             }
-            Log::error('Berita store error: '.$e->getMessage(), ['exception' => $e]);
-            return new JsonResponse([
+            Log::error('Failed to create berita', ['payload' => $data, 'error' => $e->getMessage()]);
+            return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan berita'
-            ], 500);
+                'message' => 'Gagal menambahkan berita',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -62,10 +102,10 @@ class BeritaController extends Controller
         $data = $request->validated();
 
         if (! $berita->exists) {
-            return new JsonResponse([
+            return response()->json([
                 'success' => false,
                 'message' => 'Berita tidak ditemukan'
-            ], 404);
+            ], Response::HTTP_NOT_FOUND);
         }
 
         try {
@@ -76,9 +116,7 @@ class BeritaController extends Controller
                 $data['foto'] = $request->file('foto')->store('uploads/berita', 'public');
             }
 
-            if (array_key_exists('id', $data)) {
-                unset($data['id']);
-            }
+            unset($data['id']); // pastikan id tidak ikut diupdate
 
             foreach ($data as $key => $value) {
                 if ($value === null || $value === '') {
@@ -86,20 +124,28 @@ class BeritaController extends Controller
                 }
             }
 
-            $berita->fill($data);
-            $berita->save();
+            $berita->fill($data)->save();
             $berita->refresh();
 
-            return new JsonResponse(new BeritaResource($berita));
+            return response()->json([
+                'success' => true,
+                'message' => 'Berita berhasil diperbarui.',
+                'data'    => new BeritaResource($berita),
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
             if (!empty($data['foto'] ?? null)) {
                 Storage::disk('public')->delete($data['foto']);
             }
-            Log::error('Berita update error: '.$e->getMessage(), ['exception' => $e]);
-            return new JsonResponse([
+            Log::error('Failed to update berita', [
+                'berita_id' => (string) $berita->id,
+                'payload'   => $data,
+                'error'     => $e->getMessage()
+            ]);
+            return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui berita'
-            ], 500);
+                'message' => 'Gagal memperbarui berita',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -112,17 +158,22 @@ class BeritaController extends Controller
 
             $berita->delete();
 
-            return new JsonResponse([
+            return response()->json([
                 'success'      => true,
                 'message'      => 'Berita berhasil dihapus',
                 'notification' => 'Berhasil dihapus'
-            ], 200);
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Berita destroy error: '.$e->getMessage(), ['exception' => $e]);
-            return new JsonResponse([
-                'success' => false,
-                'message' => 'Gagal menghapus berita'
-            ], 500);
+            Log::error('Failed to delete berita', [
+                'berita_id' => (string) $berita->id,
+                'error'     => $e->getMessage()
+            ]);
+            return response()->json([
+                'success'      => false,
+                'message'      => 'Gagal menghapus berita',
+                'notification' => 'Gagal dihapus',
+                'errors'       => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

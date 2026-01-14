@@ -14,21 +14,31 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $models = [
-            \App\Models\Presensi::class,
-            \App\Models\PoinSiswa::class,
+        // 1. Model dengan Policy Khusus
+        $specialPolicies = [
+            \App\Models\PoinSiswa::class         => \App\Policies\PoinSiswaPolicy::class,
+            \App\Models\Presensi::class          => \App\Policies\PresensiPolicy::class,
+            \App\Models\PresensiGuruMapel::class => \App\Policies\PresensiGuruMapelPolicy::class,
+        ];
+
+        foreach ($specialPolicies as $model => $policy) {
+            Gate::policy($model, $policy);
+        }
+
+        // 2. Model Umum (Tetap menggunakan AccessControlPolicy)
+        $generalModels = [
             \App\Models\Siswa::class,
-            \App\Models\Orangtua::class, // Pastikan ini ada karena guru mengakses 'data-orangtua'
+            \App\Models\Orangtua::class,
             \App\Models\Berita::class,
             \App\Models\Pengumuman::class,
             \App\Models\JadwalProduktif::class,
             \App\Models\TahunAjaran::class,
             \App\Models\JamSekolah::class,
-            \App\Models\SekolahSetting::class, // Pastikan nama model sesuai (Setting atau SekolahSetting)
+            \App\Models\SekolahSetting::class,
             \App\Models\User::class,
         ];
 
-        foreach ($models as $model) {
+        foreach ($generalModels as $model) {
             Gate::policy($model, \App\Policies\AccessControlPolicy::class);
         }
     }

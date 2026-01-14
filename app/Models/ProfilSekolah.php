@@ -23,7 +23,7 @@ class ProfilSekolah extends Model
     ];
 
     protected $casts = [
-        'guru_staf_id' => 'integer',
+        'guru_staf_id' => 'string',
         'npsn'         => 'string',
         'akreditasi'   => 'string',
     ];

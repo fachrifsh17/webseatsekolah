@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Symfony\Component\HttpFoundation\Response;
 
 class StoreStrukturJabatanRequest extends FormRequest
 {
@@ -16,10 +17,10 @@ class StoreStrukturJabatanRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'guru_staf_id'           => ['required', 'integer', 'exists:guru_staf,id'],
-            'nama_jabatan_struktural'=> ['required', 'string', 'max:100'],
-            'periode_mulai'          => ['nullable', 'date'],
-            'urutan_tampil'          => ['nullable', 'integer'],
+            'guru_staf_id'  => ['required', 'string', 'exists:guru_staf,id'],
+            'jabatan_id'    => ['required', 'exists:jabatans,id'],
+            'periode_mulai' => ['nullable', 'date'],
+            'urutan_tampil' => ['nullable', 'integer'],
         ];
     }
 
@@ -27,12 +28,13 @@ class StoreStrukturJabatanRequest extends FormRequest
     {
         return [
             'guru_staf_id.required' => 'Guru/Staf wajib dipilih.',
-            'guru_staf_id.integer'  => 'Guru/Staf ID harus berupa angka.',
+            'guru_staf_id.string'   => 'Guru/Staf ID harus berupa ID string.',
             'guru_staf_id.exists'   => 'Guru/Staf tidak ditemukan dalam sistem.',
-            'nama_jabatan_struktural.required' => 'Nama jabatan struktural wajib diisi.',
-            'nama_jabatan_struktural.string'   => 'Nama jabatan struktural harus berupa teks.',
-            'nama_jabatan_struktural.max'      => 'Nama jabatan struktural tidak boleh lebih dari 100 karakter.',
-            'periode_mulai.date' => 'Format periode mulai tidak valid.',
+
+            'jabatan_id.required'   => 'Jabatan wajib dipilih.',
+            'jabatan_id.exists'     => 'Jabatan tidak ditemukan dalam master data.',
+
+            'periode_mulai.date'    => 'Format periode mulai tidak valid.',
             'urutan_tampil.integer' => 'Urutan tampil harus berupa angka.',
         ];
     }
@@ -40,10 +42,10 @@ class StoreStrukturJabatanRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'guru_staf_id'            => 'Guru/Staf',
-            'nama_jabatan_struktural' => 'Nama jabatan struktural',
-            'periode_mulai'           => 'Periode mulai',
-            'urutan_tampil'           => 'Urutan tampil',
+            'guru_staf_id'  => 'Guru/Staf',
+            'jabatan_id'    => 'Jabatan',
+            'periode_mulai' => 'Periode mulai',
+            'urutan_tampil' => 'Urutan tampil',
         ];
     }
 
@@ -52,6 +54,6 @@ class StoreStrukturJabatanRequest extends FormRequest
         throw new HttpResponseException(response()->json([
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
-        ], 422));
+        ], Response::HTTP_UNPROCESSABLE_ENTITY));
     }
 }

@@ -7,41 +7,74 @@ use App\Models\PpdbLink;
 use App\Http\Resources\PpdbLinkResource;
 use App\Http\Requests\UpdatePpdbLinkRequest;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
+use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class PpdbLinkController extends Controller
 {
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:admin');
+        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['update']);
     }
 
     public function index(): JsonResponse
     {
-        $link = PPDBLink::first();
+        try {
+            $link = PpdbLink::first();
 
-        if (!$link) {
-            return new JsonResponse([
-                'message' => 'Data PPDB belum tersedia'
-            ], 404);
+            if (!$link) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Data PPDB belum tersedia'
+                ], Response::HTTP_NOT_FOUND);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data'    => new PpdbLinkResource($link),
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch PPDB link', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil data PPDB',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        return new JsonResponse(new PpdbLinkResource($link));
     }
 
     public function update(UpdatePpdbLinkRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        $link = DB::transaction(function () use ($validated) {
-            return PPDBLink::updateOrCreate(
+        DB::beginTransaction();
+        try {
+            $link = PpdbLink::updateOrCreate(
                 ['id' => 1],
                 $validated
             );
-        });
+            DB::commit();
 
-        return new JsonResponse(new PpdbLinkResource($link));
+            return response()->json([
+                'success' => true,
+                'message' => 'Data PPDB berhasil diperbarui',
+                'data'    => new PpdbLinkResource($link),
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('Failed to update PPDB link', [
+                'payload' => $validated,
+                'error'   => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui data PPDB',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 }

@@ -14,8 +14,8 @@ class KalenderAkademikResource extends JsonResource
             'tanggal_mulai'   => $this->tanggal_mulai?->format('Y-m-d'),
             'tanggal_selesai' => $this->tanggal_selesai?->format('Y-m-d'),
             'kategori'        => $this->kategori,
-            'created_at'      => $this->created_at?->toISOString(),
-            'updated_at'      => $this->updated_at?->toISOString(),
+            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
+            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 }

@@ -10,8 +10,11 @@ use App\Http\Requests\UpdateGuruRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class GuruController extends Controller
 {
@@ -25,20 +28,52 @@ class GuruController extends Controller
     public function index(): JsonResponse
     {
         $data = GuruStaf::with(['jurusan', 'user'])->paginate(12);
-        return GuruResource::collection($data)->response();
+
+        return response()->json([
+            'success' => true,
+            'data'    => GuruResource::collection($data),
+            'meta'    => [
+                'current_page' => $data->currentPage(),
+                'last_page'    => $data->lastPage(),
+                'per_page'     => $data->perPage(),
+                'total'        => $data->total(),
+            ],
+        ], Response::HTTP_OK);
+    }
+
+    public function search(Request $request): JsonResponse
+    {
+        $search = $request->get('q');
+
+        $gurus = GuruStaf::query()
+            ->when($search, function ($query, $search) {
+                $query->where('nama_lengkap', 'like', "%{$search}%")
+                      ->orWhere('nip', 'like', "%{$search}%");
+            })
+            ->select('id', 'nama_lengkap', 'nip')
+            ->limit(10)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $gurus,
+        ], Response::HTTP_OK);
     }
 
     public function show(?GuruStaf $guru): JsonResponse
     {
         if (!$guru) {
             return response()->json([
+                'success' => false,
                 'message' => 'Data guru tidak ditemukan',
-                'errors'  => ['id' => ['Guru dengan ID tersebut tidak ada']]
-            ], 404);
+                'errors'  => ['id' => ['Guru dengan ID tersebut tidak ada']],
+            ], Response::HTTP_NOT_FOUND);
         }
 
-        $guru->load(['jurusan', 'user']);
-        return response()->json(new GuruResource($guru));
+        return response()->json([
+            'success' => true,
+            'data'    => new GuruResource($guru->load(['jurusan', 'user'])),
+        ], Response::HTTP_OK);
     }
 
     public function store(StoreGuruRequest $request): JsonResponse
@@ -49,33 +84,32 @@ class GuruController extends Controller
             $validated['foto'] = $request->file('foto')->store('uploads/guru', 'public');
         }
 
-        if (Auth::check() && empty($validated['user_id'] ?? null)) {
-            $validated['user_id'] = Auth::id();
-        }
-
-        foreach (['nip', 'nuptk', 'user_id'] as $field) {
-            if (!empty($validated[$field]) && GuruStaf::where($field, $validated[$field])->exists()) {
-                if (!empty($validated['foto'])) {
-                    Storage::disk('public')->delete($validated['foto']);
-                }
-                return response()->json([
-                    'message' => strtoupper($field) . ' sudah terdaftar.',
-                    'errors'  => [$field => [strtoupper($field) . ' sudah terdaftar.']]
-                ], 409);
-            }
+        if (empty($validated['user_id'])) {
+            $validated['user_id'] = (string) Auth::id();
         }
 
         try {
-            $guru = DB::transaction(fn() => GuruStaf::create($validated));
-            return response()->json(new GuruResource($guru->load(['jurusan', 'user'])), 201);
+            $guru = DB::transaction(function () use ($validated) {
+                return GuruStaf::create($validated);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data guru berhasil ditambahkan.',
+                'data'    => new GuruResource($guru->load(['jurusan', 'user'])),
+            ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            if (!empty($validated['foto'] ?? null)) {
+            Log::error('Failed to create guru', ['error' => $e->getMessage()]);
+
+            if (!empty($validated['foto'])) {
                 Storage::disk('public')->delete($validated['foto']);
             }
+
             return response()->json([
-                'message' => 'Gagal membuat data guru',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], 500);
+                'success' => false,
+                'message' => 'Gagal membuat data guru.',
+                'errors'  => ['exception' => [$e->getMessage()]],
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -83,9 +117,9 @@ class GuruController extends Controller
     {
         if (!$guru) {
             return response()->json([
+                'success' => false,
                 'message' => 'Data guru tidak ditemukan',
-                'errors'  => ['id' => ['Guru dengan ID tersebut tidak ada']]
-            ], 404);
+            ], Response::HTTP_NOT_FOUND);
         }
 
         $validated = $request->validated();
@@ -102,38 +136,32 @@ class GuruController extends Controller
             $validated['foto'] = null;
         }
 
-        foreach (['nip', 'nuptk', 'user_id'] as $field) {
-            if (!empty($validated[$field]) &&
-                GuruStaf::where($field, $validated[$field])
-                    ->where('id', '<>', $guru->id)
-                    ->exists()) {
-                if (!empty($validated['foto']) && $validated['foto'] !== $oldFoto) {
-                    Storage::disk('public')->delete($validated['foto']);
-                }
-                return response()->json([
-                    'message' => strtoupper($field) . ' sudah terdaftar.',
-                    'errors'  => [$field => [strtoupper($field) . ' sudah terdaftar.']]
-                ], 409);
-            }
-        }
-
         try {
-            DB::transaction(fn() => $guru->update($validated));
-            $guru->refresh();
+            DB::transaction(function () use ($guru, $validated) {
+                $guru->update($validated);
+            });
 
-            if (!empty($validated['foto']) && $oldFoto && $validated['foto'] !== $oldFoto) {
+            if ($request->hasFile('foto') && $oldFoto && $oldFoto !== $validated['foto']) {
                 Storage::disk('public')->delete($oldFoto);
             }
 
-            return response()->json(new GuruResource($guru->load(['jurusan', 'user'])), 200);
+            return response()->json([
+                'success' => true,
+                'message' => 'Data guru berhasil diperbarui.',
+                'data'    => new GuruResource($guru->refresh()->load(['jurusan', 'user'])),
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            if (!empty($validated['foto'] ?? null) && $validated['foto'] !== $oldFoto) {
+            Log::error('Failed to update guru', ['error' => $e->getMessage()]);
+
+            if ($request->hasFile('foto') && isset($validated['foto'])) {
                 Storage::disk('public')->delete($validated['foto']);
             }
+
             return response()->json([
-                'message' => 'Gagal memperbarui data guru',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], 500);
+                'success' => false,
+                'message' => 'Gagal memperbarui data guru.',
+                'errors'  => ['exception' => [$e->getMessage()]],
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -141,15 +169,48 @@ class GuruController extends Controller
     {
         if (!$guru) {
             return response()->json([
+                'success' => false,
                 'message' => 'Data guru tidak ditemukan',
-                'errors'  => ['id' => ['Guru dengan ID tersebut tidak ada']]
-            ], 404);
+            ], Response::HTTP_NOT_FOUND);
         }
 
         $oldFoto = $guru->foto;
 
         try {
-            DB::transaction(fn() => $guru->delete());
+            $blockers = [];
+
+            $relations = [
+                'user' => 'Terdapat akun user yang terhubung',
+                'guruMapel' => 'Terhubung dengan data guru_mapel',
+                'presensiGuruMapel' => 'Memiliki data presensi per mapel',
+                'presensi' => 'Memiliki data presensi',
+                'jadwalMengajar' => 'Memiliki jadwal mengajar',
+                'strukturJabatan' => 'Memiliki struktur jabatan',
+                'jadwalProduktif' => 'Memiliki jadwal produktif',
+                'poinGuru' => 'Memiliki data poin'
+            ];
+
+            foreach ($relations as $method => $message) {
+                if (method_exists($guru, $method) && $guru->$method()->exists()) {
+                    $blockers[] = $message;
+                }
+            }
+
+            if (!empty($blockers)) {
+                return response()->json([
+                    'success'    => false,
+                    'error_code' => 'conflict_relations',
+                    'message'    => 'Gagal menghapus: data masih terhubung dengan resource lain.',
+                    'details'    => array_values(array_unique($blockers)),
+                ], Response::HTTP_CONFLICT);
+            }
+
+            DB::transaction(function () use ($guru) {
+                if (method_exists($guru, 'mapel')) {
+                    $guru->mapel()->detach();
+                }
+                $guru->delete();
+            });
 
             if ($oldFoto) {
                 Storage::disk('public')->delete($oldFoto);
@@ -158,13 +219,16 @@ class GuruController extends Controller
             return response()->json([
                 'success'      => true,
                 'message'      => 'Data guru berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
-            ], 200);
+                'notification' => 'Berhasil dihapus',
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
+            Log::error('Failed to delete guru', ['error' => $e->getMessage()]);
+
             return response()->json([
+                'success' => false,
                 'message' => 'Gagal menghapus data guru',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], 500);
+                'errors'  => ['exception' => [$e->getMessage()]],
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

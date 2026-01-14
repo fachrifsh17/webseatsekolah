@@ -11,12 +11,29 @@ class Jurusan extends Model
     use HasFactory;
 
     protected $table = 'jurusan';
+    protected $primaryKey = 'id';
+    public $incrementing = false;
+    protected $keyType = 'string';
 
     protected $fillable = [
+        'id',
         'nama_jurusan',
         'deskripsi',
         'foto',
     ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $lastId = static::max('id');
+                $num = $lastId ? (int) substr($lastId, 1) + 1 : 1;
+                $model->id = 'J' . str_pad($num, 3, '0', STR_PAD_LEFT);
+            }
+        });
+    }
 
     public function siswa(): HasMany
     {

@@ -18,17 +18,17 @@ class PresensiGuruMapelResource extends JsonResource
             'jam_masuk' => $this->jam_masuk,
             'jam_keluar' => $this->jam_keluar,
             'materi' => $this->materi,
-            'rincian_presensi_siswa' => $this->rincianSiswa->map(function ($item) {
+            'rincian_presensi_siswa' => collect($this->presensiSiswaDetail ?? [])->map(function ($item) {
                 return [
                     'id' => $item->id,
                     'siswa_id' => $item->siswa_id,
-                    'nama_siswa' => $item->siswa->nama ?? null,
+                    'nama_siswa' => $item->siswa?->nama_lengkap ?? null,
                     'status' => $item->status,
                     'catatan' => $item->catatan,
                 ];
-            }),
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            })->values(),
+            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
+            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 }

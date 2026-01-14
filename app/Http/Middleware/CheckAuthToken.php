@@ -14,97 +14,73 @@ class CheckAuthToken
     public function handle(Request $request, Closure $next): Response
     {
         if ($request->isMethod('OPTIONS')) {
-            return response()->noContent(204);
+            return response()->noContent();
+        }
+
+        $token = $request->bearerToken();
+
+        if (!$token) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token tidak ditemukan. Silakan login terlebih dahulu.'
+            ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $tokenHash = hash('sha256', $token);
+
+        $authToken = AuthToken::with([
+                'user.roles',
+                'user.guruStaf',
+                'user.siswa',
+                'user.orangtua'
+            ])
+            ->where('token_hash', $tokenHash)
+            ->where('revoked', false)
+            ->where(function ($query) {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
+            ->first();
+
+        if (!$authToken || !$authToken->user) {
+            return response()->json([
+                'success'    => false,
+                'message'    => 'Token kadaluwarsa atau tidak valid.',
+                'error_code' => 'TOKEN_EXPIRED'
+            ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $user = $authToken->user;
+
+        if (!$user->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun Anda tidak aktif.'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        if (!$user instanceof Authenticatable) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun tidak dapat diautentikasi.'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
         try {
-            $token = $request->bearerToken();
-
-            if (empty($token)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Token tidak ditemukan. Silakan login terlebih dahulu.'
-                ], 401);
-            }
-
-            $tokenHash = hash('sha256', $token);
-
-            $authToken = AuthToken::with([
-                    'user.roles',
-                    'user.guru',
-                    'user.siswa',
-                    'user.orangtua'
-                ])
-                ->where('token_hash', $tokenHash)
-                ->where('revoked', false)
-                ->where(function ($q) {
-                    $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })
-                ->first();
-
-            if (!$authToken || !$authToken->user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Token kadaluwarsa atau tidak valid.',
-                    'error_code' => 'TOKEN_EXPIRED'
-                ], 401);
-            }
-
-            if (empty($authToken->user->is_active) || !$authToken->user->is_active) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Akun Anda tidak aktif.'
-                ], 403);
-            }
-
-            $user = $authToken->user;
-
-            if (! $user instanceof Authenticatable) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Akun tidak dapat diautentikasi.'
-                ], 500);
-            }
-
-            try {
-                $guardName = config('auth.defaults.guard') ?? null;
-                if ($guardName) {
-                    $guard = Auth::guard($guardName);
-                    if (is_object($guard) && method_exists($guard, 'setUser')) {
-                        $guard->setUser($user);
-                    } else {
-                        Auth::setUser($user);
-                    }
-                } else {
-                    Auth::setUser($user);
-                }
-
-                $request->setUserResolver(fn () => $user);
-            } catch (\Throwable $e) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Gagal mengatur autentikasi pengguna.'
-                ], 500);
-            }
-
-            $response = $next($request);
-
-            return $this->ensureResponse($response);
+            Auth::setUser($user);
+            $request->setUserResolver(fn () => $user);
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan pada server saat memproses autentikasi.'
-            ], 500);
+                'message' => 'Gagal mengatur autentikasi pengguna.'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+
+        return $this->ensureResponse($next($request));
     }
 
     protected function ensureResponse($response): Response
     {
-        if ($response instanceof Response) {
-            return $response;
-        }
-
-        if ($response instanceof \Illuminate\Http\JsonResponse) {
+        if ($response instanceof Response || $response instanceof \Illuminate\Http\JsonResponse) {
             return $response;
         }
 

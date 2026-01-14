@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Symfony\Component\HttpFoundation\Response;
 
 class StoreKelasRequest extends FormRequest
 {
@@ -17,9 +18,8 @@ class StoreKelasRequest extends FormRequest
     {
         return [
             'nama_kelas'      => ['required', 'string', 'max:50'],
-            'jurusan_id'      => ['required', 'integer', 'exists:jurusan,id'],
-            'tahun_ajaran_id' => ['required', 'integer', 'exists:tahun_ajaran,id'],
-            'wali_kelas_id'   => ['nullable', 'integer', 'exists:guru_staf,id'],
+            'jurusan_id'      => ['required', 'string', 'exists:jurusan,id'],
+            'wali_kelas_id'   => ['nullable', 'string', 'exists:guru_staf,id'],
         ];
     }
 
@@ -31,14 +31,10 @@ class StoreKelasRequest extends FormRequest
             'nama_kelas.max'           => 'Nama kelas maksimal 50 karakter.',
 
             'jurusan_id.required'      => 'Silakan pilih jurusan yang tersedia.',
-            'jurusan_id.integer'       => 'Jurusan harus berupa angka.',
+            'jurusan_id.string'        => 'Jurusan harus berupa ID string.',
             'jurusan_id.exists'        => 'Jurusan yang dipilih tidak valid.',
 
-            'tahun_ajaran_id.required' => 'Tahun ajaran wajib dipilih.',
-            'tahun_ajaran_id.integer'  => 'Tahun ajaran harus berupa angka.',
-            'tahun_ajaran_id.exists'   => 'Tahun ajaran tidak valid.',
-
-            'wali_kelas_id.integer'    => 'Wali kelas harus berupa angka.',
+            'wali_kelas_id.string'     => 'Wali kelas harus berupa ID string.',
             'wali_kelas_id.exists'     => 'Wali kelas yang dipilih tidak ditemukan.',
         ];
     }
@@ -48,7 +44,6 @@ class StoreKelasRequest extends FormRequest
         return [
             'nama_kelas'      => 'Nama kelas',
             'jurusan_id'      => 'Jurusan',
-            'tahun_ajaran_id' => 'Tahun ajaran',
             'wali_kelas_id'   => 'Wali kelas',
         ];
     }
@@ -58,6 +53,6 @@ class StoreKelasRequest extends FormRequest
         throw new HttpResponseException(response()->json([
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
-        ], 422));
+        ], Response::HTTP_UNPROCESSABLE_ENTITY));
     }
 }

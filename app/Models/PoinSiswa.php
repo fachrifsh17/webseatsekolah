@@ -23,6 +23,8 @@ class PoinSiswa extends Model
         'keterangan',
     ];
 
+    protected $appends = ['total_poin'];
+
     public function siswa(): BelongsTo
     {
         return $this->belongsTo(Siswa::class, 'siswa_id');
@@ -33,8 +35,18 @@ class PoinSiswa extends Model
         return $this->belongsTo(GuruStaf::class, 'guru_staf_id');
     }
 
+    public function guru(): BelongsTo
+    {
+        return $this->guruStaf();
+    }
+
     public function tahunAjaran(): BelongsTo
     {
         return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id');
+    }
+
+    public function getTotalPoinAttribute(): int
+    {
+        return ($this->poin_positif ?? 0) - ($this->poin_negatif ?? 0);
     }
 }

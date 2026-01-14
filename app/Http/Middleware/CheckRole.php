@@ -19,7 +19,7 @@ class CheckRole
             return response()->json([
                 'success' => false,
                 'message' => 'Silakan login terlebih dahulu.'
-            ], 401);
+            ], Response::HTTP_UNAUTHORIZED);
         }
 
         $raw = implode(',', $roles);
@@ -48,7 +48,7 @@ class CheckRole
             return response()->json([
                 'success' => false,
                 'message' => 'User tidak memiliki role apa pun.'
-            ], 403);
+            ], Response::HTTP_FORBIDDEN);
         }
 
         $userRoleIdentifiers = $rolesCollection->map(function ($r) {
@@ -72,14 +72,14 @@ class CheckRole
                 return response()->json([
                     'success' => false,
                     'message' => 'Anda harus memiliki semua role yang diperlukan.'
-                ], 403);
+                ], Response::HTTP_FORBIDDEN);
             }
         } else {
             if (empty(array_intersect($userRoleIdentifiers, $allowedRoles))) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Anda tidak memiliki hak akses untuk halaman ini.'
-                ], 403);
+                ], Response::HTTP_FORBIDDEN);
             }
         }
 
@@ -89,7 +89,7 @@ class CheckRole
             return response()->json([
                 'success' => false,
                 'message' => 'Terjadi kesalahan pada server.'
-            ], 500);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -98,11 +98,6 @@ class CheckRole
         $normalized = [];
 
         foreach ($roles as $role) {
-            if (is_int($role)) {
-                $normalized[] = (string) $role;
-                continue;
-            }
-
             if (!is_string($role)) {
                 continue;
             }
@@ -113,11 +108,7 @@ class CheckRole
                     continue;
                 }
 
-                if (is_numeric($trimmed)) {
-                    $normalized[] = (string) $trimmed;
-                } else {
-                    $normalized[] = strtolower($trimmed);
-                }
+                $normalized[] = strtolower($trimmed);
             }
         }
 

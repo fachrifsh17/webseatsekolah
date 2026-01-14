@@ -3,153 +3,68 @@
 namespace App\Policies;
 
 use App\Models\User;
-use App\Models\TahunAjaran;
+use App\Models\Siswa;
+use App\Models\Kelas;
 use Illuminate\Auth\Access\Response;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Request;
 
 class AccessControlPolicy
 {
-    /**
-     * Admin selalu lolos semua policy
-     */
     public function before(?User $user, string $ability): ?bool
     {
-        Log::debug('Policy before check', [
-            'user_id' => $user?->id ?? null,
-            'roles' => $user?->getRoleNames(),
-            'ability' => $ability,
-        ]);
+        if (!$user) return null;
 
-        if (! $user) {
-            return null;
-        }
+        if (method_exists($user, 'hasRole')) {
+            $isAdmin = $user->hasRole('admin') || $user->hasRole('Admin') || $user->hasRole('ADMIN');
+            $isRouteAdmin = Request::is('api/admin/*') || Request::is('admin/*');
 
-        // normalisasi ke lowercase agar konsisten dengan helper hasRole
-        if ($user->hasRole('admin')) {
-            Log::debug('Policy before: admin bypass', ['user_id' => $user->id]);
-            return true;
+            if ($isAdmin && $isRouteAdmin) {
+                return true;
+            }
         }
 
         return null;
     }
 
-    /**
-     * Guru bisa manage (CRUD) hanya jika dia wali kelas dari data tersebut.
-     * Untuk model yang tidak punya relasi kelas (mis. TahunAjaran), izinkan guru.
-     */
-    public function manage(User $user, $model = null): Response
+    protected function getUserGuruIdSafe(User $user): ?string
     {
-        if ($user->hasRole('guru')) {
-            // Jika model adalah TahunAjaran, izinkan (tidak relevan dengan wali kelas)
-            if ($model instanceof TahunAjaran) {
-                return Response::allow();
-            }
-
-            // Jika tidak ada model atau bukan object, izinkan (mis. create)
-            if (! is_object($model)) {
-                return Response::allow();
-            }
-
-            // Jika model tidak punya relasi kelas, izinkan
-            if (! isset($model->kelas)) {
-                return Response::allow();
-            }
-
-            // Jika model punya relasi kelas, cek wali kelas
-            if (isset($model->kelas->wali_kelas_id)) {
-                $userGuruId = $user->guru?->id;
-                $waliId = $model->kelas->wali_kelas_id;
-
-                if ($userGuruId !== null && (string) $userGuruId === (string) $waliId) {
-                    return Response::allow();
-                }
-
-                Log::warning('Policy deny manage: not wali kelas', [
-                    'user_id' => $user->id,
-                    'user_guru_id' => $userGuruId ?? null,
-                    'model_kelas_wali_id' => $waliId ?? null,
-                    'model_class' => get_class($model),
-                ]);
-
-                return Response::deny('Anda bukan wali kelas untuk kelas ini.');
-            }
-
-            // fallback: izinkan
-            return Response::allow();
-        }
-
-        Log::warning('Policy deny manage: role not guru', [
-            'user_id' => $user->id,
-            'roles' => $user->getRoleNames(),
-            'model' => is_object($model) ? get_class($model) : $model,
-        ]);
-
-        return Response::deny('Akses ditolak.');
+        return (string) ($user->guruStaf?->id ?? $user->guru?->id);
     }
 
-    /**
-     * Admin dan Guru bisa input poin
-     */
-    public function inputPoin(User $user): Response
-    {
-        if ($user->hasAnyRole(['admin', 'guru'])) {
-            return Response::allow();
-        }
-
-        Log::warning('Policy deny inputPoin: insufficient role', [
-            'user_id' => $user->id,
-            'roles' => $user->getRoleNames(),
-        ]);
-
-        return Response::deny('Hanya Admin dan Guru yang dapat input poin.');
-    }
-
-    /**
-     * Admin, Guru, dan Siswa bisa update profil
-     */
-    public function updateProfile(User $user): Response
-    {
-        if ($user->hasAnyRole(['admin', 'guru', 'siswa'])) {
-            return Response::allow();
-        }
-
-        Log::warning('Policy deny updateProfile: insufficient role', [
-            'user_id' => $user->id,
-            'roles' => $user->getRoleNames(),
-        ]);
-
-        return Response::deny('Hanya Admin, Guru, dan Siswa yang dapat mengubah profil.');
-    }
-
-    /**
-     * viewAny dan view untuk resource umum
-     */
     public function viewAny(User $user): Response
     {
-        if ($user->hasAnyRole(['admin', 'guru'])) {
-            return Response::allow();
-        }
-
-        Log::warning('Policy deny viewAny: insufficient role', [
-            'user_id' => $user->id,
-            'roles' => $user->getRoleNames(),
-        ]);
-
-        return Response::deny('Anda tidak memiliki izin untuk melihat data.');
+        return $user->guruStaf !== null 
+            ? Response::allow() 
+            : Response::deny('Akses ditolak.');
     }
 
     public function view(User $user, $model): Response
     {
-        if ($user->hasAnyRole(['admin', 'guru', 'siswa'])) {
-            return Response::allow();
+        // Logika khusus untuk Siswa (hanya wali kelas yang bisa melihat detail siswa)
+        if ($model instanceof Siswa) {
+            $userGuruId = $this->getUserGuruIdSafe($user);
+            $isWali = Kelas::where('id', $model->class_id ?? $model->kelas_id)
+                           ->where('wali_kelas_id', $userGuruId)
+                           ->exists();
+                           
+            return $isWali ? Response::allow() : Response::deny('Anda bukan wali kelas untuk siswa ini.');
         }
 
-        Log::warning('Policy deny view: insufficient role', [
-            'user_id' => $user->id,
-            'roles' => $user->getRoleNames(),
-            'model' => is_object($model) ? get_class($model) : $model,
-        ]);
+        return Response::allow();
+    }
 
-        return Response::deny('Anda tidak memiliki izin untuk melihat detail data.');
+    public function create(User $user): Response
+    {
+        return $user->guruStaf !== null ? Response::allow() : Response::deny('Akses terbatas untuk staff.');
+    }
+
+    public function update(User $user, $model): Response
+    {
+        return $this->view($user, $model);
+    }
+
+    public function delete(User $user, $model): Response
+    {
+        return Response::deny('Hanya Admin yang dapat menghapus data melalui panel admin.');
     }
 }

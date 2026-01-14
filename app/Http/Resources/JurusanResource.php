@@ -13,8 +13,8 @@ class JurusanResource extends JsonResource
             'nama_jurusan' => $this->nama_jurusan,
             'deskripsi'    => $this->deskripsi,
             'foto_url'     => $this->foto ? asset('storage/' . $this->foto) : null,
-            'created_at'   => optional($this->created_at)->toDateTimeString(),
-            'updated_at'   => optional($this->updated_at)->toDateTimeString(),
+            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
+            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 }

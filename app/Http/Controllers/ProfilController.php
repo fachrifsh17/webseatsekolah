@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Requests\UpdateProfileRequest;
 use App\Http\Requests\ChangePasswordRequest;
+use Symfony\Component\HttpFoundation\Response;
 
 class ProfilController extends Controller
 {
@@ -16,23 +17,26 @@ class ProfilController extends Controller
         $user = $request->user();
 
         $foto = null;
-        if ($user->role->name === 'Siswa' && $user->siswa) {
+        if ($user->roles->contains('role_name', 'Siswa') && $user->siswa) {
             $foto = $user->siswa->foto;
-        } elseif ($user->role->name === 'Guru' && $user->guruStaf) {
+        } elseif ($user->roles->contains('role_name', 'Guru') && $user->guruStaf) {
             $foto = $user->guruStaf->foto;
         }
+
+        $roles = $user->roles()->pluck('role_name')->toArray();
 
         return response()->json([
             'success' => true,
             'data'    => [
-                'id'           => $user->id,
+                'id'           => (string) $user->id,
                 'username'     => $user->username,
                 'nama_lengkap' => $user->nama_lengkap,
-                'role'         => $user->role->name,
+                'roles'        => $roles,
                 'foto'         => $foto,
             ]
         ]);
     }
+
     public function updateProfile(UpdateProfileRequest $request): JsonResponse
     {
         $user = $request->user();
@@ -40,22 +44,21 @@ class ProfilController extends Controller
         if ($request->hasFile('foto')) {
             $path = $request->file('foto')->store('foto', 'public');
 
-            if ($user->role->name === 'Siswa' && $user->siswa) {
+            if ($user->roles->contains('role_name', 'Siswa') && $user->siswa) {
                 if ($user->siswa->foto) {
                     Storage::disk('public')->delete($user->siswa->foto);
                 }
                 $user->siswa->update(['foto' => $path]);
-            } elseif ($user->role->name === 'Guru' && $user->guruStaf) {
+            } elseif ($user->roles->contains('role_name', 'Guru') && $user->guruStaf) {
                 if ($user->guruStaf->foto) {
                     Storage::disk('public')->delete($user->guruStaf->foto);
                 }
                 $user->guruStaf->update(['foto' => $path]);
             } else {
-                // Role lain tidak boleh update foto
                 return response()->json([
                     'success' => false,
                     'message' => 'Role ini tidak diizinkan untuk mengganti foto profil.'
-                ], 403);
+                ], Response::HTTP_FORBIDDEN);
             }
         }
 
@@ -64,6 +67,7 @@ class ProfilController extends Controller
             'message' => 'Foto profil berhasil diperbarui.'
         ]);
     }
+
     public function changePassword(ChangePasswordRequest $request): JsonResponse
     {
         $user = $request->user();
@@ -72,7 +76,7 @@ class ProfilController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Password lama tidak sesuai.'
-            ], 422);
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         $user->update([

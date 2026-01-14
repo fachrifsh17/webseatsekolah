@@ -20,9 +20,10 @@ class GuruResource extends JsonResource
             'status_kepegawaian' => $this->status_kepegawaian,
             'jurusan_id'         => $this->jurusan_id,
             'jurusan'            => $this->whenLoaded('jurusan', fn () => new JurusanResource($this->jurusan)),
+            'is_active'          => isset($this->is_active) ? (int) $this->is_active : null,
             'foto_url'           => $this->foto ? Storage::url($this->foto) : null,
-            'created_at'         => $this->created_at?->toISOString(),
-            'updated_at'         => $this->updated_at?->toISOString(),
+            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
+            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 }

@@ -5,6 +5,8 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Validation\Rule;
 
 class StoreGuruRequest extends FormRequest
 {
@@ -16,23 +18,43 @@ class StoreGuruRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id'            => ['bail','required','integer','exists:users,id'],
-            'nip'                => ['nullable','string','max:18'],
-            'nuptk'              => ['nullable','string','max:16'],
-            'nama'               => ['required','string','max:100'],
-            'jabatan_fungsional' => ['nullable','string','max:100'],
-            'status_kepegawaian' => ['nullable','string','max:50'],
-            'foto'               => ['nullable','file','image','mimes:jpg,jpeg,png','max:5120'],
-            'jurusan_id'         => ['nullable','integer','exists:jurusan,id'],
+            // bail: berhenti mengecek jika satu aturan sudah gagal
+            'user_id' => [
+                'bail', 
+                'required', 
+                'string', 
+                'exists:users,id', 
+                'unique:guru_staf,user_id' // Satu user hanya boleh punya satu profil guru
+            ],
+            'nip' => [
+                'nullable', 
+                'string', 
+                'size:18', // Harus tepat 18 karakter
+                'unique:guru_staf,nip' // Tidak boleh sama dengan guru lain
+            ],
+            'nuptk' => [
+                'nullable', 
+                'string', 
+                'size:16', // Harus tepat 16 karakter
+                'unique:guru_staf,nuptk'
+            ],
+            // Sesuaikan dengan nama field di database/controller (nama_lengkap)
+            'nama' => ['required', 'string', 'max:100'], 
+            'jabatan_fungsional' => ['nullable', 'string', 'max:100'],
+            'status_kepegawaian' => ['nullable', 'string', 'max:50'],
+            'foto' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
+            'jurusan_id' => ['nullable', 'string', 'exists:jurusan,id'],
+            'is_active' => ['nullable', 'integer', 'in:0,1'],
         ];
     }
 
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'nip'   => $this->filled('nip') ? trim($this->nip) : null,
-            'nuptk' => $this->filled('nuptk') ? trim($this->nuptk) : null,
-            'nama'  => $this->filled('nama') ? trim($this->nama) : null,
+            'nip'     => $this->filled('nip') ? trim($this->nip) : null,
+            'nuptk'   => $this->filled('nuptk') ? trim($this->nuptk) : null,
+            'nama'    => $this->filled('nama') ? trim($this->nama) : null,
+            'user_id' => $this->filled('user_id') ? trim($this->user_id) : null,
         ]);
     }
 
@@ -40,54 +62,25 @@ class StoreGuruRequest extends FormRequest
     {
         return [
             'user_id.required' => 'User wajib dipilih.',
-            'user_id.integer'  => 'User harus berupa angka.',
-            'user_id.exists'   => 'User tidak ditemukan.',
+            'user_id.unique'   => 'User ini sudah terdaftar sebagai guru.',
+            
+            'nip.size'         => 'NIP harus berjumlah tepat 18 karakter.',
+            'nip.unique'       => 'NIP sudah digunakan oleh orang lain.',
+            
+            'nuptk.size'       => 'NUPTK harus berjumlah tepat 16 karakter.',
+            'nuptk.unique'     => 'NUPTK sudah digunakan oleh orang lain.',
 
-            'nip.string' => 'NIP harus berupa teks.',
-            'nip.max'    => 'NIP tidak boleh lebih dari 18 karakter.',
-
-            'nuptk.string' => 'NUPTK harus berupa teks.',
-            'nuptk.max'    => 'NUPTK tidak boleh lebih dari 16 karakter.',
-
-            'nama.required' => 'Nama guru wajib diisi.',
-            'nama.string'   => 'Nama guru harus berupa teks.',
-            'nama.max'      => 'Nama guru tidak boleh lebih dari 100 karakter.',
-
-            'jabatan_fungsional.string' => 'Jabatan fungsional harus berupa teks.',
-            'jabatan_fungsional.max'    => 'Jabatan fungsional tidak boleh lebih dari 100 karakter.',
-
-            'status_kepegawaian.string' => 'Status kepegawaian harus berupa teks.',
-            'status_kepegawaian.max'    => 'Status kepegawaian tidak boleh lebih dari 50 karakter.',
-
-            'foto.file'  => 'File harus berupa berkas.',
-            'foto.image' => 'File harus berupa gambar.',
-            'foto.mimes' => 'Format foto harus jpg, jpeg, atau png.',
-            'foto.max'   => 'Ukuran foto maksimal adalah 5MB.',
-
-            'jurusan_id.integer' => 'Jurusan harus berupa angka.',
-            'jurusan_id.exists'  => 'Jurusan yang dipilih tidak ditemukan.',
-        ];
-    }
-
-    public function attributes(): array
-    {
-        return [
-            'user_id'            => 'User',
-            'nip'                => 'NIP',
-            'nuptk'              => 'NUPTK',
-            'nama'               => 'Nama guru',
-            'jabatan_fungsional' => 'Jabatan fungsional',
-            'status_kepegawaian' => 'Status kepegawaian',
-            'foto'               => 'Foto',
-            'jurusan_id'         => 'Jurusan',
+            'foto.max'         => 'Ukuran foto maksimal adalah 5MB.',
+            'foto.mimes'       => 'Format foto harus jpg, jpeg, atau png.',
         ];
     }
 
     protected function failedValidation(Validator $validator)
     {
         throw new HttpResponseException(response()->json([
+            'success' => false,
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
-        ], 422));
+        ], Response::HTTP_UNPROCESSABLE_ENTITY));
     }
 }

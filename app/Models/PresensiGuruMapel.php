@@ -20,7 +20,7 @@ class PresensiGuruMapel extends Model
         'materi',
     ];
 
-    public function rincianSiswa(): HasMany
+    public function presensiSiswaDetail(): HasMany
     {
         return $this->hasMany(PresensiSiswaDetail::class, 'presensi_guru_mapel_id');
     }

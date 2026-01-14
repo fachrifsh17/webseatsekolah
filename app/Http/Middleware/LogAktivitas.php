@@ -14,8 +14,8 @@ class LogAktivitas
     {
         $response = $next($request);
 
-        if ($response->isOk() 
-            && $request->user() 
+        if ($response->isOk()
+            && $request->user()
             && in_array($request->method(), ['POST','PUT','PATCH','DELETE'])) {
 
             $user = $request->user();
@@ -27,7 +27,7 @@ class LogAktivitas
 
             try {
                 LogAdmin::create([
-                    'user_id'    => $user->id,
+                    'user_id'    => (string) $user->id,
                     'aksi'       => "{$roleLabel} [{$user->username}] melakukan {$request->method()} pada modul: {$routeName}",
                     'ip_address' => $request->ip(),
                     'user_agent' => $request->userAgent(),

@@ -15,29 +15,29 @@ class KelasResource extends JsonResource
             'wali_kelas_id' => $this->wali_kelas_id,
 
             'wali_kelas' => $this->whenLoaded('waliKelas', function () {
-                return [
-                    'id'   => $this->waliKelas?->id,
-                    'nama' => $this->waliKelas?->name ?? $this->waliKelas?->nama ?? null,
-                ];
+                return $this->waliKelas ? [
+                    'id'   => $this->waliKelas->id,
+                    'nama' => $this->waliKelas->name ?? $this->waliKelas->nama ?? null,
+                ] : null;
             }),
 
             'jurusan' => $this->whenLoaded('jurusan', function () {
-                return [
-                    'id'   => $this->jurusan_id,
-                    'nama' => $this->jurusan?->nama_jurusan ?? null,
-                ];
+                return $this->jurusan ? [
+                    'id'   => $this->jurusan->id,
+                    'nama' => $this->jurusan->nama_jurusan ?? null,
+                ] : null;
             }),
 
             'tahun_ajaran' => $this->whenLoaded('tahunAjaran', function () {
-                return [
-                    'id'       => $this->tahun_ajaran_id,
-                    'nama'     => $this->tahunAjaran?->nama ?? null,
-                    'semester' => $this->tahunAjaran?->semester ?? null,
-                ];
+                return $this->tahunAjaran ? [
+                    'id'       => $this->tahunAjaran->id,
+                    'nama'     => $this->tahunAjaran->nama ?? null,
+                    'semester' => $this->tahunAjaran->semester ?? null,
+                ] : null;
             }),
 
-            'created_at' => $this->created_at ? $this->created_at->format('d-m-Y H:i') : null,
-            'updated_at' => $this->updated_at ? $this->updated_at->format('d-m-Y H:i') : null,
+            'created_at' => $this->created_at?->format('d-m-Y H:i'),
+            'updated_at' => $this->updated_at?->format('d-m-Y H:i'),
         ];
     }
 }

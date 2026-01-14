@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Symfony\Component\HttpFoundation\Response;
 
 class StoreJadwalProduktifRequest extends FormRequest
 {
@@ -34,8 +35,8 @@ class StoreJadwalProduktifRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'jurusan_id'        => ['bail','required','integer','exists:jurusan,id'],
-            'guru_staf_id'      => ['bail','required','integer','exists:guru_staf,id'],
+            'jurusan_id'        => ['bail','required','string','exists:jurusan,id'],
+            'guru_staf_id'      => ['bail','required','string','exists:guru_staf,id'],
             'judul'             => ['bail','required','string','max:255'],
             'penjelasan_jadwal' => ['nullable','string'],
             'file_jadwal_path'  => ['bail','required','file','mimes:pdf,jpg,jpeg,png,webp','max:5120'],
@@ -46,15 +47,19 @@ class StoreJadwalProduktifRequest extends FormRequest
     {
         return [
             'jurusan_id.required'       => 'Silakan pilih jurusan.',
-            'jurusan_id.integer'        => 'Jurusan harus berupa angka.',
+            'jurusan_id.string'         => 'Jurusan harus berupa ID string.',
             'jurusan_id.exists'         => 'Jurusan yang dipilih tidak ditemukan.',
+
             'guru_staf_id.required'     => 'Guru pengampu wajib dipilih.',
-            'guru_staf_id.integer'      => 'Guru pengampu harus berupa angka.',
+            'guru_staf_id.string'       => 'Guru pengampu harus berupa ID string.',
             'guru_staf_id.exists'       => 'Guru pengampu tidak ditemukan.',
+
             'judul.required'            => 'Judul jadwal tidak boleh kosong.',
             'judul.string'              => 'Judul jadwal harus berupa teks.',
             'judul.max'                 => 'Judul jadwal tidak boleh lebih dari 255 karakter.',
+
             'penjelasan_jadwal.string'  => 'Penjelasan jadwal harus berupa teks.',
+
             'file_jadwal_path.required' => 'File jadwal wajib diunggah.',
             'file_jadwal_path.file'     => 'File jadwal harus berupa file.',
             'file_jadwal_path.mimes'    => 'Format file yang didukung: PDF, JPG, JPEG, PNG, atau WEBP.',
@@ -78,6 +83,6 @@ class StoreJadwalProduktifRequest extends FormRequest
         throw new HttpResponseException(response()->json([
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
-        ], 422));
+        ], Response::HTTP_UNPROCESSABLE_ENTITY));
     }
 }

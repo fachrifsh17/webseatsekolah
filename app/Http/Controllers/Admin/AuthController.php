@@ -25,7 +25,9 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => new UserResource($user->load(['roles', 'guru', 'siswa', 'orangtua']))
+            'data' => new UserResource(
+                $user->load(['roles', 'guruStaf', 'siswa', 'orangtua'])
+            )
         ], Response::HTTP_OK);
     }
 
@@ -39,7 +41,7 @@ class AuthController extends Controller
 
         $tokenRecord = AuthToken::where('refresh_token', $hash)
             ->where('refresh_expires_at', '>', now())
-            ->where('revoked', false)
+            ->where('revoked', 0)
             ->first();
 
         if (!$tokenRecord) {
@@ -56,13 +58,16 @@ class AuthController extends Controller
             'expires_at' => now()->addHour()
         ]);
 
-        Log::info('Access token refreshed', ['auth_token_id' => $tokenRecord->id, 'user_id' => $tokenRecord->user_id]);
+        Log::info('Access token refreshed', [
+            'auth_token_id' => (string)$tokenRecord->id,
+            'user_id'       => (string)$tokenRecord->user_id
+        ]);
 
         return response()->json([
-            'success' => true,
+            'success'      => true,
             'access_token' => $newAccessToken,
-            'token_type' => 'Bearer',
-            'expires_in' => 3600
+            'token_type'   => 'Bearer',
+            'expires_in'   => 3600
         ], Response::HTTP_OK);
     }
 
@@ -80,7 +85,7 @@ class AuthController extends Controller
         $hash = hash('sha256', $token);
 
         $updated = AuthToken::where('token_hash', $hash)->update([
-            'revoked' => true
+            'revoked' => 1
         ]);
 
         if (!$updated) {

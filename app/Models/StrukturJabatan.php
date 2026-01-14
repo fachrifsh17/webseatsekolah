@@ -14,7 +14,7 @@ class StrukturJabatan extends Model
 
     protected $fillable = [
         'guru_staf_id',
-        'nama_jabatan_struktural',
+        'jabatan_id',
         'periode_mulai',
         'urutan_tampil',
     ];
@@ -27,5 +27,15 @@ class StrukturJabatan extends Model
     public function guru(): BelongsTo
     {
         return $this->belongsTo(GuruStaf::class, 'guru_staf_id');
+    }
+
+    public function jabatan(): BelongsTo
+    {
+        return $this->belongsTo(Jabatan::class, 'jabatan_id');
+    }
+
+    protected function serializeDate(\DateTimeInterface $date)
+    {
+        return $date->format('Y-m-d H:i:s');
     }
 }

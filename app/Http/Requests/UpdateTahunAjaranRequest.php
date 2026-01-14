@@ -15,9 +15,9 @@ class UpdateTahunAjaranRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama'     => ['sometimes', 'required', 'string', 'max:50'],
-            'semester' => ['sometimes', 'required', 'in:Ganjil,Genap'],
-            'aktif'    => ['sometimes', 'required', 'boolean'],
+            'nama'      => ['sometimes', 'required', 'string', 'max:50'],
+            'semester'  => ['sometimes', 'required', 'in:Ganjil,Genap'],
+            'is_active' => ['sometimes', 'required', 'boolean'],
         ];
     }
 
@@ -31,17 +31,17 @@ class UpdateTahunAjaranRequest extends FormRequest
             'semester.required' => 'Semester wajib dipilih.',
             'semester.in'       => 'Pilihan semester hanya boleh Ganjil atau Genap.',
 
-            'aktif.required' => 'Status aktif wajib diisi.',
-            'aktif.boolean'  => 'Format status aktif tidak valid.',
+            'is_active.required' => 'Status aktif wajib diisi.',
+            'is_active.boolean'  => 'Format status aktif tidak valid.',
         ];
     }
 
     public function attributes(): array
     {
         return [
-            'nama'     => 'Nama tahun ajaran',
-            'semester' => 'Semester',
-            'aktif'    => 'Status aktif',
+            'nama'      => 'Nama tahun ajaran',
+            'semester'  => 'Semester',
+            'is_active' => 'Status aktif',
         ];
     }
 }

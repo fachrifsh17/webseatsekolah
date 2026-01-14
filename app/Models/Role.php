@@ -11,11 +11,28 @@ class Role extends Model
     use HasFactory;
 
     protected $table = 'roles';
+    protected $primaryKey = 'id';
+    public $incrementing = false;
+    protected $keyType = 'string';
 
     protected $fillable = [
+        'id',
         'role_name',
         'description',
     ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $lastId = static::max('id');
+                $num = $lastId ? (int) substr($lastId, 1) + 1 : 1;
+                $model->id = 'R' . str_pad($num, 3, '0', STR_PAD_LEFT);
+            }
+        });
+    }
 
     public function users(): BelongsToMany
     {
@@ -24,7 +41,7 @@ class Role extends Model
 
     public function hasUser($user): bool
     {
-        $id = $user instanceof User ? $user->id : (int) $user;
+        $id = $user instanceof User ? $user->id : $user;
         if ($this->relationLoaded('users')) {
             return $this->users->contains('id', $id);
         }

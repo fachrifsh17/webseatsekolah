@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Symfony\Component\HttpFoundation\Response;
 
 class UpdateEkstrakurikulerRequest extends FormRequest
 {
@@ -21,7 +22,7 @@ class UpdateEkstrakurikulerRequest extends FormRequest
             'hari'         => ['sometimes', 'nullable', 'string', 'max:50'],
             'jam_mulai'    => ['sometimes', 'nullable', 'date_format:H:i'],
             'jam_selesai'  => ['sometimes', 'nullable', 'date_format:H:i', 'after:jam_mulai', 'required_with:jam_mulai'],
-            'pembina_id'   => ['sometimes', 'nullable', 'integer', 'exists:guru_staf,id'],
+            'pembina_id'   => ['sometimes', 'nullable', 'string', 'exists:guru_staf,id'],
             'foto'         => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'keterangan'   => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
@@ -44,8 +45,8 @@ class UpdateEkstrakurikulerRequest extends FormRequest
             'jam_selesai.after'       => 'Jam selesai harus setelah jam mulai.',
             'jam_selesai.required_with' => 'Jam selesai wajib diisi jika jam mulai disertakan.',
 
-            'pembina_id.integer' => 'ID pembina harus berupa angka.',
-            'pembina_id.exists'  => 'Pembina tidak ditemukan dalam sistem.',
+            'pembina_id.string' => 'ID pembina harus berupa ID string.',
+            'pembina_id.exists' => 'Pembina tidak ditemukan dalam sistem.',
 
             'foto.image' => 'File foto harus berupa gambar.',
             'foto.mimes' => 'Format foto hanya boleh JPG, JPEG, PNG, atau WEBP.',
@@ -75,6 +76,6 @@ class UpdateEkstrakurikulerRequest extends FormRequest
         throw new HttpResponseException(response()->json([
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
-        ], 422));
+        ], Response::HTTP_UNPROCESSABLE_ENTITY));
     }
 }

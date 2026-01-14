@@ -8,8 +8,10 @@ use App\Http\Resources\FasilitasResource;
 use App\Http\Requests\StoreFasilitasRequest;
 use App\Http\Requests\UpdateFasilitasRequest;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class FasilitasController extends Controller
 {
@@ -22,26 +24,48 @@ class FasilitasController extends Controller
 
     public function index(): JsonResponse
     {
-        $data = Fasilitas::paginate(12);
+        try {
+            $perPage = min((int) request()->get('per_page', 12), 100);
+            $data    = Fasilitas::paginate($perPage);
 
-        return response()->json([
-            'success' => true,
-            'data'    => FasilitasResource::collection($data),
-            'meta'    => [
-                'current_page' => $data->currentPage(),
-                'last_page'    => $data->lastPage(),
-                'per_page'     => $data->perPage(),
-                'total'        => $data->total(),
-            ],
-        ]);
+            return response()->json([
+                'success' => true,
+                'data'    => FasilitasResource::collection($data),
+                'meta'    => [
+                    'current_page' => $data->currentPage(),
+                    'last_page'    => $data->lastPage(),
+                    'per_page'     => $data->perPage(),
+                    'total'        => $data->total(),
+                ],
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch fasilitas list', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil daftar fasilitas',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
     
     public function show(Fasilitas $fasilitas): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'data'    => new FasilitasResource($fasilitas),
-        ]);
+        try {
+            return response()->json([
+                'success' => true,
+                'data'    => new FasilitasResource($fasilitas),
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch fasilitas detail', [
+                'fasilitas_id' => (string) $fasilitas->id,
+                'error'        => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil detail fasilitas',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function store(StoreFasilitasRequest $request): JsonResponse
@@ -59,15 +83,17 @@ class FasilitasController extends Controller
                 'success' => true,
                 'message' => 'Fasilitas berhasil ditambahkan.',
                 'data'    => new FasilitasResource($fasilitas),
-            ], 201);
+            ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             if (!empty($validated['foto'] ?? null)) {
                 Storage::disk('public')->delete($validated['foto']);
             }
+            Log::error('Failed to create fasilitas', ['payload' => $validated, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan fasilitas.',
-            ], 500);
+                'message' => 'Gagal menambahkan fasilitas',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -89,15 +115,21 @@ class FasilitasController extends Controller
                 'success' => true,
                 'message' => 'Fasilitas berhasil diperbarui.',
                 'data'    => new FasilitasResource($fasilitas),
-            ]);
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
             if (!empty($validated['foto'] ?? null)) {
                 Storage::disk('public')->delete($validated['foto']);
             }
+            Log::error('Failed to update fasilitas', [
+                'fasilitas_id' => (string) $fasilitas->id,
+                'payload'      => $validated,
+                'error'        => $e->getMessage()
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui fasilitas.',
-            ], 500);
+                'message' => 'Gagal memperbarui fasilitas',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -111,14 +143,21 @@ class FasilitasController extends Controller
             $fasilitas->delete();
 
             return response()->json([
-                'success' => true,
-                'message' => 'Fasilitas berhasil dihapus.'
-            ], 200);
+                'success'      => true,
+                'message'      => 'Fasilitas berhasil dihapus',
+                'notification' => 'Berhasil dihapus'
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
+            Log::error('Failed to delete fasilitas', [
+                'fasilitas_id' => (string) $fasilitas->id,
+                'error'        => $e->getMessage()
+            ]);
             return response()->json([
-                'success' => false,
-                'message' => 'Gagal menghapus fasilitas.',
-            ], 500);
+                'success'      => false,
+                'message'      => 'Gagal menghapus fasilitas',
+                'notification' => 'Gagal dihapus',
+                'errors'       => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

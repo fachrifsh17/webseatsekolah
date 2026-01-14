@@ -13,8 +13,12 @@ class GuruStaf extends Model
     use HasFactory;
 
     protected $table = 'guru_staf';
+    protected $primaryKey = 'id';
+    public $incrementing = false;
+    protected $keyType = 'string';
 
     protected $fillable = [
+        'id',
         'user_id',
         'nip',
         'nuptk',
@@ -23,12 +27,37 @@ class GuruStaf extends Model
         'status_kepegawaian',
         'foto',
         'jurusan_id',
+        'is_active',
     ];
 
     protected $casts = [
-        'user_id'    => 'integer',
-        'jurusan_id' => 'integer',
+        'user_id'    => 'string',
+        'jurusan_id' => 'string',
+        'is_active'  => 'boolean',
     ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $lastId = static::max('id');
+                $num = $lastId ? (int) substr($lastId, 1) + 1 : 1;
+                $model->id = 'G' . str_pad($num, 3, '0', STR_PAD_LEFT);
+            }
+        });
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
+    }
 
     public function user(): BelongsTo
     {

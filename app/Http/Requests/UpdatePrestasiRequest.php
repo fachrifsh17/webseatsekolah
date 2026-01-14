@@ -17,7 +17,7 @@ class UpdatePrestasiRequest extends FormRequest
             'judul'    => ['sometimes', 'required', 'string', 'max:255'],
             'tahun'    => ['nullable', 'digits:4', 'integer'],
             'tingkat'  => ['nullable', 'string', 'max:50'],
-            'kategori' => ['nullable', 'in:Siswa,Sekolah'],
+            'kategori' => ['nullable', 'in:Siswa,Sekolah,Guru'],
             'foto'     => ['nullable', 'file', 'image', 'max:5120'],
         ];
     }
@@ -35,7 +35,7 @@ class UpdatePrestasiRequest extends FormRequest
             'tingkat.string' => 'Tingkat harus berupa teks.',
             'tingkat.max'    => 'Tingkat tidak boleh lebih dari 50 karakter.',
 
-            'kategori.in' => 'Kategori hanya boleh bernilai Siswa atau Sekolah.',
+            'kategori.in' => 'Kategori hanya boleh bernilai Siswa, Sekolah, atau Guru.',
 
             'foto.file'  => 'Foto harus berupa file.',
             'foto.image' => 'Foto harus berupa gambar.',

@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Symfony\Component\HttpFoundation\Response;
 
 class UpdateMapelRequest extends FormRequest
 {
@@ -17,7 +18,7 @@ class UpdateMapelRequest extends FormRequest
     {
         return [
             'nama_mapel'     => ['bail','sometimes','required','string','max:100'],
-            'jurusan_id'     => ['nullable','integer','exists:jurusan,id'],
+            'jurusan_id'     => ['nullable','string','exists:jurusan,id'],
             'tipe_mapel'     => ['nullable','in:umum,khusus'],
             'kategori_mapel' => ['nullable','in:normatif,adaptif,produktif'],
         ];
@@ -29,8 +30,10 @@ class UpdateMapelRequest extends FormRequest
             'nama_mapel.required' => 'Nama mata pelajaran wajib diisi.',
             'nama_mapel.string'   => 'Nama mata pelajaran harus berupa teks.',
             'nama_mapel.max'      => 'Nama mata pelajaran tidak boleh lebih dari 100 karakter.',
-            'jurusan_id.integer'  => 'Jurusan harus berupa angka.',
+
+            'jurusan_id.string'   => 'Jurusan harus berupa ID string.',
             'jurusan_id.exists'   => 'Jurusan yang dipilih tidak valid.',
+
             'tipe_mapel.in'       => 'Tipe mata pelajaran hanya boleh bernilai umum atau khusus.',
             'kategori_mapel.in'   => 'Kategori mata pelajaran hanya boleh normatif, adaptif, atau produktif.',
         ];
@@ -51,6 +54,6 @@ class UpdateMapelRequest extends FormRequest
         throw new HttpResponseException(response()->json([
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
-        ], 422));
+        ], Response::HTTP_UNPROCESSABLE_ENTITY));
     }
 }

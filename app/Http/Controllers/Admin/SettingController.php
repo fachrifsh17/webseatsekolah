@@ -10,47 +10,57 @@ use App\Http\Resources\DataKontakResource;
 use App\Http\Requests\UpdateSekolahSettingRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Http\JsonResponse;
 use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class SettingController extends Controller
 {
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:admin');
+        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['updateGeneral']);
     }
 
     public function index(): JsonResponse
     {
-        $setting = SekolahSetting::firstOrCreate(
-            ['id' => 1],
-            [
-                'tagline'              => '-',
-                'logo'                 => null,
-                'pesan_selamat_datang' => '-',
-                'buku_poin_path'       => null,
-                'no_wa_kesiswaan'      => '-',
-            ]
-        );
+        try {
+            $setting = SekolahSetting::firstOrCreate(
+                ['id' => 1],
+                [
+                    'tagline'              => '-',
+                    'logo'                 => null,
+                    'pesan_selamat_datang' => '-',
+                    'buku_poin_path'       => null,
+                    'no_wa_kesiswaan'      => '-',
+                ]
+            );
 
-        $kontak = DataKontak::firstOrCreate(
-            ['id' => 1],
-            [
-                'alamat_lengkap' => '-',
-                'telepon'        => '-',
-                'email_resmi'    => '-',
-                'peta_embed_code'=> null,
-            ]
-        );
+            $kontak = DataKontak::firstOrCreate(
+                ['id' => 1],
+                [
+                    'alamat_lengkap' => '-',
+                    'telepon'        => '-',
+                    'email_resmi'    => '-',
+                    'peta_embed_code'=> null,
+                ]
+            );
 
-        return response()->json([
-            'success'          => true,
-            'general_settings' => new SekolahSettingResource($setting),
-            'contact_data'     => new DataKontakResource($kontak),
-        ]);
+            return response()->json([
+                'success'          => true,
+                'general_settings' => new SekolahSettingResource($setting),
+                'contact_data'     => new DataKontakResource($kontak),
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch settings', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil data pengaturan',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function updateGeneral(UpdateSekolahSettingRequest $request): JsonResponse
@@ -103,7 +113,8 @@ class SettingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => [
+                'message' => 'Pengaturan umum berhasil diperbarui',
+                'data'    => [
                     'id'                   => $fresh->id,
                     'tagline'              => $fresh->tagline,
                     'logo_url'             => $fresh->logo ? Storage::url($fresh->logo) : null,
@@ -112,18 +123,18 @@ class SettingController extends Controller
                     'no_wa_kesiswaan'      => $fresh->no_wa_kesiswaan,
                     'updated_at'           => $fresh->updated_at ? $fresh->updated_at->format('d-m-Y H:i') : null,
                 ]
-            ]);
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
             if ($newLogoPath) Storage::disk('public')->delete($newLogoPath);
             if ($newPdfPath) Storage::disk('public')->delete($newPdfPath);
 
-            Log::error('Gagal update setting:', [$e->getMessage()]);
+            Log::error('Failed to update settings', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menyimpan pengaturan umum',
-                'error'   => $e->getMessage(),
-            ], 500);
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

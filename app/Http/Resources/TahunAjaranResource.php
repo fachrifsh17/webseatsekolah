@@ -13,9 +13,9 @@ class TahunAjaranResource extends JsonResource
             'id' => $this->id,
             'nama' => $this->nama,
             'semester' => $this->semester,
-            'aktif' => (bool) $this->aktif,
-            'created_at' => $this->created_at->format('d-m-Y H:i'),
-            'updated_at' => $this->updated_at->format('d-m-Y H:i'),
+            'is_active' => (bool) $this->is_active,
+            'created_at' => $this->created_at?->format('d-m-Y H:i'),
+            'updated_at' => $this->updated_at?->format('d-m-Y H:i'),
         ];
     }
 }

@@ -12,7 +12,7 @@ class PpdbLinkResource extends JsonResource
             'id'          => $this->id,
             'url_link'    => $this->url_link,
             'status_ppdb' => $this->status_ppdb,
-            'updated_at'  => optional($this->updated_at)->toDateTimeString(),
+            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 }

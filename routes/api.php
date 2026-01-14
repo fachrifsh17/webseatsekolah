@@ -23,6 +23,7 @@ use App\Http\Controllers\Admin\{
     GuruController, JurusanController, KurikulumController, KalenderController,
     MediaController, AlbumController, BannerController, FasilitasController,
     EkstrakurikulerController, StrukturJabatanController,
+    JabatanController,
     RoleController, UserController, PesanController, LogAdminController,
     PrestasiController, ProfilSekolahController, MapelController,
     SiswaController, OrangtuaController, PresensiController,
@@ -78,75 +79,102 @@ Route::middleware(['auth.token'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| ADMIN ROUTES -> /api/admin/... (auth.token + role)
+| ADMIN ROUTES -> /api/admin/... (auth.token + role:Admin)
 |--------------------------------------------------------------------------
 */
-Route::prefix('admin')->middleware(['auth.token'])->group(function () {
+Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function () {
+    Route::get('logs', [LogAdminController::class, 'index']);
 
-    Route::middleware(['role:Admin'])->group(function () {
-        Route::get('logs', [LogAdminController::class, 'index']);
+    Route::put('setting/general', [SettingController::class, 'updateGeneral']);
+    Route::put('profil-sekolah', [ProfilSekolahController::class, 'update']);
+    Route::get('api-kelas-list', [KelasApiController::class, 'index']);
+    Route::get('api-setting-list', [SettingApiController::class, 'index']);
+    Route::put('data-kontak', [DataKontakController::class, 'update']);
+    Route::put('ppdb-link', [PpdbLinkController::class, 'update']);
+    Route::put('jam-sekolah', [JamSekolahController::class, 'update']);
 
-        Route::put('setting/general', [SettingController::class, 'updateGeneral']);
-        Route::put('profil-sekolah', [ProfilSekolahController::class, 'update']);
-        Route::get('api-kelas-list', [KelasApiController::class, 'index']);
-        Route::get('api-setting-list', [SettingApiController::class, 'index']);
-        Route::put('data-kontak', [DataKontakController::class, 'update']);
-        Route::put('ppdb-link', [PpdbLinkController::class, 'update']);
-        Route::put('jam-sekolah', [JamSekolahController::class, 'update']);
+    Route::get('kenaikan-kelas', [KenaikanKelasController::class, 'index']);
+    Route::post('kenaikan-kelas/proses', [KenaikanKelasController::class, 'prosesMassal']);
 
-        Route::get('kenaikan-kelas', [KenaikanKelasController::class, 'index']);
-        Route::post('kenaikan-kelas/proses', [KenaikanKelasController::class, 'prosesMassal']);
+    Route::apiResource('user', UserController::class);
+    Route::apiResource('role', RoleController::class);
+    Route::apiResource('siswa', SiswaController::class);
+    Route::apiResource('orangtua', OrangtuaController::class);
+    Route::apiResource('guru', GuruController::class);
+    Route::apiResource('guru-mapel', GuruMapelController::class);
+    Route::apiResource('jurusan', JurusanController::class);
+    Route::apiResource('kurikulum', KurikulumController::class);
+    Route::apiResource('kalender', KalenderController::class);
+    Route::apiResource('kelas', KelasController::class);
+    Route::apiResource('mapel', MapelController::class);
+    Route::apiResource('tahun-ajaran', TahunAjaranController::class);
+    Route::apiResource('jadwal-produktif', JadwalProduktifController::class);
+    Route::apiResource('presensi', PresensiController::class);
+    Route::apiResource('presensi-guru-mapel', PresensiGuruMapelController::class);
+    Route::apiResource('poin-siswa', PoinSiswaController::class);
+    Route::apiResource('portal', PortalController::class);
+    Route::apiResource('berita', BeritaController::class);
+    Route::apiResource('pengumuman', PengumumanController::class);
+    Route::apiResource('prestasi', PrestasiController::class);
+    Route::apiResource('fasilitas', FasilitasController::class);
+    Route::apiResource('ekstrakurikuler', EkstrakurikulerController::class);
+    Route::apiResource('banner', BannerController::class);
+    Route::apiResource('album', AlbumController::class);
+    Route::apiResource('media', MediaController::class);
+    Route::apiResource('jabatan', JabatanController::class);
+    Route::apiResource('struktur-jabatan', StrukturJabatanController::class);
+    
+    Route::apiResource('pesan', PesanController::class)->except(['store']);
+});
 
-        Route::apiResource('user', UserController::class);
-        Route::apiResource('role', RoleController::class);
-        Route::apiResource('siswa', SiswaController::class);
-        Route::apiResource('orangtua', OrangtuaController::class);
-        Route::apiResource('guru', GuruController::class);
-        Route::apiResource('guru-mapel', GuruMapelController::class);
-        Route::apiResource('jurusan', JurusanController::class);
-        Route::apiResource('kurikulum', KurikulumController::class);
-        Route::apiResource('kalender', KalenderController::class);
-        Route::apiResource('kelas', KelasController::class);
-        Route::apiResource('mapel', MapelController::class);
-        Route::apiResource('tahun-ajaran', TahunAjaranController::class);
-        Route::apiResource('jadwal-produktif', JadwalProduktifController::class);
-        Route::apiResource('presensi', PresensiController::class);
-        Route::apiResource('presensi-guru-mapel', PresensiGuruMapelController::class);
-        Route::apiResource('poin-siswa', PoinSiswaController::class);
-        Route::apiResource('portal', PortalController::class);
-        Route::apiResource('berita', BeritaController::class);
-        Route::apiResource('pengumuman', PengumumanController::class);
-        Route::apiResource('prestasi', PrestasiController::class);
-        Route::apiResource('fasilitas', FasilitasController::class);
-        Route::apiResource('ekstrakurikuler', EkstrakurikulerController::class);
-        Route::apiResource('banner', BannerController::class);
-        Route::apiResource('album', AlbumController::class);
-        Route::apiResource('media', MediaController::class);
-        Route::apiResource('struktur-jabatan', StrukturJabatanController::class);
-        Route::apiResource('pesan', PesanController::class)->except(['store']);
-    });
+/*
+|--------------------------------------------------------------------------
+| GURU ROUTES -> /api/guru/... (auth.token + role:guru)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function () {
+    Route::get('data-siswa', [SiswaApiController::class, 'index']);
+    Route::get('data-orangtua', [OrangtuaApiController::class, 'index']);
+    Route::get('siswa-wali', [PresensiController::class, 'siswaWali']);
 
-    Route::prefix('guru')->middleware(['role:guru'])->group(function () {
-        Route::get('data-siswa', [SiswaApiController::class, 'index']);
-        Route::get('data-orangtua', [OrangtuaApiController::class, 'index']);
-        Route::post('input-presensi', [PresensiController::class, 'store']);
-        Route::post('input-presensi-mapel', [PresensiGuruMapelController::class, 'store']);
-        Route::post('input-poin', [PoinSiswaController::class, 'store']);
-        Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);
-        Route::post('change-password', [ProfilApiController::class, 'changePassword']);
-    });
+    Route::get('presensi', [PresensiController::class, 'index']);
+    Route::get('presensi/{presensi}', [PresensiController::class, 'show']);
+    Route::post('presensi', [PresensiController::class, 'store']);
+    Route::put('presensi/{presensi}', [PresensiController::class, 'update']);
+    Route::delete('presensi/{presensi}', [PresensiController::class, 'destroy']);
 
-    Route::prefix('siswa')->middleware(['role:siswa'])->group(function () {
-        Route::get('presensi-saya', [PresensiApiController::class, 'index']);
-        Route::get('poin-saya', [PoinSiswaApiController::class, 'index']);
-        Route::get('jadwal', [JadwalProduktifApiController::class, 'index']);
-        Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);
-        Route::post('change-password', [ProfilApiController::class, 'changePassword']);
-    });
+    Route::get('presensi-mapel', [PresensiGuruMapelController::class, 'index']);
+    Route::get('presensi-mapel/{presensi}', [PresensiGuruMapelController::class, 'show']);
+    Route::post('presensi-mapel', [PresensiGuruMapelController::class, 'store']);
 
-    Route::prefix('ortu')->middleware(['role:orangtua'])->group(function () {
-        Route::get('presensi-anak', [PresensiApiController::class, 'index']);
-        Route::get('poin-anak', [PoinSiswaApiController::class, 'index']);
-        Route::post('change-password', [ProfilApiController::class, 'changePassword']);
-    });
+    Route::get('poin', [PoinSiswaController::class, 'index']);
+    Route::get('poin/{poinSiswa}', [PoinSiswaController::class, 'show']);
+    Route::post('poin', [PoinSiswaController::class, 'store']);
+
+    Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);
+    Route::post('change-password', [ProfilApiController::class, 'changePassword']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| SISWA ROUTES -> /api/siswa/... (auth.token + role:siswa)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('siswa')->middleware(['auth.token', 'role:siswa'])->group(function () {
+    Route::get('presensi-saya', [PresensiApiController::class, 'index']);
+    Route::get('poin-saya', [PoinSiswaApiController::class, 'index']);
+    Route::get('jadwal', [JadwalProduktifApiController::class, 'index']);
+    Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);
+    Route::post('change-password', [ProfilApiController::class, 'changePassword']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| ORANGTUA ROUTES -> /api/ortu/... (auth.token + role:orangtua)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('ortu')->middleware(['auth.token', 'role:orangtua'])->group(function () {
+    Route::get('presensi-anak', [PresensiApiController::class, 'index']);
+    Route::get('poin-anak', [PoinSiswaApiController::class, 'index']);
+    Route::post('change-password', [ProfilApiController::class, 'changePassword']);
 });

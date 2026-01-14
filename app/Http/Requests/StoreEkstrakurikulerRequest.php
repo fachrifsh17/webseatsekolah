@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Symfony\Component\HttpFoundation\Response;
 
 class StoreEkstrakurikulerRequest extends FormRequest
 {
@@ -21,7 +22,7 @@ class StoreEkstrakurikulerRequest extends FormRequest
             'hari'        => ['nullable', 'string', 'max:50'],
             'jam_mulai'   => ['nullable', 'date_format:H:i'],
             'jam_selesai' => ['nullable', 'date_format:H:i', 'after:jam_mulai'],
-            'pembina_id'  => ['nullable', 'integer', 'exists:guru_staf,id'],
+            'pembina_id'  => ['nullable', 'string', 'exists:guru_staf,id'],
             'foto'        => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'keterangan'  => ['nullable', 'string', 'max:255'],
         ];
@@ -38,7 +39,7 @@ class StoreEkstrakurikulerRequest extends FormRequest
             'jam_mulai.date_format'=> 'Format jam mulai harus HH:ii.',
             'jam_selesai.date_format' => 'Format jam selesai harus HH:ii.',
             'jam_selesai.after'    => 'Jam selesai harus setelah jam mulai.',
-            'pembina_id.integer'   => 'Pembina harus berupa angka.',
+            'pembina_id.string'    => 'Pembina harus berupa ID string.',
             'pembina_id.exists'    => 'Pembina yang dipilih tidak terdaftar di data Guru/Staf.',
             'foto.image'           => 'File harus berupa gambar.',
             'foto.mimes'           => 'Format gambar yang didukung: JPG, JPEG, PNG, dan WEBP.',
@@ -67,6 +68,6 @@ class StoreEkstrakurikulerRequest extends FormRequest
         throw new HttpResponseException(response()->json([
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
-        ], 422));
+        ], Response::HTTP_UNPROCESSABLE_ENTITY));
     }
 }

@@ -15,8 +15,8 @@ class BeritaResource extends JsonResource
             'isi_berita' => $this->isi_berita,
             'tanggal_publikasi' => $this->formatTanggalPublikasi(),
             'foto' => $this->foto,
-            'created_at' => $this->created_at ? $this->created_at->toIso8601String() : null,
-            'updated_at' => $this->updated_at ? $this->updated_at->toIso8601String() : null,
+            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
+            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 

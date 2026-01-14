@@ -12,7 +12,9 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
 use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class UserController extends Controller
 {
@@ -25,7 +27,7 @@ class UserController extends Controller
 
     public function index(): JsonResponse
     {
-        $users = User::with(['roles', 'guru'])->paginate(15);
+        $users = User::with(['roles', 'guruStaf'])->paginate(15);
 
         return response()->json([
             'success' => true,
@@ -36,22 +38,23 @@ class UserController extends Controller
                 'per_page'     => $users->perPage(),
                 'total'        => $users->total(),
             ],
-        ]);
+        ], Response::HTTP_OK);
     }
 
     public function show(User $user): JsonResponse
     {
-        $user->load(['roles', 'guru']);
+        $user->load(['roles', 'guruStaf']);
 
         return response()->json([
             'success' => true,
             'data'    => new UserResource($user),
-        ]);
+        ], Response::HTTP_OK);
     }
 
     public function store(StoreUserRequest $request): JsonResponse
     {
         $data = $request->validated();
+
         if (!empty($data['password'])) {
             $data['password'] = Hash::make($data['password']);
         } else {
@@ -61,31 +64,51 @@ class UserController extends Controller
         try {
             $user = DB::transaction(function () use ($data) {
                 $user = User::create($data);
+
                 if (!empty($data['role_ids']) && is_array($data['role_ids'])) {
-                    $user->roles()->attach($data['role_ids']);
+                    $roleIds = array_map('strval', $data['role_ids']);
+                    $user->roles()->attach($roleIds);
                 }
+
                 return $user;
             });
 
-            $user->load(['roles', 'guru']);
+            $user->load(['roles', 'guruStaf']);
 
             return response()->json([
                 'success' => true,
                 'message' => 'User berhasil ditambahkan.',
                 'data'    => new UserResource($user),
-            ], 201);
-        } catch (Throwable $e) {
-            Log::error('Failed to create user', ['error' => $e->getMessage()]);
+            ], Response::HTTP_CREATED);
+        } catch (QueryException $e) {
+            Log::error('Failed to create user (QueryException)', ['error' => $e->getMessage()]);
+
+            if (isset($e->errorInfo[1]) && $e->errorInfo[1] == 1062) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Username konflik: sudah terdaftar.',
+                    'errors'  => ['username' => ['Username sudah terdaftar.']],
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal membuat user.',
-            ], 500);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        } catch (Throwable $e) {
+            Log::error('Failed to create user', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat user.',
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
         $data = $request->validated();
+
         if (!empty($data['password'])) {
             $data['password'] = Hash::make($data['password']);
         } else {
@@ -95,49 +118,68 @@ class UserController extends Controller
         try {
             DB::transaction(function () use ($data, $user) {
                 $user->update($data);
+
                 if (array_key_exists('role_ids', $data)) {
-                    $roleIds = is_array($data['role_ids']) ? $data['role_ids'] : [];
+                    $roleIds = is_array($data['role_ids']) ? array_map('strval', $data['role_ids']) : [];
                     $user->roles()->sync($roleIds);
                 }
             });
 
-            $user->load(['roles', 'guru']);
+            $user->load(['roles', 'guruStaf']);
 
             return response()->json([
                 'success' => true,
                 'message' => 'User berhasil diperbarui.',
                 'data'    => new UserResource($user),
-            ]);
-        } catch (Throwable $e) {
-            Log::error('Failed to update user', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+            ], Response::HTTP_OK);
+        } catch (QueryException $e) {
+            Log::error('Failed to update user (QueryException)', ['user_id' => (string)$user->id, 'error' => $e->getMessage()]);
+
+            if (isset($e->errorInfo[1]) && $e->errorInfo[1] == 1062) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Username konflik: sudah terdaftar.',
+                    'errors'  => ['username' => ['Username sudah terdaftar.']],
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui user.',
-            ], 500);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        } catch (Throwable $e) {
+            Log::error('Failed to update user', ['user_id' => (string)$user->id, 'error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui user.',
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function destroy(User $user): JsonResponse
     {
-        if ($user->id === Auth::id()) {
+        if ((string)$user->id === (string)Auth::id()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak diizinkan menghapus akun yang sedang digunakan.',
-            ], 403);
+            ], Response::HTTP_FORBIDDEN);
         }
 
         try {
             $user->delete();
+
             return response()->json([
                 'success' => true,
                 'message' => 'User berhasil dihapus.',
-            ], 200);
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to delete user', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+            Log::error('Failed to delete user', ['user_id' => (string)$user->id, 'error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus user.',
-            ], 500);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

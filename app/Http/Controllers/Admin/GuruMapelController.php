@@ -6,14 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\GuruMapel;
 use App\Models\GuruStaf;
 use App\Models\MataPelajaran;
+use App\Models\Kelas;
 use App\Http\Resources\GuruResource;
 use App\Http\Resources\MapelResource;
+use App\Http\Resources\KelasResource;
 use App\Http\Resources\GuruMapelResource;
 use App\Http\Requests\StoreGuruMapelRequest;
 use App\Http\Requests\UpdateGuruMapelRequest;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Throwable;
+use Symfony\Component\HttpFoundation\Response; 
 
 class GuruMapelController extends Controller
 {
@@ -24,31 +28,43 @@ class GuruMapelController extends Controller
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $assignments = GuruMapel::with(['guru', 'mapel'])->get();
-        return response()->json(GuruMapelResource::collection($assignments));
-    }
+        $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas']);
 
-    public function show(?GuruMapel $guruMapel): JsonResponse
-    {
-        if (!$guruMapel) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data penugasan tidak ditemukan',
-                'errors'  => ['id' => ['Penugasan dengan ID tersebut tidak ada']]
-            ], 404);
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->whereHas('guru', function($g) use ($search) {
+                    $g->where('nama', 'LIKE', "%{$search}%")
+                      ->orWhere('nip', 'LIKE', "%{$search}%");
+                })
+                ->orWhereHas('mapel', function($m) use ($search) {
+                    $m->where('nama_mapel', 'LIKE', "%{$search}%")
+                      ->orWhere('tipe_mapel', 'LIKE', "%{$search}%")
+                      ->orWhereHas('jurusan', function($j) use ($search) {
+                          $j->where('nama_jurusan', 'LIKE', "%{$search}%");
+                      });
+                })
+                ->orWhereHas('kelas', function($k) use ($search) {
+                    $k->where('nama_kelas', 'LIKE', "%{$search}%");
+                });
+            });
         }
 
-        return response()->json(new GuruMapelResource($guruMapel->load(['guru', 'mapel'])), 200);
+        $perPage = $request->query('per_page', 10);
+        $assignments = $query->latest()->paginate($perPage);
+
+        return GuruMapelResource::collection($assignments)->response()
+            ->setStatusCode(Response::HTTP_OK); 
     }
 
-    public function getLists(): JsonResponse
+    public function show(GuruMapel $guruMapel): JsonResponse
     {
-        return response()->json([
-            'guru_list'  => GuruResource::collection(GuruStaf::all()),
-            'mapel_list' => MapelResource::collection(MataPelajaran::all()),
-        ]);
+        return response()->json(
+            new GuruMapelResource($guruMapel->load(['guru', 'mapel.jurusan', 'kelas'])),
+            Response::HTTP_OK 
+        );
     }
 
     public function store(StoreGuruMapelRequest $request): JsonResponse
@@ -57,61 +73,53 @@ class GuruMapelController extends Controller
 
         $exists = GuruMapel::where('guru_staf_id', $validated['guru_staf_id'])
             ->where('mata_pelajaran_id', $validated['mata_pelajaran_id'])
+            ->where('kelas_id', $validated['kelas_id'])
             ->exists();
 
         if ($exists) {
             return response()->json([
                 'success' => false,
-                'message' => 'Guru sudah terdaftar pada mata pelajaran ini.',
+                'message' => 'Guru sudah terdaftar pada mata pelajaran dan kelas ini.',
                 'errors'  => [
-                    'guru_staf_id'      => ['Guru sudah terdaftar pada mata pelajaran ini.'],
-                    'mata_pelajaran_id' => ['Guru sudah terdaftar pada mata pelajaran ini.']
+                    'conflict' => ['Kombinasi Guru, Mata Pelajaran, dan Kelas sudah ada.']
                 ]
-            ], 409);
+            ], Response::HTTP_CONFLICT); 
         }
 
         try {
             $assignment = DB::transaction(fn() => GuruMapel::create($validated));
             return response()->json([
                 'success' => true,
-                'message' => 'Penugasan guru ke mata pelajaran berhasil ditambahkan.',
-                'data'    => new GuruMapelResource($assignment->load(['guru','mapel']))
-            ], 201);
+                'message' => 'Penugasan guru berhasil ditambahkan.',
+                'data'    => new GuruMapelResource($assignment->load(['guru', 'mapel.jurusan', 'kelas']))
+            ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan penugasan guru ke mata pelajaran',
+                'message' => 'Gagal menambahkan penugasan guru',
                 'errors'  => ['exception' => [$e->getMessage()]]
-            ], 500);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR); 
         }
     }
 
-    public function update(UpdateGuruMapelRequest $request, ?GuruMapel $guruMapel): JsonResponse
+    public function update(UpdateGuruMapelRequest $request, GuruMapel $guruMapel): JsonResponse
     {
-        if (!$guruMapel) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data penugasan tidak ditemukan',
-                'errors'  => ['id' => ['Penugasan dengan ID tersebut tidak ada']]
-            ], 404);
-        }
-
         $validated = $request->validated();
 
         $exists = GuruMapel::where('guru_staf_id', $validated['guru_staf_id'])
             ->where('mata_pelajaran_id', $validated['mata_pelajaran_id'])
-            ->where('id','<>',$guruMapel->id)
+            ->where('kelas_id', $validated['kelas_id'])
+            ->where('id', '<>', $guruMapel->id)
             ->exists();
 
         if ($exists) {
             return response()->json([
                 'success' => false,
-                'message' => 'Guru sudah terdaftar pada mata pelajaran ini.',
+                'message' => 'Kombinasi Guru, Mata Pelajaran, dan Kelas ini sudah digunakan.',
                 'errors'  => [
-                    'guru_staf_id'      => ['Guru sudah terdaftar pada mata pelajaran ini.'],
-                    'mata_pelajaran_id' => ['Guru sudah terdaftar pada mata pelajaran ini.']
+                    'conflict' => ['Data penugasan serupa sudah ada di sistem.']
                 ]
-            ], 409);
+            ], Response::HTTP_CONFLICT); 
         }
 
         try {
@@ -120,42 +128,34 @@ class GuruMapelController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Penugasan guru ke mata pelajaran berhasil diperbarui.',
-                'data'    => new GuruMapelResource($guruMapel->load(['guru','mapel']))
-            ], 200);
+                'message' => 'Penugasan guru berhasil diperbarui.',
+                'data'    => new GuruMapelResource($guruMapel->load(['guru', 'mapel.jurusan', 'kelas']))
+            ], Response::HTTP_OK); 
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui penugasan guru ke mata pelajaran',
+                'message' => 'Gagal memperbarui penugasan guru',
                 'errors'  => ['exception' => [$e->getMessage()]]
-            ], 500);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR); 
         }
     }
 
-    public function destroy(?GuruMapel $guruMapel): JsonResponse
+    public function destroy(GuruMapel $guruMapel): JsonResponse
     {
-        if (!$guruMapel) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data penugasan tidak ditemukan',
-                'errors'  => ['id' => ['Penugasan dengan ID tersebut tidak ada']]
-            ], 404);
-        }
-
         try {
             DB::transaction(fn() => $guruMapel->delete());
 
             return response()->json([
                 'success'      => true,
-                'message'      => 'Penugasan guru ke mata pelajaran berhasil dihapus',
+                'message'      => 'Penugasan guru berhasil dihapus',
                 'notification' => 'Berhasil dihapus'
-            ], 200);
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus penugasan guru ke mata pelajaran',
+                'message' => 'Gagal menghapus penugasan guru',
                 'errors'  => ['exception' => [$e->getMessage()]]
-            ], 500);
+            ], Response::HTTP_INTERNAL_SERVER_ERROR); 
         }
     }
 }

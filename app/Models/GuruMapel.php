@@ -15,6 +15,7 @@ class GuruMapel extends Model
     protected $fillable = [
         'guru_staf_id',
         'mata_pelajaran_id',
+        'kelas_id',
     ];
 
     public function guru(): BelongsTo
@@ -25,5 +26,9 @@ class GuruMapel extends Model
     public function mapel(): BelongsTo
     {
         return $this->belongsTo(MataPelajaran::class, 'mata_pelajaran_id');
+    }
+    public function kelas(): BelongsTo
+    {
+        return $this->belongsTo(Kelas::class, 'kelas_id');
     }
 }

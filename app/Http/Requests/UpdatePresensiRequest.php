@@ -3,54 +3,68 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Symfony\Component\HttpFoundation\Response;
 
 class UpdatePresensiRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return Auth::check() && (Auth::user()->role === 'admin' || Auth::user()->role === 'guru');
+        return true;
     }
 
     public function rules(): array
     {
         return [
-            'siswa_id'        => ['sometimes', 'required', 'exists:siswa,id'],
-            'tahun_ajaran_id' => ['sometimes', 'required', 'exists:tahun_ajaran,id'],
-            'tanggal'         => ['sometimes', 'required', 'date'],
-            'status'          => ['sometimes', 'required', 'in:Hadir,Izin,Sakit,Alfa'],
-            'keterangan'      => ['nullable', 'string', 'max:255'],
+            'siswa_id'     => ['sometimes', 'required', 'string', 'exists:siswa,id'],
+            'tanggal'      => ['sometimes', 'required', 'date'],
+            'status'       => ['sometimes', 'required', 'in:Hadir,Izin,Sakit,Alpa'],
+            'keterangan'   => ['nullable', 'string', 'max:255'],
+            'guru_staf_id' => ['nullable', 'string', 'exists:guru_staf,id'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'siswa_id.required'     => 'Siswa wajib dipilih.',
-            'siswa_id.exists'       => 'Data siswa tidak ditemukan.',
+            'siswa_id.required'    => 'Siswa wajib dipilih.',
+            'siswa_id.string'      => 'Siswa harus berupa ID string.',
+            'siswa_id.exists'      => 'Data siswa tidak ditemukan.',
 
-            'tahun_ajaran_id.required' => 'Tahun ajaran wajib dipilih.',
-            'tahun_ajaran_id.exists'   => 'Tahun ajaran tidak valid.',
+            'tanggal.required'     => 'Tanggal wajib diisi.',
+            'tanggal.date'         => 'Format tanggal tidak valid.',
 
-            'tanggal.required' => 'Tanggal wajib diisi.',
-            'tanggal.date'     => 'Format tanggal tidak valid.',
+            'status.required'      => 'Status presensi wajib dipilih.',
+            'status.in'            => 'Status harus berupa Hadir, Izin, Sakit, atau Alpa.',
 
-            'status.required' => 'Status presensi wajib dipilih.',
-            'status.in'       => 'Status harus berupa Hadir, Izin, Sakit, atau Alfa.',
+            'keterangan.string'    => 'Keterangan harus berupa teks.',
+            'keterangan.max'       => 'Keterangan tidak boleh lebih dari 255 karakter.',
 
-            'keterangan.string' => 'Keterangan harus berupa teks.',
-            'keterangan.max'    => 'Keterangan tidak boleh lebih dari 255 karakter.',
+            'guru_staf_id.string'  => 'ID guru harus berupa ID string.',
+            'guru_staf_id.exists'  => 'Data guru tidak ditemukan.',
         ];
     }
 
     public function attributes(): array
     {
         return [
-            'siswa_id'        => 'Siswa',
-            'tahun_ajaran_id' => 'Tahun ajaran',
-            'tanggal'         => 'Tanggal',
-            'status'          => 'Status presensi',
-            'keterangan'      => 'Keterangan',
+            'siswa_id'     => 'Siswa',
+            'tanggal'      => 'Tanggal',
+            'status'       => 'Status presensi',
+            'keterangan'   => 'Keterangan',
+            'guru_staf_id' => 'Guru Penginput',
         ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(
+            response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal.',
+                'errors'  => $validator->errors(),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY)
+        );
     }
 }

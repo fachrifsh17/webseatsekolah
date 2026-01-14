@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Symfony\Component\HttpFoundation\Response;
 
 class UpdateProfilSekolahRequest extends FormRequest
 {
@@ -22,7 +23,7 @@ class UpdateProfilSekolahRequest extends FormRequest
             'misi'            => ['nullable', 'string'],
             'npsn'            => ['bail', 'nullable', 'string', 'max:20'],
             'akreditasi'      => ['bail', 'nullable', 'string', 'max:10'],
-            'guru_staf_id'    => ['bail', 'nullable', 'integer', 'exists:guru_staf,id'],
+            'guru_staf_id'    => ['bail', 'nullable', 'string', 'exists:guru_staf,id'],
             'sambutan_kepsek' => ['nullable', 'string'],
         ];
     }
@@ -39,7 +40,7 @@ class UpdateProfilSekolahRequest extends FormRequest
             'npsn.max'                => 'NPSN maksimal 20 karakter.',
             'akreditasi.string'       => 'Akreditasi harus berupa teks.',
             'akreditasi.max'          => 'Akreditasi maksimal 10 karakter.',
-            'guru_staf_id.integer'    => 'Guru/Staf harus berupa angka.',
+            'guru_staf_id.string'     => 'Guru/Staf ID harus berupa ID string.',
             'guru_staf_id.exists'     => 'Data guru/staf tidak ditemukan.',
             'sambutan_kepsek.string'  => 'Sambutan kepala sekolah harus berupa teks.',
         ];
@@ -64,6 +65,6 @@ class UpdateProfilSekolahRequest extends FormRequest
         throw new HttpResponseException(response()->json([
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
-        ], 422));
+        ], Response::HTTP_UNPROCESSABLE_ENTITY));
     }
 }

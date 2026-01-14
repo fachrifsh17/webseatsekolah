@@ -9,39 +9,51 @@ class UserResource extends JsonResource
     public function toArray($request)
     {
         return [
-            'id'           => $this->id,
-            'username'     => $this->username,
-            'nama_lengkap' => $this->nama_lengkap,
-            'is_active'    => (int) $this->is_active,
-            
-            'roles' => $this->roles->map(function ($role) {
-                return [
-                    'id'   => $role->id,
-                    'nama' => $role->role_name,
-                ];
+            'id'        => $this->id,
+            'username'  => $this->username,
+            'is_active' => (int) $this->is_active,
+
+            'roles' => $this->whenLoaded('roles', function () {
+                return $this->roles->map(function ($role) {
+                    return [
+                        'id'   => $role->id,
+                        'nama' => $role->role_name,
+                    ];
+                })->values();
             }),
 
-            'guru' => $this->when($this->guru, function () {
+            'guru' => $this->when($this->relationLoaded('guru') && $this->guru, function () {
                 return [
                     'nip'     => $this->guru->nip,
                     'jabatan' => $this->guru->jabatan_fungsional,
                 ];
             }),
 
-            'siswa' => $this->when($this->siswa, function () {
+            'siswa' => $this->when($this->relationLoaded('siswa') && $this->siswa, function () {
                 return [
-                    'nisn'  => $this->siswa->nisn,
+                    'nis'  => $this->siswa->nis,
                     'kelas' => $this->siswa->kelas?->nama_kelas,
                 ];
             }),
 
-            'orangtua' => $this->when($this->orangtua, function () {
+            'orangtua' => $this->when($this->relationLoaded('orangtua') && $this->orangtua, function () {
+                if ($this->orangtua instanceof \Illuminate\Support\Collection) {
+                    return $this->orangtua->map(function ($o) {
+                        return [
+                            'id'          => $o->id,
+                            'nama_lengkap'=> $o->nama_lengkap,
+                            'telepon'     => $o->telepon,
+                        ];
+                    })->values();
+                }
+
                 return [
-                    'nama_ayah' => $this->orangtua->nama_ayah,
-                    'nama_ibu'  => $this->orangtua->nama_ibu,
+                    'id'          => $this->orangtua->id,
+                    'nama_lengkap'=> $this->orangtua->nama_lengkap,
+                    'telepon'     => $this->orangtua->telepon,
                 ];
             }),
-            
+
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];

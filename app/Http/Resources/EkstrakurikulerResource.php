@@ -19,9 +19,14 @@ class EkstrakurikulerResource extends JsonResource
             'pembina_id'   => $this->pembina_id,
             'foto_url'     => $this->foto ? Storage::url($this->foto) : null,
             'keterangan'   => $this->keterangan,
-            'pembina'      => $this->whenLoaded('pembina', fn () => new GuruResource($this->pembina)),
-            'created_at'   => $this->created_at?->toISOString(),
-            'updated_at'   => $this->updated_at?->toISOString(),
+            'pembina'      => $this->whenLoaded('pembina', function () {
+                return [
+                    'id'   => $this->pembina->id,
+                    'nama' => $this->pembina->nama,
+                ];
+            }),
+            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
+            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 }

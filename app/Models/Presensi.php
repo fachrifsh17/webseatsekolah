@@ -14,6 +14,7 @@ class Presensi extends Model
 
     protected $fillable = [
         'siswa_id',
+        'guru_staf_id',     // tambahkan agar bisa diisi otomatis dari user login
         'tahun_ajaran_id',
         'tanggal',
         'status',
@@ -23,6 +24,11 @@ class Presensi extends Model
     public function siswa(): BelongsTo
     {
         return $this->belongsTo(Siswa::class, 'siswa_id');
+    }
+
+    public function guruStaf(): BelongsTo
+    {
+        return $this->belongsTo(GuruStaf::class, 'guru_staf_id');
     }
 
     public function tahunAjaran(): BelongsTo
