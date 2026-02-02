@@ -18,15 +18,7 @@ class StorePresensiRequest extends FormRequest
     {
         return [
             'siswa_id'   => ['required', 'string', 'exists:siswa,id'],
-<<<<<<< HEAD
-            'tanggal'    => ['required', 'date'],
-=======
-            
-            // UBAH: dari 'required' menjadi 'sometimes' atau 'nullable'
-            // Ini agar validator tidak protes jika tanggal tidak dikirim di Postman
             'tanggal'    => ['sometimes', 'date'], 
-            
->>>>>>> master
             'status'     => ['required', 'in:Hadir,Izin,Sakit,Alpa'],
             'keterangan' => ['nullable', 'string', 'max:255'],
         ];
@@ -39,11 +31,6 @@ class StorePresensiRequest extends FormRequest
             'siswa_id.string'   => 'ID siswa harus berupa ID string.',
             'siswa_id.exists'   => 'Data siswa tidak ditemukan.',
 
-<<<<<<< HEAD
-            'tanggal.required'  => 'Tanggal absensi tidak boleh kosong.',
-=======
-            // Pesan ini hanya akan muncul jika Admin mengisi tanggal tapi formatnya salah
->>>>>>> master
             'tanggal.date'      => 'Format tanggal absensi tidak valid.',
 
             'status.required'   => 'Status kehadiran harus diisi.',
@@ -74,8 +61,4 @@ class StorePresensiRequest extends FormRequest
             ], Response::HTTP_UNPROCESSABLE_ENTITY)
         );
     }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> master

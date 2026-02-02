@@ -7,13 +7,10 @@ use App\Models\Orangtua;
 use App\Http\Requests\StoreOrangtuaRequest;
 use App\Http\Requests\UpdateOrangtuaRequest;
 use App\Http\Resources\OrangtuaResource;
-<<<<<<< HEAD
-=======
 use App\Exports\OrangtuaExport;
 use App\Imports\OrangtuaImport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\Request;
->>>>>>> master
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -22,13 +19,6 @@ use Symfony\Component\HttpFoundation\Response;
 
 class OrangtuaController extends Controller
 {
-<<<<<<< HEAD
-    public function index(): JsonResponse
-    {
-        $orangtua = Orangtua::with(['user','anak.kelas.jurusan'])
-            ->latest()
-            ->paginate(20);
-=======
     public function index(Request $request): JsonResponse
     {
         $search = $request->query('q');
@@ -40,7 +30,6 @@ class OrangtuaController extends Controller
             })
             ->latest()
             ->paginate($request->query('per_page', 20));
->>>>>>> master
 
         return response()->json([
             'success' => true,
@@ -129,7 +118,7 @@ class OrangtuaController extends Controller
                 'data'    => new OrangtuaResource($orangtua->load(['user','anak.kelas.jurusan']))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to update orangtua', ['orangtua_id' => (string) $orangtua->id, 'payload' => $validated, 'error' => $e->getMessage()]);
+            Log::error('Failed to update orangtua', ['orangtua_id' => (string) $orangtua->id, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui orang tua',
@@ -159,7 +148,7 @@ class OrangtuaController extends Controller
                     'error_code' => 'conflict_relations',
                     'message'    => 'Penghapusan diblokir karena terdapat data terkait.',
                     'reasons'    => $blockers,
-                    'hint'       => 'Gunakan parameter ?force=1 untuk memaksa penghapusan setelah memastikan data terkait ditangani.'
+                    'hint'       => 'Gunakan parameter ?force=1 untuk memaksa penghapusan.'
                 ], Response::HTTP_CONFLICT);
             }
 
@@ -183,9 +172,6 @@ class OrangtuaController extends Controller
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-<<<<<<< HEAD
-}
-=======
 
     public function export(Request $request)
     {
@@ -201,8 +187,7 @@ class OrangtuaController extends Controller
             Excel::import(new OrangtuaImport, $request->file('file'));
             return response()->json(['success' => true, 'message' => 'Data berhasil diimport.'], Response::HTTP_OK);
         } catch (Throwable $e) {
-            return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }
->>>>>>> master

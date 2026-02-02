@@ -4,39 +4,6 @@ namespace App\Policies;
 
 use App\Models\Presensi;
 use App\Models\User;
-<<<<<<< HEAD
-use Illuminate\Auth\Access\Response;
-
-class PresensiPolicy
-{
-    /**
-     * Determine whether the user can view any models.
-     */
-    public function viewAny(User $user): bool
-    {
-        return false;
-    }
-
-    /**
-     * Determine whether the user can view the model.
-     */
-    public function view(User $user, Presensi $presensi): bool
-    {
-        return false;
-    }
-
-    /**
-     * Determine whether the user can create models.
-     */
-    public function create(User $user): bool
-    {
-        return false;
-    }
-
-    /**
-     * Determine whether the user can update the model.
-     */
-=======
 use Illuminate\Auth\Access\HandlesAuthorization;
 use Illuminate\Support\Facades\DB;
 
@@ -46,12 +13,14 @@ class PresensiPolicy
 
     public function before(User $user, $ability)
     {
+        // Admin memiliki akses penuh (Bypass)
         if ($user->hasRole('Admin')) return true;
 
+        // Cek Jabatan Tinggi (Kepsek/Waka) untuk melihat data secara global
         if ($user->guruStaf) {
             $isHighLevel = DB::table('struktur_jabatan')
                 ->where('guru_staf_id', $user->guruStaf->id)
-                ->whereIn('jabatan_id', [1, 3])
+                ->whereIn('jabatan_id', [1, 3]) // Sesuaikan ID jabatan Kepsek/Waka Anda
                 ->exists();
 
             if ($isHighLevel && in_array($ability, ['viewAny', 'view'])) {
@@ -67,14 +36,17 @@ class PresensiPolicy
 
     public function view(User $user, Presensi $presensi): bool
     {
+        // 1. Guru/Wali Kelas: Hanya bisa melihat presensi siswa di kelasnya
         if ($user->hasRole('Guru') && $user->guruStaf) {
             return (string) $user->guruStaf->id === (string) $presensi->siswa?->kelas?->wali_kelas_id;
         }
 
+        // 2. Siswa: Hanya bisa melihat presensi miliknya sendiri
         if ($user->hasRole('Siswa')) {
             return (string) $user->siswa_id === (string) $presensi->siswa_id;
         }
 
+        // 3. Orang Tua: Hanya bisa melihat presensi anaknya
         if ($user->hasRole('Orang Tua')) {
             return DB::table('orangtua_siswa')
                 ->where('orangtua_id', $user->orangtua_id)
@@ -87,43 +59,18 @@ class PresensiPolicy
 
     public function create(User $user): bool
     {
+        // Hanya Guru (Wali Kelas) yang bisa menginput presensi harian
         return $user->hasRole('Guru');
     }
 
->>>>>>> master
     public function update(User $user, Presensi $presensi): bool
     {
+        // Secara default false, kecuali diizinkan via before() untuk Admin
         return false;
     }
 
-<<<<<<< HEAD
-    /**
-     * Determine whether the user can delete the model.
-     */
-=======
->>>>>>> master
     public function delete(User $user, Presensi $presensi): bool
     {
         return false;
     }
-<<<<<<< HEAD
-
-    /**
-     * Determine whether the user can restore the model.
-     */
-    public function restore(User $user, Presensi $presensi): bool
-    {
-        return false;
-    }
-
-    /**
-     * Determine whether the user can permanently delete the model.
-     */
-    public function forceDelete(User $user, Presensi $presensi): bool
-    {
-        return false;
-    }
 }
-=======
-}
->>>>>>> master

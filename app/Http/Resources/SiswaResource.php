@@ -14,10 +14,7 @@ class SiswaResource extends JsonResource
             'id'            => $this->id,
             'user_id'       => $this->user_id,
             'nis'           => $this->nis,
-<<<<<<< HEAD
-=======
             'nisn'          => $this->nisn,
->>>>>>> master
             'nama_lengkap'  => $this->nama_lengkap,
             'tempat_lahir'  => $this->tempat_lahir,
             'tanggal_lahir' => $this->tanggal_lahir?->toDateString(),
@@ -51,8 +48,4 @@ class SiswaResource extends JsonResource
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> master

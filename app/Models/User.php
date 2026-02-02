@@ -9,10 +9,6 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Support\Facades\Hash;
 
-<<<<<<< HEAD
-=======
-
->>>>>>> master
 class User extends Authenticatable
 {
     use HasFactory, Notifiable;
@@ -45,6 +41,7 @@ class User extends Authenticatable
     {
         parent::boot();
 
+        // Otomatis membuat custom ID (Contoh: U001, U002)
         static::creating(function ($model) {
             if (empty($model->id)) {
                 $lastId = static::orderBy('id', 'desc')->first()?->id;
@@ -54,15 +51,9 @@ class User extends Authenticatable
         });
     }
 
-<<<<<<< HEAD
-    public function roles(): BelongsToMany
-    {
-        return $this->belongsToMany(Role::class, 'user_roles', 'user_id', 'role_id')
-            ->withTimestamps();
-    }
-
-=======
->>>>>>> master
+    /**
+     * Hash password secara otomatis saat disimpan
+     */
     public function setPasswordAttribute(string $value): void
     {
         $this->attributes['password'] = Hash::needsRehash($value) 
@@ -70,15 +61,39 @@ class User extends Authenticatable
             : $value;
     }
 
-<<<<<<< HEAD
-=======
+    /*
+    |--------------------------------------------------------------------------
+    | RELATIONS
+    |--------------------------------------------------------------------------
+    */
+
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'user_roles', 'user_id', 'role_id')
             ->withTimestamps();
     }
 
->>>>>>> master
+    public function guruStaf(): HasOne
+    {
+        return $this->hasOne(GuruStaf::class, 'user_id', 'id');
+    }
+
+    public function siswa(): HasOne
+    {
+        return $this->hasOne(Siswa::class, 'user_id', 'id');
+    }
+
+    public function orangtua(): HasOne
+    {
+        return $this->hasOne(OrangTua::class, 'user_id', 'id');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ROLE & PERMISSION LOGIC
+    |--------------------------------------------------------------------------
+    */
+
     protected function getNormalizedRoleNames(): array
     {
         return $this->roles->pluck('role_name')->map(fn($role) => strtolower($role))->all();
@@ -101,23 +116,4 @@ class User extends Authenticatable
     {
         return $this->roles->pluck('role_name')->all();
     }
-
-    public function guruStaf(): HasOne
-    {
-        return $this->hasOne(GuruStaf::class, 'user_id', 'id');
-    }
-
-    public function siswa(): HasOne
-    {
-        return $this->hasOne(Siswa::class, 'user_id', 'id');
-    }
-
-    public function orangtua(): HasOne
-    {
-        return $this->hasOne(OrangTua::class, 'user_id', 'id');
-    }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> master

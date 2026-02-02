@@ -8,26 +8,12 @@ use App\Models\TahunAjaran;
 use App\Http\Requests\StoreKelasRequest;
 use App\Http\Requests\UpdateKelasRequest;
 use App\Http\Resources\KelasResource;
-<<<<<<< HEAD
-=======
 use Illuminate\Http\Request;
->>>>>>> master
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
-<<<<<<< HEAD
-
-class KelasController extends Controller
-{
-    public function index(): JsonResponse
-    {
-        try {
-            $kelas = Kelas::with(['jurusan', 'tahunAjaran', 'waliKelas'])
-                ->latest()
-                ->get();
-=======
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\KelasExport;
 use App\Imports\KelasImport;
@@ -60,7 +46,6 @@ class KelasController extends Controller
             }
 
             $kelas = $query->latest()->get();
->>>>>>> master
 
             return response()->json([
                 'success' => true,
@@ -76,13 +61,6 @@ class KelasController extends Controller
         }
     }
 
-<<<<<<< HEAD
-    public function store(StoreKelasRequest $request): JsonResponse
-    {
-        $validated = $request->validated();
-
-        $tahunAktif = TahunAjaran::where('is_active', true)->first();
-=======
     public function export(Request $request)
     {
         try {
@@ -90,7 +68,6 @@ class KelasController extends Controller
             $fileName = 'data_kelas_' . date('Ymd_His') . '.xlsx';
             return Excel::download(new KelasExport($filters), $fileName);
         } catch (Throwable $e) {
-            Log::error('Export Kelas Error', ['error' => $e->getMessage()]);
             return response()->json(['message' => 'Gagal mengekspor data kelas.'], 500);
         }
     }
@@ -106,7 +83,6 @@ class KelasController extends Controller
                 'message' => 'Data kelas berhasil diimpor.',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Import Kelas Error', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengimpor data kelas.',
@@ -171,7 +147,6 @@ class KelasController extends Controller
             ], Response::HTTP_CREATED);
 
         } catch (Throwable $e) {
-            Log::error('Failed to generate kelas', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menyalin data kelas.',
@@ -185,7 +160,6 @@ class KelasController extends Controller
         $validated = $request->validated();
         $tahunAktif = TahunAjaran::where('is_active', true)->first();
 
->>>>>>> master
         if (!$tahunAktif) {
             return response()->json([
                 'success' => false,
@@ -195,10 +169,6 @@ class KelasController extends Controller
 
         $validated['tahun_ajaran_id'] = $tahunAktif->id;
 
-<<<<<<< HEAD
-        // Cek conflict wali kelas
-=======
->>>>>>> master
         if (!empty($validated['wali_kelas_id'])) {
             $existsWali = Kelas::where('wali_kelas_id', $validated['wali_kelas_id'])
                 ->where('tahun_ajaran_id', $tahunAktif->id)
@@ -207,40 +177,19 @@ class KelasController extends Controller
             if ($existsWali) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Conflict: Guru tersebut sudah menjadi wali kelas di tahun ajaran aktif.',
-                ], Response::HTTP_CONFLICT);
-            }
-        }
-
-<<<<<<< HEAD
-        // Cek conflict nama_kelas
-=======
->>>>>>> master
-        if (!empty($validated['nama_kelas'])) {
-            $existsNama = Kelas::where('nama_kelas', $validated['nama_kelas'])
-                ->where('tahun_ajaran_id', $tahunAktif->id)
-                ->exists();
-
-            if ($existsNama) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Conflict: Nama kelas sudah terdaftar di tahun ajaran aktif.',
+                    'message' => 'Conflict: Guru tersebut sudah menjadi wali kelas.',
                 ], Response::HTTP_CONFLICT);
             }
         }
 
         try {
-            $kelas = DB::transaction(function () use ($validated) {
-                return Kelas::create($validated);
-            });
-
+            $kelas = DB::transaction(fn() => Kelas::create($validated));
             return response()->json([
                 'success' => true,
                 'message' => 'Data kelas berhasil ditambahkan.',
                 'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            Log::error('Failed to create kelas', ['payload' => $validated, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menambahkan data kelas.',
@@ -251,111 +200,39 @@ class KelasController extends Controller
 
     public function show(Kelas $kelas): JsonResponse
     {
-        try {
-<<<<<<< HEAD
-            $kelas->load(['jurusan', 'tahunAjaran', 'waliKelas']);
-            return response()->json([
-                'success' => true,
-                'data'    => new KelasResource($kelas),
-=======
-            return response()->json([
-                'success' => true,
-                'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])),
->>>>>>> master
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to fetch kelas detail', ['kelas_id' => $kelas->id, 'error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail kelas.',
-                'errors'  => ['exception' => [$e->getMessage()]],
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        return response()->json([
+            'success' => true,
+            'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])),
+        ], Response::HTTP_OK);
     }
 
     public function update(UpdateKelasRequest $request, Kelas $kelas): JsonResponse
     {
         $validated = $request->validated();
-<<<<<<< HEAD
-
-        $tahunAktif = TahunAjaran::where('is_active', true)->first();
-        if (!$tahunAktif) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal: Tidak ada Tahun Ajaran yang aktif.',
-            ], Response::HTTP_BAD_REQUEST);
-        }
-
-        $validated['tahun_ajaran_id'] = $tahunAktif->id;
-        $waliId = $validated['wali_kelas_id'] ?? $kelas->wali_kelas_id;
-
-        // Cek conflict wali kelas
-        if (!empty($waliId)) {
-            $existsWali = Kelas::where('wali_kelas_id', $waliId)
-                ->where('tahun_ajaran_id', $tahunAktif->id)
-=======
         $waliId = $validated['wali_kelas_id'] ?? $kelas->wali_kelas_id;
 
         if (!empty($waliId)) {
             $existsWali = Kelas::where('wali_kelas_id', $waliId)
                 ->where('tahun_ajaran_id', $kelas->tahun_ajaran_id)
->>>>>>> master
                 ->where('id', '!=', $kelas->id)
                 ->exists();
 
             if ($existsWali) {
                 return response()->json([
                     'success' => false,
-<<<<<<< HEAD
-                    'message' => 'Conflict: Guru tersebut sudah menjadi wali kelas di tahun ajaran aktif.',
-=======
-                    'message' => 'Conflict: Guru tersebut sudah menjadi wali kelas di periode ini.',
->>>>>>> master
-                ], Response::HTTP_CONFLICT);
-            }
-        }
-
-<<<<<<< HEAD
-        // Cek conflict nama_kelas
-        if (!empty($validated['nama_kelas'])) {
-            $existsNama = Kelas::where('nama_kelas', $validated['nama_kelas'])
-                ->where('tahun_ajaran_id', $tahunAktif->id)
-=======
-        if (!empty($validated['nama_kelas'])) {
-            $existsNama = Kelas::where('nama_kelas', $validated['nama_kelas'])
-                ->where('tahun_ajaran_id', $kelas->tahun_ajaran_id)
->>>>>>> master
-                ->where('id', '!=', $kelas->id)
-                ->exists();
-
-            if ($existsNama) {
-                return response()->json([
-                    'success' => false,
-<<<<<<< HEAD
-                    'message' => 'Conflict: Nama kelas sudah terdaftar di tahun ajaran aktif.',
-=======
-                    'message' => 'Conflict: Nama kelas sudah terdaftar di periode ini.',
->>>>>>> master
+                    'message' => 'Conflict: Guru tersebut sudah menjadi wali kelas.',
                 ], Response::HTTP_CONFLICT);
             }
         }
 
         try {
-            DB::transaction(function () use ($kelas, $validated) {
-                $kelas->update($validated);
-            });
-
+            DB::transaction(fn() => $kelas->update($validated));
             return response()->json([
                 'success' => true,
                 'message' => 'Data kelas berhasil diperbarui.',
                 'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-<<<<<<< HEAD
-            Log::error('Failed to update kelas', ['kelas_id' => $kelas->id, 'payload' => $validated, 'error' => $e->getMessage()]);
-=======
-            Log::error('Failed to update kelas', ['kelas_id' => $kelas->id, 'error' => $e->getMessage()]);
->>>>>>> master
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui data kelas.',
@@ -367,26 +244,19 @@ class KelasController extends Controller
     public function destroy(Kelas $kelas): JsonResponse
     {
         try {
-<<<<<<< HEAD
-=======
             if ($kelas->siswa()->exists()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Gagal: Kelas tidak bisa dihapus karena masih memiliki data siswa.',
+                    'message' => 'Gagal: Kelas masih memiliki data siswa.',
                 ], Response::HTTP_CONFLICT);
             }
 
->>>>>>> master
-            DB::transaction(function () use ($kelas) {
-                $kelas->delete();
-            });
-
+            DB::transaction(fn() => $kelas->delete());
             return response()->json([
                 'success' => true,
                 'message' => 'Data kelas berhasil dihapus.',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to delete kelas', ['kelas_id' => $kelas->id, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus data kelas.',
@@ -394,8 +264,4 @@ class KelasController extends Controller
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> master

@@ -4,15 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\MataPelajaran;
-<<<<<<< HEAD
-use App\Http\Resources\MapelResource;
-use App\Http\Requests\StoreMapelRequest;
-use App\Http\Requests\UpdateMapelRequest;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-=======
 use App\Models\User;
 use App\Http\Resources\MapelResource;
 use App\Http\Requests\StoreMapelRequest;
@@ -25,7 +16,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
->>>>>>> master
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -34,16 +24,7 @@ class MapelController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-<<<<<<< HEAD
-        $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
-    }
-
-    public function index(): JsonResponse
-    {
-        try {
-            $data = MataPelajaran::with('jurusan')->paginate(12);
-=======
+        // Mendukung akses Guru (untuk Ketua Jurusan/Kurikulum) sesuai branch master
         $this->middleware('role:Admin,Guru');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
     }
@@ -64,43 +45,12 @@ class MapelController extends Controller
         ];
     }
 
-    public function export(Request $request)
-    {
-        try {
-            $access = $this->getUserAccess();
-            
-            // Siapkan array filter dari request
-            $filters = [
-                'jurusan_id'     => $request->query('jurusan_id'),
-                'search'         => $request->query('search'),
-                'tipe_mapel'     => $request->query('tipe_mapel'),
-                'kategori_mapel' => $request->query('kategori_mapel'),
-            ];
-
-            // Proteksi: Jika bukan Admin/Kurikulum, paksa jurusan_id ke jurusan milik user
-            if (!$access['isFullAccess']) {
-                if ($access['namaJabatan'] === 'Ketua Jurusan' && $access['guruStaf']) {
-                    $filters['jurusan_id'] = $access['guruStaf']->jurusan_id;
-                } else {
-                    return response()->json(['success' => false, 'message' => 'Akses ditolak'], Response::HTTP_FORBIDDEN);
-                }
-            }
-
-            // Pastikan Class MapelExport Anda sudah diupdate untuk menerima array $filters
-            return Excel::download(new MapelExport($filters), 'data_mata_pelajaran.xlsx');
-        } catch (Throwable $e) {
-            Log::error('Export Mapel Error', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal mengekspor data'], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
     public function index(Request $request): JsonResponse
     {
         try {
             $access = $this->getUserAccess();
             $query = MataPelajaran::with('jurusan');
 
-            // 1. Filter Berdasarkan Hak Akses (Role/Jabatan)
             if (!$access['isFullAccess']) {
                 if ($access['namaJabatan'] === 'Ketua Jurusan' && $access['guruStaf']) {
                     $query->where('jurusan_id', $access['guruStaf']->jurusan_id);
@@ -108,29 +58,24 @@ class MapelController extends Controller
                     $query->whereRaw('1 = 0');
                 }
             } else {
-                // Admin dapat memfilter berdasarkan jurusan secara manual
                 if ($request->filled('jurusan_id')) {
                     $query->where('jurusan_id', $request->jurusan_id);
                 }
             }
 
-            // 2. Filter Berdasarkan Tipe Mapel
             if ($request->filled('tipe_mapel')) {
                 $query->where('tipe_mapel', $request->tipe_mapel);
             }
 
-            // 3. Filter Berdasarkan Kategori Mapel
             if ($request->filled('kategori_mapel')) {
                 $query->where('kategori_mapel', $request->kategori_mapel);
             }
 
-            // 4. Filter Berdasarkan Pencarian Nama
             if ($request->filled('search')) {
                 $query->where('nama_mapel', 'like', "%{$request->search}%");
             }
 
             $data = $query->latest()->paginate(12);
->>>>>>> master
 
             return response()->json([
                 'success' => true,
@@ -152,21 +97,6 @@ class MapelController extends Controller
         }
     }
 
-<<<<<<< HEAD
-    public function show(?MataPelajaran $mapel): JsonResponse
-    {
-        if (!$mapel) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data mata pelajaran tidak ditemukan',
-                'errors'  => ['id' => ['Mata pelajaran dengan ID tersebut tidak ada']]
-            ], Response::HTTP_NOT_FOUND);
-        }
-
-        try {
-=======
-    // ... (Method show, store, update, destroy, dan import tetap sama dengan logika sebelumnya)
-    
     public function show(MataPelajaran $mapel): JsonResponse
     {
         try {
@@ -182,7 +112,6 @@ class MapelController extends Controller
                 }
             }
 
->>>>>>> master
             return response()->json([
                 'success' => true,
                 'data'    => new MapelResource($mapel->load('jurusan'))
@@ -199,14 +128,6 @@ class MapelController extends Controller
 
     public function store(StoreMapelRequest $request): JsonResponse
     {
-<<<<<<< HEAD
-        $validated = $request->validated();
-
-        if (MataPelajaran::where('nama_mapel', $validated['nama_mapel'])->exists()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Nama mata pelajaran sudah terdaftar.',
-=======
         $access = $this->getUserAccess();
         $validated = $request->validated();
 
@@ -226,7 +147,6 @@ class MapelController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Nama mata pelajaran sudah terdaftar di jurusan ini.',
->>>>>>> master
                 'errors'  => ['nama_mapel' => ['Nama mata pelajaran sudah terdaftar.']]
             ], Response::HTTP_CONFLICT);
         }
@@ -249,23 +169,6 @@ class MapelController extends Controller
         }
     }
 
-<<<<<<< HEAD
-    public function update(UpdateMapelRequest $request, ?MataPelajaran $mapel): JsonResponse
-    {
-        if (!$mapel) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data mata pelajaran tidak ditemukan',
-                'errors'  => ['id' => ['Mata pelajaran dengan ID tersebut tidak ada']]
-            ], Response::HTTP_NOT_FOUND);
-        }
-
-        $validated = $request->validated();
-
-        if (!empty($validated['nama_mapel']) &&
-            MataPelajaran::where('nama_mapel', $validated['nama_mapel'])
-                ->where('id','<>',(string) $mapel->id)
-=======
     public function update(UpdateMapelRequest $request, MataPelajaran $mapel): JsonResponse
     {
         $access = $this->getUserAccess();
@@ -288,7 +191,6 @@ class MapelController extends Controller
             MataPelajaran::where('nama_mapel', $validated['nama_mapel'])
                 ->where('jurusan_id', $validated['jurusan_id'] ?? $mapel->jurusan_id)
                 ->where('id', '<>', $mapel->id)
->>>>>>> master
                 ->exists()) {
             return response()->json([
                 'success' => false,
@@ -316,19 +218,6 @@ class MapelController extends Controller
         }
     }
 
-<<<<<<< HEAD
-    public function destroy(?MataPelajaran $mapel): JsonResponse
-    {
-        if (!$mapel) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data mata pelajaran tidak ditemukan',
-                'errors'  => ['id' => ['Mata pelajaran dengan ID tersebut tidak ada']]
-            ], Response::HTTP_NOT_FOUND);
-        }
-
-        try {
-=======
     public function destroy(MataPelajaran $mapel): JsonResponse
     {
         try {
@@ -344,7 +233,6 @@ class MapelController extends Controller
                 }
             }
 
->>>>>>> master
             DB::transaction(fn() => $mapel->delete());
 
             return response()->json([
@@ -361,9 +249,32 @@ class MapelController extends Controller
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-<<<<<<< HEAD
-}
-=======
+
+    public function export(Request $request)
+    {
+        try {
+            $access = $this->getUserAccess();
+            $filters = [
+                'jurusan_id'     => $request->query('jurusan_id'),
+                'search'         => $request->query('search'),
+                'tipe_mapel'     => $request->query('tipe_mapel'),
+                'kategori_mapel' => $request->query('kategori_mapel'),
+            ];
+
+            if (!$access['isFullAccess']) {
+                if ($access['namaJabatan'] === 'Ketua Jurusan' && $access['guruStaf']) {
+                    $filters['jurusan_id'] = $access['guruStaf']->jurusan_id;
+                } else {
+                    return response()->json(['success' => false, 'message' => 'Akses ditolak'], Response::HTTP_FORBIDDEN);
+                }
+            }
+
+            return Excel::download(new MapelExport($filters), 'data_mata_pelajaran.xlsx');
+        } catch (Throwable $e) {
+            Log::error('Export Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Gagal mengekspor data'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
 
     public function import(Request $request): JsonResponse
     {
@@ -392,4 +303,3 @@ class MapelController extends Controller
         }
     }
 }
->>>>>>> master

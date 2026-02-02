@@ -3,13 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-<<<<<<< HEAD
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-=======
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
->>>>>>> master
 
 class PresensiGuruMapel extends Model
 {
@@ -25,36 +20,18 @@ class PresensiGuruMapel extends Model
         'materi',
     ];
 
-<<<<<<< HEAD
-    public function presensiSiswaDetail(): HasMany
-    {
-        return $this->hasMany(PresensiSiswaDetail::class, 'presensi_guru_mapel_id');
-    }
-
-    public function guruMapel(): BelongsTo
-    {
-        return $this->belongsTo(GuruMapel::class, 'guru_mapel_id');
-=======
     public function guruMapel(): BelongsTo
     {
         return $this->belongsTo(GuruMapel::class, 'guru_mapel_id', 'id');
->>>>>>> master
     }
 
     public function kelas(): BelongsTo
     {
-<<<<<<< HEAD
-        return $this->belongsTo(Kelas::class, 'kelas_id');
-=======
         return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
->>>>>>> master
     }
 
     public function mataPelajaran(): BelongsTo
     {
-<<<<<<< HEAD
-        return $this->belongsTo(MataPelajaran::class, 'mata_pelajaran_id');
-=======
         return $this->belongsTo(MataPelajaran::class, 'mata_pelajaran_id', 'id');
     }
 
@@ -71,6 +48,5 @@ class PresensiGuruMapel extends Model
     public function presensiSiswaDetail(): HasMany
     {
         return $this->hasMany(PresensiSiswaDetail::class, 'presensi_guru_mapel_id', 'id');
->>>>>>> master
     }
 }

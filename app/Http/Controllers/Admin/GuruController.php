@@ -7,12 +7,9 @@ use App\Models\GuruStaf;
 use App\Http\Resources\GuruResource;
 use App\Http\Requests\StoreGuruRequest;
 use App\Http\Requests\UpdateGuruRequest;
-<<<<<<< HEAD
-=======
 use App\Exports\GuruExport;
 use App\Imports\GuruImport;
 use Maatwebsite\Excel\Facades\Excel;
->>>>>>> master
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -28,19 +25,13 @@ class GuruController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-<<<<<<< HEAD
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
-    }
-
-    public function index(): JsonResponse
-    {
-        $data = GuruStaf::with(['jurusan', 'user'])->paginate(12);
-=======
+        // Menambahkan 'import' ke dalam log admin sesuai versi master
         $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
     }
 
     public function index(Request $request): JsonResponse
     {
+        // Menggunakan logika filter dinamis dari versi master
         $search = $request->get('q');
         $jabatan = $request->get('jabatan_fungsional');
         $status = $request->get('status_kepegawaian');
@@ -60,7 +51,6 @@ class GuruController extends Controller
             ->when($jurusan, fn($q) => $q->where('jurusan_id', $jurusan))
             ->when(isset($active), fn($q) => $q->where('is_active', $active))
             ->paginate($request->get('per_page', 12));
->>>>>>> master
 
         return response()->json([
             'success' => true,
@@ -74,8 +64,6 @@ class GuruController extends Controller
         ], Response::HTTP_OK);
     }
 
-<<<<<<< HEAD
-=======
     public function export(Request $request)
     {
         $filters = $request->only(['q', 'jabatan_fungsional', 'status_kepegawaian', 'jurusan_id', 'is_active']);
@@ -106,24 +94,17 @@ class GuruController extends Controller
         }
     }
 
->>>>>>> master
     public function search(Request $request): JsonResponse
     {
         $search = $request->get('q');
 
         $gurus = GuruStaf::query()
             ->when($search, function ($query, $search) {
-<<<<<<< HEAD
-                $query->where('nama_lengkap', 'like', "%{$search}%")
-                      ->orWhere('nip', 'like', "%{$search}%");
-            })
-            ->select('id', 'nama_lengkap', 'nip')
-=======
+                // Menggunakan kolom 'nama' sesuai versi master
                 $query->where('nama', 'like', "%{$search}%")
                       ->orWhere('nip', 'like', "%{$search}%");
             })
             ->select('id', 'nama', 'nip')
->>>>>>> master
             ->limit(10)
             ->get();
 
@@ -251,7 +232,6 @@ class GuruController extends Controller
 
         try {
             $blockers = [];
-
             $relations = [
                 'user' => 'Terdapat akun user yang terhubung',
                 'guruMapel' => 'Terhubung dengan data guru_mapel',

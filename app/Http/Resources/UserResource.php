@@ -22,31 +22,20 @@ class UserResource extends JsonResource
                 })->values();
             }),
 
-<<<<<<< HEAD
-            'guru' => $this->when($this->relationLoaded('guru') && $this->guru, function () {
-                return [
-                    'nip'     => $this->guru->nip,
-                    'jabatan' => $this->guru->jabatan_fungsional,
-=======
             'guru' => $this->when($this->relationLoaded('guruStaf') && $this->guruStaf, function () {
                 return [
                     'id'      => $this->guruStaf->id,
                     'nip'     => $this->guruStaf->nip,
                     'nama'    => $this->guruStaf->nama,
                     'jabatan' => $this->guruStaf->jabatan_fungsional,
->>>>>>> master
                 ];
             }),
 
             'siswa' => $this->when($this->relationLoaded('siswa') && $this->siswa, function () {
                 return [
-<<<<<<< HEAD
-                    'nis'  => $this->siswa->nis,
-=======
                     'id'    => $this->siswa->id,
                     'nis'   => $this->siswa->nis,
                     'nama'  => $this->siswa->nama_lengkap,
->>>>>>> master
                     'kelas' => $this->siswa->kelas?->nama_kelas,
                 ];
             }),
@@ -55,29 +44,17 @@ class UserResource extends JsonResource
                 if ($this->orangtua instanceof \Illuminate\Support\Collection) {
                     return $this->orangtua->map(function ($o) {
                         return [
-<<<<<<< HEAD
-                            'id'          => $o->id,
-                            'nama_lengkap'=> $o->nama_lengkap,
-                            'telepon'     => $o->telepon,
-=======
                             'id'           => $o->id,
                             'nama_lengkap' => $o->nama_lengkap,
                             'telepon'      => $o->telepon,
->>>>>>> master
                         ];
                     })->values();
                 }
 
                 return [
-<<<<<<< HEAD
-                    'id'          => $this->orangtua->id,
-                    'nama_lengkap'=> $this->orangtua->nama_lengkap,
-                    'telepon'     => $this->orangtua->telepon,
-=======
                     'id'           => $this->orangtua->id,
                     'nama_lengkap' => $this->orangtua->nama_lengkap,
                     'telepon'      => $this->orangtua->telepon,
->>>>>>> master
                 ];
             }),
 

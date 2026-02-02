@@ -11,24 +11,6 @@ class JamSekolah extends Model
     use HasFactory;
 
     protected $table = 'jam_sekolah';
-<<<<<<< HEAD
-
-    protected $fillable = [
-        'judul',
-        'tahun_ajaran_id',
-        'semester',
-        'file_path',
-    ];
-
-    protected $casts = [
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-    ];
-
-    public function tahunAjaran(): BelongsTo
-    {
-        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id');
-=======
     protected $primaryKey = 'id';
     public $incrementing = false;
     protected $keyType = 'string';
@@ -67,6 +49,5 @@ class JamSekolah extends Model
     public function tahunAjaran(): BelongsTo
     {
         return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id', 'id');
->>>>>>> master
     }
 }

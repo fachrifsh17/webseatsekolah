@@ -4,17 +4,6 @@ namespace App\Policies;
 
 use App\Models\PoinSiswa;
 use App\Models\User;
-<<<<<<< HEAD
-use Illuminate\Support\Facades\Request;
-
-class PoinSiswaPolicy
-{
-    public function before(User $user, string $ability)
-    {
-        $isGuruScope = Request::query('scope') === 'guru';
-
-        if ($user->hasAnyRole(['admin', 'Admin', 'ADMIN']) && !$isGuruScope) {
-=======
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class PoinSiswaPolicy
@@ -28,31 +17,14 @@ class PoinSiswaPolicy
 
     public function before(User $user, string $ability)
     {
-        if ($user->hasRole('Admin') || $user->hasRole('admin')) {
->>>>>>> master
+        // Admin selalu punya akses penuh
+        if ($user->hasAnyRole(['admin', 'Admin', 'ADMIN'])) {
             return true;
         }
     }
 
     public function viewAny(User $user): bool
     {
-<<<<<<< HEAD
-        return $user->hasAnyRole(['admin', 'Admin', 'ADMIN', 'guru', 'Guru', 'siswa', 'Siswa', 'orangtua', 'Orangtua', 'Orang Tua']);
-    }
-
-    public function view(User $user, PoinSiswa $poin_siswa): bool
-    {
-        if ($user->hasAnyRole(['guru', 'Guru'])) {
-            return (string) $user->guruStaf?->id === (string) $poin_siswa->guru_staf_id;
-        }
-
-        if ($user->hasAnyRole(['siswa', 'Siswa'])) {
-            return (string) $user->siswa?->id === (string) $poin_siswa->siswa_id;
-        }
-
-        if ($user->hasAnyRole(['orangtua', 'Orangtua', 'Orang Tua'])) {
-            return $user->orangtua?->anak()->where('siswa.id', $poin_siswa->siswa_id)->exists() ?? false;
-=======
         return true; 
     }
 
@@ -60,21 +32,24 @@ class PoinSiswaPolicy
     {
         $jabatan = $this->getJabatan($user);
 
+        // Kepsek dan Waka Kesiswaan bisa melihat semua poin
         if (in_array($jabatan, ['Kepala Sekolah', 'Waka Kesiswaan', 'Kesiswaan'])) {
             return true;
         }
 
+        // Guru hanya bisa melihat poin yang mereka input sendiri
         if ($user->guruStaf && (int) $user->guruStaf->id === (int) $poinSiswa->guru_staf_id) {
             return true;
         }
 
-        if ($user->siswa_id && (int) $user->siswa_id === (int) $poinSiswa->siswa_id) {
+        // Siswa hanya bisa melihat poin miliknya sendiri
+        if ($user->siswa && (int) $user->siswa->id === (int) $poinSiswa->siswa_id) {
             return true;
         }
 
-        if ($user->orangtua_id) {
-            return $user->orangtua->siswa->contains('id', $poinSiswa->siswa_id);
->>>>>>> master
+        // Orang tua hanya bisa melihat poin anaknya
+        if ($user->orangtua) {
+            return $user->orangtua->anak()->where('siswa.id', $poinSiswa->siswa_id)->exists();
         }
 
         return false;
@@ -82,29 +57,14 @@ class PoinSiswaPolicy
 
     public function create(User $user): bool
     {
-<<<<<<< HEAD
-        return $user->hasAnyRole(['admin', 'Admin', 'ADMIN', 'guru', 'Guru']);
-    }
-
-    public function update(User $user, PoinSiswa $poin_siswa): bool
-    {
-        if ($user->hasAnyRole(['admin', 'Admin', 'ADMIN'])) {
-            return true;
-        }
-
-        if ($user->hasAnyRole(['guru', 'Guru'])) {
-            return (string) $user->guruStaf?->id === (string) $poin_siswa->guru_staf_id;
-=======
         $jabatan = $this->getJabatan($user);
 
-        if ($jabatan === 'Kepala Sekolah') {
+        // Kepsek tidak input poin, Siswa & Ortu juga tidak bisa
+        if ($jabatan === 'Kepala Sekolah' || $user->hasAnyRole(['siswa', 'Siswa', 'orangtua', 'Orangtua'])) {
             return false;
         }
 
-        if ($user->hasRole('siswa') || $user->hasRole('orangtua')) {
-            return false;
-        }
-
+        // Semua Guru/Staf lainnya boleh input poin
         return $user->guruStaf !== null;
     }
 
@@ -112,28 +72,28 @@ class PoinSiswaPolicy
     {
         $jabatan = $this->getJabatan($user);
 
+        // Waka Kesiswaan punya wewenang mengedit poin siapapun
         if ($jabatan === 'Waka Kesiswaan') {
             return true;
->>>>>>> master
+        }
+
+        // Guru hanya bisa edit poin yang mereka buat sendiri
+        if ($user->guruStaf && (int) $user->guruStaf->id === (int) $poinSiswa->guru_staf_id) {
+            return true;
         }
 
         return false;
     }
 
-<<<<<<< HEAD
-    public function delete(User $user, PoinSiswa $poin_siswa): bool
-    {
-        return $user->hasAnyRole(['admin', 'Admin', 'ADMIN']);
-=======
     public function delete(User $user, PoinSiswa $poinSiswa): bool
     {
         $jabatan = $this->getJabatan($user);
 
-        if ($jabatan === 'Waka Kesiswaan') {
+        // Hanya Admin atau Waka Kesiswaan yang boleh menghapus poin
+        if ($jabatan === 'Waka Kesiswaan' || $user->hasAnyRole(['admin', 'Admin', 'ADMIN'])) {
             return true;
         }
 
         return false;
->>>>>>> master
     }
 }

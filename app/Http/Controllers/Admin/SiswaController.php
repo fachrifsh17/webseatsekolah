@@ -4,11 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Siswa;
-<<<<<<< HEAD
-use App\Http\Requests\StoreSiswaRequest;
-use App\Http\Requests\UpdateSiswaRequest;
-use App\Http\Resources\SiswaResource;
-=======
 use App\Models\Kelas;
 use App\Models\User;
 use App\Http\Requests\StoreSiswaRequest;
@@ -17,16 +12,12 @@ use App\Http\Resources\SiswaResource;
 use App\Exports\SiswaExport;
 use App\Imports\SiswaImport;
 use Maatwebsite\Excel\Facades\Excel;
->>>>>>> master
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-<<<<<<< HEAD
-=======
 use Illuminate\Support\Facades\Auth;
->>>>>>> master
 use Illuminate\Support\Arr;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
@@ -36,10 +27,6 @@ class SiswaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-<<<<<<< HEAD
-        $this->middleware('role:Admin,Guru,Pembimbing')->only(['index', 'show']);
-        $this->middleware('role:Admin')->except(['index', 'show']);
-=======
         $this->middleware('role:Admin,Guru,Pembimbing')->only(['index', 'show', 'export']);
         $this->middleware('role:Admin')->except(['index', 'show', 'export']);
         $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
@@ -109,32 +96,15 @@ class SiswaController extends Controller
         $isKesiswaan = in_array($jabatan, ['Waka Kesiswaan', 'Kesiswaan']);
 
         return $isAdmin || $isKesiswaan;
->>>>>>> master
     }
 
     public function index(Request $request): JsonResponse
     {
         $query = Siswa::with(['user', 'kelas.jurusan', 'orangtua']);
-<<<<<<< HEAD
-
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('nama_lengkap', 'like', '%' . $search . '%')
-                  ->orWhereHas('kelas', function ($queryKelas) use ($search) {
-                      $queryKelas->where('nama_kelas', 'like', '%' . $search . '%');
-                  });
-            });
-        }
-
-        $perPage = $request->filled('search') ? 10 : 20;
-        $data    = $query->latest()->paginate($perPage);
-=======
         $query = $this->applyFilters($request, $query);
 
         $perPage = $request->filled('search') ? 10 : 20;
         $data = $query->latest()->paginate($perPage);
->>>>>>> master
 
         return response()->json([
             'success' => true,
@@ -148,39 +118,6 @@ class SiswaController extends Controller
         ], Response::HTTP_OK);
     }
 
-<<<<<<< HEAD
-    public function store(StoreSiswaRequest $request): JsonResponse
-    {
-        $validated = $request->validated();
-        $fillable  = (new Siswa())->getFillable();
-        $data      = Arr::only($validated, $fillable);
-
-        if ($request->hasFile('foto')) {
-            $data['foto'] = $request->file('foto')->store('siswa/foto', 'public');
-        }
-
-        try {
-            $siswa = DB::transaction(function () use ($data) {
-                return Siswa::create($data);
-            });
-
-            $siswa->load(['user', 'kelas.jurusan', 'orangtua']);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Data siswa berhasil ditambahkan',
-                'data'    => new SiswaResource($siswa)
-            ], Response::HTTP_CREATED);
-        } catch (Throwable $e) {
-            Log::error('Failed to create siswa', ['payload' => $data, 'error' => $e->getMessage()]);
-            if (!empty($data['foto'])) {
-                Storage::disk('public')->delete($data['foto']);
-            }
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal menambahkan siswa',
-                'errors'  => ['exception' => [$e->getMessage()]]
-=======
     public function export(Request $request)
     {
         $query = Siswa::query();
@@ -207,15 +144,12 @@ class SiswaController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengimport data: ' . $e->getMessage()
->>>>>>> master
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function show(Siswa $siswa): JsonResponse
     {
-<<<<<<< HEAD
-=======
         $user = User::with(['guruStaf.strukturJabatan.jabatan'])->find(Auth::id());
         $guruStaf = $user?->guruStaf;
         $namaJabatan = $guruStaf?->strukturJabatan?->jabatan?->nama_jabatan;
@@ -236,7 +170,6 @@ class SiswaController extends Controller
             }
         }
 
->>>>>>> master
         $siswa->load(['user', 'kelas.jurusan', 'orangtua']);
         return response()->json([
             'success' => true,
@@ -244,55 +177,16 @@ class SiswaController extends Controller
         ], Response::HTTP_OK);
     }
 
-<<<<<<< HEAD
-    public function update(UpdateSiswaRequest $request, Siswa $siswa): JsonResponse
-    {
-        $validated = $request->validated();
-        $fillable  = (new Siswa())->getFillable();
-        $data      = Arr::only($validated, $fillable);
-        $oldFoto   = $siswa->foto;
-=======
     public function store(StoreSiswaRequest $request): JsonResponse
     {
         $validated = $request->validated();
         $data = Arr::only($validated, (new Siswa())->getFillable());
->>>>>>> master
 
         if ($request->hasFile('foto')) {
             $data['foto'] = $request->file('foto')->store('siswa/foto', 'public');
         }
 
         try {
-<<<<<<< HEAD
-            DB::transaction(function () use ($siswa, $data) {
-                $siswa->update($data);
-            });
-
-            if ($oldFoto && isset($data['foto'])) {
-                Storage::disk('public')->delete($oldFoto);
-            }
-
-            $siswa->refresh()->load(['user', 'kelas.jurusan', 'orangtua']);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Data siswa berhasil diperbarui',
-                'data'    => new SiswaResource($siswa)
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to update siswa', [
-                'siswa_id' => (string) $siswa->id,
-                'payload'  => $data,
-                'error'    => $e->getMessage()
-            ]);
-            if (isset($data['foto'])) {
-                Storage::disk('public')->delete($data['foto']);
-            }
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal memperbarui siswa',
-                'errors'  => ['exception' => [$e->getMessage()]]
-=======
             $siswa = DB::transaction(function() use ($data) {
                 return Siswa::create($data);
             });
@@ -342,7 +236,6 @@ class SiswaController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui siswa'
->>>>>>> master
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -350,30 +243,6 @@ class SiswaController extends Controller
     public function destroy(Siswa $siswa): JsonResponse
     {
         try {
-<<<<<<< HEAD
-            DB::transaction(function () use ($siswa) {
-                $siswa->delete();
-            });
-
-            if ($siswa->foto) {
-                Storage::disk('public')->delete($siswa->foto);
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Data siswa berhasil dihapus'
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to delete siswa', ['siswa_id' => (string) $siswa->id, 'error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal menghapus siswa',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-}
-=======
             $fotoPath = $siswa->foto;
             DB::transaction(fn() => $siswa->delete());
 
@@ -395,4 +264,3 @@ class SiswaController extends Controller
         }
     }
 }
->>>>>>> master

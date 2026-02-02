@@ -14,14 +14,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'auth.token' => \App\Http\Middleware\CheckAuthToken::class,
-<<<<<<< HEAD
-            'role' => \App\Http\Middleware\CheckRole::class,
-            'log.admin' => \App\Http\Middleware\LogAktivitas::class,
-=======
             'role'       => \App\Http\Middleware\CheckRole::class,
             'log.admin'  => \App\Http\Middleware\LogAktivitas::class,
             'jabatan'    => \App\Http\Middleware\CheckJabatan::class, 
->>>>>>> master
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
