@@ -1,0 +1,43 @@
+<?php
+
+namespace App\Http\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Carbon;
+
+class PoinSiswaResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'id'           => $this->id,
+            'siswa'        => [
+                'id'   => $this->siswa_id,
+                'nama' => $this->siswa?->nama_lengkap,
+                'nis'  => $this->siswa?->nis,
+            ],
+            'guru_pelapor' => [
+                'id'   => $this->guru_staf_id,
+                'nama' => $this->guruStaf?->nama,
+            ],
+            'tahun_ajaran' => $this->tahunAjaran?->nama,
+            'indikator'    => $this->indikator,
+            'poin_positif' => (int) ($this->poin_positif ?? 0),
+            'poin_negatif' => (int) ($this->poin_negatif ?? 0),
+            'total_poin'   => (int) (($this->poin_positif ?? 0) - ($this->poin_negatif ?? 0)),
+
+            'tanggal'      => $this->tanggal instanceof Carbon
+                ? $this->tanggal->format('d-m-Y')
+                : $this->tanggal,
+
+            'created_at'   => $this->created_at instanceof Carbon
+                ? $this->created_at->format('d-m-Y H:i')
+                : $this->created_at,
+
+            'updated_at'   => $this->updated_at instanceof Carbon
+                ? $this->updated_at->format('d-m-Y H:i')
+                : $this->updated_at,
+        ];
+    }
+}
