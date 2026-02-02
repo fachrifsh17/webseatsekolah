@@ -25,6 +25,15 @@ class PoinSiswa extends Model
 
     protected $appends = ['total_poin'];
 
+<<<<<<< HEAD
+=======
+    protected $casts = [
+        'tanggal'    => 'date',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
+
+>>>>>>> master
     public function siswa(): BelongsTo
     {
         return $this->belongsTo(Siswa::class, 'siswa_id');
@@ -35,11 +44,14 @@ class PoinSiswa extends Model
         return $this->belongsTo(GuruStaf::class, 'guru_staf_id');
     }
 
+<<<<<<< HEAD
     public function guru(): BelongsTo
     {
         return $this->guruStaf();
     }
 
+=======
+>>>>>>> master
     public function tahunAjaran(): BelongsTo
     {
         return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id');
@@ -49,4 +61,8 @@ class PoinSiswa extends Model
     {
         return ($this->poin_positif ?? 0) - ($this->poin_negatif ?? 0);
     }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> master

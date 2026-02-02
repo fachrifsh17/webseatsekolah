@@ -6,6 +6,10 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Symfony\Component\HttpFoundation\Response;
+<<<<<<< HEAD
+=======
+use Illuminate\Validation\Rule;
+>>>>>>> master
 
 class UpdateSiswaRequest extends FormRequest
 {
@@ -19,6 +23,16 @@ class UpdateSiswaRequest extends FormRequest
         return [
             'user_id'       => ['sometimes','required','string','exists:users,id'],
             'nis'           => ['sometimes','required','string','max:20'],
+<<<<<<< HEAD
+=======
+            'nisn'          => [
+                'sometimes',
+                'required',
+                'string',
+                'size:10',
+                Rule::unique('siswa', 'nisn')->ignore($this->siswa->id ?? $this->route('siswa')),
+            ],
+>>>>>>> master
             'nama_lengkap'  => ['sometimes','required','string','max:100'],
             'tempat_lahir'  => ['nullable','string','max:100'],
             'tanggal_lahir' => ['nullable','date'],
@@ -40,6 +54,10 @@ class UpdateSiswaRequest extends FormRequest
     {
         $this->merge([
             'nis'           => $this->filled('nis') ? trim($this->nis) : null,
+<<<<<<< HEAD
+=======
+            'nisn'          => $this->filled('nisn') ? trim($this->nisn) : null,
+>>>>>>> master
             'nama_lengkap'  => $this->filled('nama_lengkap') ? trim($this->nama_lengkap) : null,
             'tempat_lahir'  => $this->filled('tempat_lahir') ? trim($this->tempat_lahir) : null,
             'no_telp_siswa' => $this->filled('no_telp_siswa') ? trim($this->no_telp_siswa) : null,
@@ -58,6 +76,13 @@ class UpdateSiswaRequest extends FormRequest
             'nis.required'                 => 'NIS wajib diisi.',
             'nis.max'                      => 'NIS tidak boleh lebih dari 20 karakter.',
 
+<<<<<<< HEAD
+=======
+            'nisn.required'                => 'NISN wajib diisi.',
+            'nisn.size'                    => 'NISN harus tepat 10 karakter.',
+            'nisn.unique'                  => 'NISN sudah terdaftar di sistem.',
+
+>>>>>>> master
             'nama_lengkap.required'        => 'Nama lengkap wajib diisi.',
             'nama_lengkap.max'             => 'Nama lengkap tidak boleh lebih dari 100 karakter.',
 
@@ -92,6 +117,10 @@ class UpdateSiswaRequest extends FormRequest
         return [
             'user_id'              => 'Akun pengguna',
             'nis'                  => 'NIS',
+<<<<<<< HEAD
+=======
+            'nisn'                 => 'NISN',
+>>>>>>> master
             'nama_lengkap'         => 'Nama lengkap',
             'tempat_lahir'         => 'Tempat lahir',
             'tanggal_lahir'        => 'Tanggal lahir',
@@ -114,4 +143,8 @@ class UpdateSiswaRequest extends FormRequest
             'errors'  => $validator->errors()
         ], Response::HTTP_UNPROCESSABLE_ENTITY));
     }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> master

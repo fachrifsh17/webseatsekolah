@@ -11,6 +11,7 @@ class StorePresensiGuruMapelRequest extends FormRequest
 {
     public function authorize(): bool
     {
+<<<<<<< HEAD
         return $this->user()?->can('create', \App\Models\PresensiGuruMapel::class) ?? true;
     }
 
@@ -22,11 +23,15 @@ class StorePresensiGuruMapelRequest extends FormRequest
                 $this->merge(['presensi' => $decoded]);
             }
         }
+=======
+        return true;
+>>>>>>> master
     }
 
     public function rules(): array
     {
         return [
+<<<<<<< HEAD
             'guru_mapel_id'        => ['nullable', 'string', 'exists:guru_mapel,id'],
             'kelas_id'             => ['required', 'string', 'exists:kelas,id'],
             'mata_pelajaran_id'    => ['required', 'string', 'exists:mata_pelajaran,id'],
@@ -39,12 +44,26 @@ class StorePresensiGuruMapelRequest extends FormRequest
             'presensi.*.siswa_id'  => ['required', 'string', 'exists:siswa,id'],
             'presensi.*.status'    => ['required', 'in:Hadir,Izin,Sakit,Alpa'],
             'presensi.*.catatan'   => ['nullable', 'string'],
+=======
+            'guru_mapel_id'     => ['required', 'integer', 'exists:guru_mapel,id'],
+            'materi'            => ['nullable', 'string'],
+            'tanggal'           => ['nullable', 'date'],
+            'kelas_id'          => ['nullable', 'string'],
+            'mata_pelajaran_id' => ['nullable', 'string'],
+            'jam_masuk'         => ['nullable', 'string'],
+            'jam_keluar'        => ['nullable', 'string'],
+            'presensi'              => ['required', 'array', 'min:1'],
+            'presensi.*.siswa_id'   => ['required', 'string', 'exists:siswa,id'],
+            'presensi.*.status'     => ['required', 'in:hadir,sakit,izin,alfa,Hadir,Sakit,Izin,Alpa'],
+            'presensi.*.catatan'    => ['nullable', 'string'],
+>>>>>>> master
         ];
     }
 
     public function messages(): array
     {
         return [
+<<<<<<< HEAD
             'guru_mapel_id.string'         => 'Guru mapel harus berupa ID string.',
             'guru_mapel_id.exists'         => 'Data guru mapel tidak ditemukan.',
 
@@ -76,6 +95,14 @@ class StorePresensiGuruMapelRequest extends FormRequest
             'presensi.*.status.in'         => 'Status harus berupa Hadir, Izin, Sakit, atau Alpa.',
 
             'presensi.*.catatan.string'    => 'Format catatan tidak valid.',
+=======
+            'guru_mapel_id.required' => 'ID penugasan guru wajib diisi.',
+            'guru_mapel_id.exists'   => 'Data penugasan guru tidak ditemukan.',
+            'presensi.required'      => 'Data kehadiran siswa tidak boleh kosong.',
+            'presensi.min'           => 'Minimal harus ada satu data siswa.',
+            'presensi.*.siswa_id.exists' => 'Data siswa tidak terdaftar.',
+            'presensi.*.status.in'   => 'Status harus berupa Hadir, Sakit, Izin, atau Alfa.',
+>>>>>>> master
         ];
     }
 
@@ -89,4 +116,8 @@ class StorePresensiGuruMapelRequest extends FormRequest
             ], Response::HTTP_UNPROCESSABLE_ENTITY)
         );
     }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> master

@@ -19,6 +19,10 @@ class AppServiceProvider extends ServiceProvider
             \App\Models\PoinSiswa::class         => \App\Policies\PoinSiswaPolicy::class,
             \App\Models\Presensi::class          => \App\Policies\PresensiPolicy::class,
             \App\Models\PresensiGuruMapel::class => \App\Policies\PresensiGuruMapelPolicy::class,
+<<<<<<< HEAD
+=======
+            \App\Models\GuruMapel::class         => \App\Policies\GuruMapelPolicy::class,
+>>>>>>> master
         ];
 
         foreach ($specialPolicies as $model => $policy) {
@@ -42,4 +46,8 @@ class AppServiceProvider extends ServiceProvider
             Gate::policy($model, \App\Policies\AccessControlPolicy::class);
         }
     }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> master

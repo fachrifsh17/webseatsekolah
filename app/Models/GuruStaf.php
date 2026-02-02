@@ -42,7 +42,11 @@ class GuruStaf extends Model
 
         static::creating(function ($model) {
             if (empty($model->id)) {
+<<<<<<< HEAD
                 $lastId = static::max('id');
+=======
+                $lastId = static::orderBy('id', 'desc')->first()?->id;
+>>>>>>> master
                 $num = $lastId ? (int) substr($lastId, 1) + 1 : 1;
                 $model->id = 'G' . str_pad($num, 3, '0', STR_PAD_LEFT);
             }
@@ -61,12 +65,20 @@ class GuruStaf extends Model
 
     public function user(): BelongsTo
     {
+<<<<<<< HEAD
         return $this->belongsTo(User::class, 'user_id');
+=======
+        return $this->belongsTo(User::class, 'user_id', 'id');
+>>>>>>> master
     }
 
     public function jurusan(): BelongsTo
     {
+<<<<<<< HEAD
         return $this->belongsTo(Jurusan::class, 'jurusan_id');
+=======
+        return $this->belongsTo(Jurusan::class, 'jurusan_id', 'id');
+>>>>>>> master
     }
 
     public function kelas(): HasOne
@@ -86,12 +98,20 @@ class GuruStaf extends Model
 
     public function presensi(): HasMany
     {
+<<<<<<< HEAD
         return $this->hasMany(Presensi::class, 'guru_id', 'id');
+=======
+        return $this->hasMany(Presensi::class, 'guru_staf_id', 'id');
+>>>>>>> master
     }
 
     public function poinSiswa(): HasMany
     {
+<<<<<<< HEAD
         return $this->hasMany(PoinSiswa::class, 'guru_id', 'id');
+=======
+        return $this->hasMany(PoinSiswa::class, 'guru_staf_id', 'id');
+>>>>>>> master
     }
 
     public function profilSekolah(): HasOne

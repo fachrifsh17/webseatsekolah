@@ -16,6 +16,13 @@ class GuruMapel extends Model
         'guru_staf_id',
         'mata_pelajaran_id',
         'kelas_id',
+<<<<<<< HEAD
+=======
+        'tahun_ajaran_id',
+        'hari',
+        'jam_mulai_id',
+        'jam_selesai_id',
+>>>>>>> master
     ];
 
     public function guru(): BelongsTo
@@ -27,8 +34,31 @@ class GuruMapel extends Model
     {
         return $this->belongsTo(MataPelajaran::class, 'mata_pelajaran_id');
     }
+<<<<<<< HEAD
+=======
+
+>>>>>>> master
     public function kelas(): BelongsTo
     {
         return $this->belongsTo(Kelas::class, 'kelas_id');
     }
+<<<<<<< HEAD
 }
+=======
+
+    public function tahunAjaran(): BelongsTo
+    {
+        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id');
+    }
+
+    public function jamMulai(): BelongsTo
+    {
+        return $this->belongsTo(JamSekolah::class, 'jam_mulai_id');
+    }
+
+    public function jamSelesai(): BelongsTo
+    {
+        return $this->belongsTo(JamSekolah::class, 'jam_selesai_id');
+    }
+}
+>>>>>>> master

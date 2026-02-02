@@ -12,7 +12,14 @@ class PoinSiswaCollection extends ResourceCollection
         return [
             'success' => true,
             'message' => 'Daftar Poin Siswa Berhasil Diambil',
+<<<<<<< HEAD
             'data'    => $this->collection,
         ];
     }
 }
+=======
+            'data'    => PoinSiswaResource::collection($this->collection),
+        ];
+    }
+}
+>>>>>>> master

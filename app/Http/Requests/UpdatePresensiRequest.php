@@ -17,9 +17,16 @@ class UpdatePresensiRequest extends FormRequest
     public function rules(): array
     {
         return [
+<<<<<<< HEAD
             'siswa_id'     => ['sometimes', 'required', 'string', 'exists:siswa,id'],
             'tanggal'      => ['sometimes', 'required', 'date'],
             'status'       => ['sometimes', 'required', 'in:Hadir,Izin,Sakit,Alpa'],
+=======
+
+            'siswa_id'     => ['sometimes', 'string', 'exists:siswa,id'],
+            'tanggal'      => ['nullable', 'date'],  
+            'status'       => ['sometimes', 'in:Hadir,Izin,Sakit,Alpa'],
+>>>>>>> master
             'keterangan'   => ['nullable', 'string', 'max:255'],
             'guru_staf_id' => ['nullable', 'string', 'exists:guru_staf,id'],
         ];
@@ -28,6 +35,7 @@ class UpdatePresensiRequest extends FormRequest
     public function messages(): array
     {
         return [
+<<<<<<< HEAD
             'siswa_id.required'    => 'Siswa wajib dipilih.',
             'siswa_id.string'      => 'Siswa harus berupa ID string.',
             'siswa_id.exists'      => 'Data siswa tidak ditemukan.',
@@ -36,6 +44,13 @@ class UpdatePresensiRequest extends FormRequest
             'tanggal.date'         => 'Format tanggal tidak valid.',
 
             'status.required'      => 'Status presensi wajib dipilih.',
+=======
+            'siswa_id.string'      => 'Siswa harus berupa ID string.',
+            'siswa_id.exists'      => 'Data siswa tidak ditemukan.',
+
+            'tanggal.date'         => 'Format tanggal tidak valid.',
+
+>>>>>>> master
             'status.in'            => 'Status harus berupa Hadir, Izin, Sakit, atau Alpa.',
 
             'keterangan.string'    => 'Keterangan harus berupa teks.',
@@ -67,4 +82,8 @@ class UpdatePresensiRequest extends FormRequest
             ], Response::HTTP_UNPROCESSABLE_ENTITY)
         );
     }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> master

@@ -9,6 +9,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Support\Facades\Hash;
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> master
 class User extends Authenticatable
 {
     use HasFactory, Notifiable;
@@ -50,12 +54,15 @@ class User extends Authenticatable
         });
     }
 
+<<<<<<< HEAD
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'user_roles', 'user_id', 'role_id')
             ->withTimestamps();
     }
 
+=======
+>>>>>>> master
     public function setPasswordAttribute(string $value): void
     {
         $this->attributes['password'] = Hash::needsRehash($value) 
@@ -63,6 +70,15 @@ class User extends Authenticatable
             : $value;
     }
 
+<<<<<<< HEAD
+=======
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'user_roles', 'user_id', 'role_id')
+            ->withTimestamps();
+    }
+
+>>>>>>> master
     protected function getNormalizedRoleNames(): array
     {
         return $this->roles->pluck('role_name')->map(fn($role) => strtolower($role))->all();
@@ -100,4 +116,8 @@ class User extends Authenticatable
     {
         return $this->hasOne(OrangTua::class, 'user_id', 'id');
     }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> master

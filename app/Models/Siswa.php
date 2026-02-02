@@ -21,6 +21,10 @@ class Siswa extends Model
         'id',
         'user_id',
         'nis',
+<<<<<<< HEAD
+=======
+        'nisn',
+>>>>>>> master
         'nama_lengkap',
         'tempat_lahir',
         'tanggal_lahir',
@@ -91,4 +95,8 @@ class Siswa extends Model
     {
         return $this->hasMany(PoinSiswa::class, 'siswa_id');
     }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> master

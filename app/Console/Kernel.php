@@ -29,7 +29,11 @@ class Kernel extends ConsoleKernel
             ->dailyAt('01:00')
             ->withoutOverlapping()
             ->onOneServer()
+<<<<<<< HEAD
             ->timezone(config('app.timezone', 'UTC'));
+=======
+            ->timezone(config('app.timezone', 'WIB'));
+>>>>>>> master
 
         // Development convenience: run every minute when in local environment
         if ($this->app->environment('local')) {

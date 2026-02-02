@@ -7,6 +7,13 @@ use App\Models\Orangtua;
 use App\Http\Requests\StoreOrangtuaRequest;
 use App\Http\Requests\UpdateOrangtuaRequest;
 use App\Http\Resources\OrangtuaResource;
+<<<<<<< HEAD
+=======
+use App\Exports\OrangtuaExport;
+use App\Imports\OrangtuaImport;
+use Maatwebsite\Excel\Facades\Excel;
+use Illuminate\Http\Request;
+>>>>>>> master
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -15,11 +22,25 @@ use Symfony\Component\HttpFoundation\Response;
 
 class OrangtuaController extends Controller
 {
+<<<<<<< HEAD
     public function index(): JsonResponse
     {
         $orangtua = Orangtua::with(['user','anak.kelas.jurusan'])
             ->latest()
             ->paginate(20);
+=======
+    public function index(Request $request): JsonResponse
+    {
+        $search = $request->query('q');
+
+        $orangtua = Orangtua::with(['user', 'anak.kelas.jurusan'])
+            ->when($search, function ($query, $search) {
+                $query->where('nama_lengkap', 'like', "%{$search}%")
+                      ->orWhere('telepon', 'like', "%{$search}%");
+            })
+            ->latest()
+            ->paginate($request->query('per_page', 20));
+>>>>>>> master
 
         return response()->json([
             'success' => true,
@@ -162,4 +183,26 @@ class OrangtuaController extends Controller
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
+<<<<<<< HEAD
 }
+=======
+
+    public function export(Request $request)
+    {
+        $filters = $request->only(['q']);
+        return Excel::download(new OrangtuaExport($filters), 'data_orangtua.xlsx');
+    }
+
+    public function import(Request $request): JsonResponse
+    {
+        $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
+
+        try {
+            Excel::import(new OrangtuaImport, $request->file('file'));
+            return response()->json(['success' => true, 'message' => 'Data berhasil diimport.'], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], 500);
+        }
+    }
+}
+>>>>>>> master

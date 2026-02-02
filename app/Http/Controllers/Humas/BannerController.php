@@ -1,0 +1,162 @@
+<?php
+
+namespace App\Http\Controllers\Humas;
+
+use App\Http\Controllers\Controller;
+use App\Models\Banner;
+use App\Http\Resources\BannerResource;
+use App\Http\Requests\StoreBannerRequest;
+use App\Http\Requests\UpdateBannerRequest;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\JsonResponse;
+use Throwable;
+use Symfony\Component\HttpFoundation\Response;
+
+class BannerController extends Controller
+{
+    public function __construct()
+    {
+        $this->middleware('auth.token');
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+    }
+
+    public function index(): JsonResponse
+    {
+        try {
+            $perPage = min((int) request()->get('per_page', 12), 100);
+            $data = Banner::orderByDesc('aktif_sampai')->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'data'    => BannerResource::collection($data),
+                'meta'    => [
+                    'current_page' => $data->currentPage(),
+                    'last_page'    => $data->lastPage(),
+                    'per_page'     => $data->perPage(),
+                    'total'        => $data->total(),
+                ],
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Humas: Failed to fetch banners', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil daftar banner',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function show(Banner $banner): JsonResponse
+    {
+        try {
+            return response()->json([
+                'success' => true,
+                'data'    => new BannerResource($banner),
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Humas: Failed to fetch banner detail', [
+                'banner_id' => (string) $banner->id,
+                'error'     => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil detail banner',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function store(StoreBannerRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        try {
+            if ($request->hasFile('foto')) {
+                $validated['foto'] = $request->file('foto')->store('uploads/banner', 'public');
+            }
+
+            $banner = Banner::create($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Banner berhasil ditambahkan oleh Humas.',
+                'data'    => new BannerResource($banner),
+            ], Response::HTTP_CREATED);
+        } catch (Throwable $e) {
+            if (!empty($validated['foto'] ?? null)) {
+                Storage::disk('public')->delete($validated['foto']);
+            }
+            Log::error('Humas: Failed to create banner', ['payload' => $validated, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menambahkan banner',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function update(UpdateBannerRequest $request, Banner $banner): JsonResponse
+    {
+        $validated = $request->validated();
+
+        try {
+            if ($request->hasFile('foto')) {
+                if ($banner->foto) {
+                    Storage::disk('public')->delete($banner->foto);
+                }
+                $validated['foto'] = $request->file('foto')->store('uploads/banner', 'public');
+            }
+
+            $banner->update($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Banner berhasil diperbarui oleh Humas.',
+                'data'    => new BannerResource($banner),
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            if (!empty($validated['foto'] ?? null)) {
+                Storage::disk('public')->delete($validated['foto']);
+            }
+            Log::error('Humas: Failed to update banner', [
+                'banner_id' => (string) $banner->id,
+                'payload'   => $validated,
+                'error'     => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui banner',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function destroy(Banner $banner): JsonResponse
+    {
+        try {
+            if ($banner->foto) {
+                Storage::disk('public')->delete($banner->foto);
+            }
+
+            $banner->delete();
+
+            return response()->json([
+                'success'      => true,
+                'message'      => 'Banner berhasil dihapus oleh Humas',
+                'notification' => 'Berhasil dihapus',
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Humas: Failed to delete banner', [
+                'banner_id' => (string) $banner->id,
+                'error'     => $e->getMessage()
+            ]);
+            return response()->json([
+                'success'      => false,
+                'message'      => 'Gagal menghapus banner',
+                'notification' => 'Gagal dihapus',
+                'errors'       => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+}
