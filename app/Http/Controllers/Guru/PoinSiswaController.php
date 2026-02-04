@@ -3,15 +3,12 @@
 namespace App\Http\Controllers\Guru;
 
 use App\Http\Controllers\Controller;
-use App\Models\PoinSiswa;
-use App\Models\TahunAjaran;
-use App\Models\Siswa;
+use App\Models\{PoinSiswa, TahunAjaran, Siswa};
 use App\Http\Requests\StorePoinSiswaRequest;
 use App\Http\Resources\PoinSiswaResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\{Auth, DB, Log};
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -20,6 +17,8 @@ class PoinSiswaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
+        $this->middleware('log.admin')->only(('store'));
+
     }
 
     public function index(Request $request): JsonResponse
@@ -29,6 +28,10 @@ class PoinSiswaController extends Controller
         $user = Auth::user();
         $guruStafId = $user->guruStaf?->id;
 
+        if (!$guruStafId) {
+            return response()->json(['success' => false, 'message' => 'Profil guru tidak ditemukan.'], Response::HTTP_FORBIDDEN);
+        }
+
         $query = PoinSiswa::query()
             ->where('guru_staf_id', $guruStafId)
             ->whereHas('siswa', fn($q) => $q->where('is_active', true));
@@ -36,9 +39,9 @@ class PoinSiswaController extends Controller
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
-                $q->whereHas('siswa', function ($qSiswa) use ($search) {
-                    $qSiswa->where('nama_lengkap', 'like', "%{$search}%")
-                           ->orWhere('nisn', 'like', "%{$search}%");
+                $q->whereHas('siswa', function ($qS) use ($search) {
+                    $qS->where('nama_lengkap', 'like', "%{$search}%")
+                       ->orWhere('nisn', 'like', "%{$search}%");
                 })->orWhere('keterangan', 'like', "%{$search}%");
             });
         }
@@ -65,7 +68,7 @@ class PoinSiswaController extends Controller
         }
 
         $perPage = min((int) $request->get('per_page', 20), 100);
-        $data = $query->with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
+        $data = $query->with(['siswa.kelas', 'tahunAjaran'])
                       ->latest()
                       ->paginate($perPage);
 
@@ -77,11 +80,10 @@ class PoinSiswaController extends Controller
                 'total_catatan' => (int) ($summaryPersonal->total_catatan ?? 0),
             ],
             'summary_kumulatif' => $summaryKumulatif,
-            'data'    => PoinSiswaResource::collection($data),
-            'meta'    => [
+            'data' => PoinSiswaResource::collection($data),
+            'meta' => [
                 'current_page' => $data->currentPage(),
                 'last_page'    => $data->lastPage(),
-                'per_page'     => (int) $data->perPage(),
                 'total'        => $data->total(),
             ],
         ], Response::HTTP_OK);
@@ -91,44 +93,34 @@ class PoinSiswaController extends Controller
     {
         $this->authorize('create', PoinSiswa::class);
 
-        $user = Auth::user();
-        $tahunAjaran = TahunAjaran::where('is_active', true)->first();
-
-        if (!$tahunAjaran) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tahun ajaran aktif tidak ditemukan.'
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
-        }
-
-        $siswa = Siswa::where('id', $request->siswa_id)
-            ->where('is_active', true)
-            ->first();
-
-        if (!$siswa) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Siswa tidak ditemukan atau status tidak aktif.'
-            ], Response::HTTP_NOT_FOUND);
-        }
-
         try {
-            $validated = $request->validated();
-            $validated['guru_staf_id'] = $user->guruStaf->id;
-            $validated['tahun_ajaran_id'] = $tahunAjaran->id;
+            $user = Auth::user();
+            $taActive = TahunAjaran::where('is_active', true)->first();
 
-            $poin = PoinSiswa::create($validated);
-            
+            if (!$taActive) {
+                return response()->json(['success' => false, 'message' => 'Tahun ajaran aktif tidak ditemukan.'], Response::HTTP_NOT_FOUND);
+            }
+
+            if (!$user->guruStaf) {
+                return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
+            }
+
+            $poin = DB::transaction(function () use ($request, $user, $taActive) {
+                return PoinSiswa::create(array_merge($request->validated(), [
+                    'guru_staf_id' => $user->guruStaf->id,
+                    'tahun_ajaran_id' => $taActive->id,
+                ]));
+            });
+
             return response()->json([
                 'success' => true,
                 'message' => 'Poin siswa berhasil dicatat.',
-                'data'    => new PoinSiswaResource($poin->load(['siswa.kelas', 'guruStaf', 'tahunAjaran'])),
+                'data' => new PoinSiswaResource($poin->load(['siswa.kelas', 'tahunAjaran'])),
             ], Response::HTTP_CREATED);
+
         } catch (Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal menyimpan data.'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            Log::error('Guru Poin Store Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal menyimpan data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -136,9 +128,13 @@ class PoinSiswaController extends Controller
     {
         $this->authorize('view', $poinSiswa);
 
+        if ($poinSiswa->guru_staf_id !== Auth::user()->guruStaf?->id) {
+            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki akses ke data ini.'], Response::HTTP_FORBIDDEN);
+        }
+
         return response()->json([
             'success' => true,
-            'data'    => new PoinSiswaResource($poinSiswa->load(['siswa.kelas', 'guruStaf', 'tahunAjaran'])),
+            'data' => new PoinSiswaResource($poinSiswa->load(['siswa.kelas', 'tahunAjaran'])),
         ], Response::HTTP_OK);
     }
 }

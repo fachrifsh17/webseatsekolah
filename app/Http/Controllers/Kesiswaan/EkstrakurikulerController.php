@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Kesiswaan;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ekstrakurikuler;
@@ -19,7 +19,6 @@ class EkstrakurikulerController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
@@ -27,7 +26,6 @@ class EkstrakurikulerController extends Controller
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-
             $data = Ekstrakurikuler::with('pembina')->paginate($perPage);
 
             return response()->json([
@@ -41,11 +39,10 @@ class EkstrakurikulerController extends Controller
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch ekstrakurikuler', ['error' => $e->getMessage()]);
+            Log::error('Kesiswaan Ekskul Index Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal mengambil daftar ekstrakurikuler',
-                'errors'  => ['exception' => [$e->getMessage()]]
+                'message' => 'Gagal mengambil daftar ekstrakurikuler'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -54,20 +51,14 @@ class EkstrakurikulerController extends Controller
     {
         try {
             $ekstrakurikuler->load('pembina');
-
             return response()->json([
                 'success' => true,
                 'data'    => new EkstrakurikulerResource($ekstrakurikuler)
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch ekstrakurikuler detail', [
-                'ekskul_id' => $ekstrakurikuler->id, // sudah integer
-                'error'     => $e->getMessage()
-            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal mengambil detail ekstrakurikuler',
-                'errors'  => ['exception' => [$e->getMessage()]]
+                'message' => 'Gagal mengambil detail ekstrakurikuler'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -85,21 +76,17 @@ class EkstrakurikulerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Ekstrakurikuler berhasil ditambahkan.',
+                'message' => 'Ekstrakurikuler berhasil ditambahkan oleh Kesiswaan',
                 'data'    => new EkstrakurikulerResource($ekskul->load('pembina'))
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            if (!empty($validated['foto'] ?? null)) {
+            if (!empty($validated['foto'])) {
                 Storage::disk('public')->delete($validated['foto']);
             }
-            Log::error('Failed to create ekstrakurikuler', [
-                'payload' => $validated,
-                'error'   => $e->getMessage()
-            ]);
+            Log::error('Kesiswaan Store Ekskul Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan ekstrakurikuler',
-                'errors'  => ['exception' => [$e->getMessage()]]
+                'message' => 'Gagal menambahkan ekstrakurikuler'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -114,15 +101,12 @@ class EkstrakurikulerController extends Controller
         }
 
         if ($request->filled('foto') && $request->foto === 'null') {
-            if ($oldFoto) {
-                Storage::disk('public')->delete($oldFoto);
-            }
+            if ($oldFoto) Storage::disk('public')->delete($oldFoto);
             $validated['foto'] = null;
         }
 
         try {
             DB::transaction(fn() => $ekstrakurikuler->update($validated));
-
             $ekstrakurikuler->refresh();
 
             if (!empty($validated['foto']) && $oldFoto && $validated['foto'] !== $oldFoto) {
@@ -131,22 +115,16 @@ class EkstrakurikulerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Ekstrakurikuler berhasil diperbarui.',
+                'message' => 'Ekstrakurikuler berhasil diperbarui',
                 'data'    => new EkstrakurikulerResource($ekstrakurikuler->load('pembina'))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            if (!empty($validated['foto'] ?? null) && $validated['foto'] !== $oldFoto) {
+            if (!empty($validated['foto']) && $validated['foto'] !== $oldFoto) {
                 Storage::disk('public')->delete($validated['foto']);
             }
-            Log::error('Failed to update ekstrakurikuler', [
-                'ekskul_id' => $ekstrakurikuler->id, // integer
-                'payload'   => $validated,
-                'error'     => $e->getMessage()
-            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui ekstrakurikuler',
-                'errors'  => ['exception' => [$e->getMessage()]]
+                'message' => 'Gagal memperbarui ekstrakurikuler'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -154,28 +132,18 @@ class EkstrakurikulerController extends Controller
     public function destroy(Ekstrakurikuler $ekstrakurikuler): JsonResponse
     {
         $oldFoto = $ekstrakurikuler->foto;
-
         try {
             DB::transaction(fn() => $ekstrakurikuler->delete());
-
-            if ($oldFoto) {
-                Storage::disk('public')->delete($oldFoto);
-            }
+            if ($oldFoto) Storage::disk('public')->delete($oldFoto);
 
             return response()->json([
-                'success'      => true,
-                'message'      => 'Ekstrakurikuler berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
+                'success' => true,
+                'message' => 'Ekstrakurikuler berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to delete ekstrakurikuler', [
-                'ekskul_id' => $ekstrakurikuler->id, // integer
-                'error'     => $e->getMessage()
-            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus ekstrakurikuler',
-                'errors'  => ['exception' => [$e->getMessage()]]
+                'message' => 'Gagal menghapus ekstrakurikuler'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

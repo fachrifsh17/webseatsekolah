@@ -10,8 +10,10 @@ class StrukturJabatanApiController extends Controller
 {
     public function index()
     {
-        $data = StrukturJabatan::with('guruStaf')->orderBy('urutan_tampil')->get();
-        
+        $data = StrukturJabatan::with(['guruStaf', 'jabatan'])
+            ->orderBy('urutan_tampil')
+            ->get();
+
         return response()->json([
             'success' => true,
             'data'    => $data
@@ -20,8 +22,8 @@ class StrukturJabatanApiController extends Controller
 
     public function show(StrukturJabatan $strukturJabatan)
     {
-        $strukturJabatan->load('guruStaf');
-        
+        $strukturJabatan->load(['guruStaf', 'jabatan']);
+
         return response()->json([
             'success' => true,
             'data'    => $strukturJabatan

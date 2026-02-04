@@ -1,13 +1,14 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Berita, Pengumuman, Siswa, GuruStaf, Pesan, LogAdmin, Presensi, PoinSiswa, Orangtua};
-use App\Http\Resources\{BeritaResource, LogAdminResource};
+use App\Models\{Berita, Pengumuman, Siswa, Presensi, PoinSiswa, KalenderAkademik};
+use App\Http\Resources\{BeritaResource};
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -16,47 +17,72 @@ class DashboardController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru,Siswa,Orangtua');
+        $this->middleware('role:Siswa');
     }
 
     public function index(Request $request): JsonResponse
     {
         try {
-            $user     = $request->user();
-            $roleName = $user->role ? $user->role->nama : 'Guest';
+            $user = $request->user();
+            
+            // Ambil data siswa berdasarkan user_id yang login
+            $siswa = Siswa::with(['kelas.waliKelas'])
+                ->where('user_id', $user->id)
+                ->first();
+
+            if (!$siswa) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Data profil siswa tidak ditemukan'
+                ], Response::HTTP_NOT_FOUND);
+            }
+
+            // Hitung poin menggunakan kolom sesuai gambar: poin_positif & poin_negatif
+            $poinPositif = (int) PoinSiswa::where('siswa_id', $siswa->id)->sum('poin_positif');
+            $poinNegatif = (int) PoinSiswa::where('siswa_id', $siswa->id)->sum('poin_negatif');
+
+            // Hitung statistik kehadiran
+            $statsPresensi = Presensi::where('siswa_id', $siswa->id)
+                ->select('status', DB::raw('count(*) as total'))
+                ->groupBy('status')
+                ->pluck('total', 'status');
+
+            // Ambil setting sekolah (Buku Poin & WA Kesiswaan)
+            $setting = DB::table('sekolah_setting')->first();
 
             $data = [
                 'user_info' => [
-                    'name' => $user->nama_lengkap ?? $user->name,
-                    'role' => $roleName,
+                    // Diambil dari tabel siswa kolom nama_lengkap sesuai gambar
+                    'nama' => $siswa->nama_lengkap ?? 'Tanpa Nama',
+                    'kelas' => $siswa->kelas->nama_kelas ?? '-',
+                    'wali_kelas' => $siswa->kelas->waliKelas->nama ?? '-',
                 ],
-                'common' => [
-                    'recent_pengumuman' => Pengumuman::latest()->take(3)->get(),
-                    'recent_berita'     => BeritaResource::collection(Berita::latest()->take(3)->get()),
+                'statistics' => [
+                    'presensi' => [
+                        'hadir' => $statsPresensi['Hadir'] ?? 0,
+                        'izin'  => $statsPresensi['Izin'] ?? 0,
+                        'sakit' => $statsPresensi['Sakit'] ?? 0,
+                        'alpa'  => $statsPresensi['Alpa'] ?? 0,
+                    ],
+                    'poin' => [
+                        'total_positif' => $poinPositif,
+                        'total_negatif' => $poinNegatif,
+                        'akumulasi'     => $poinPositif - $poinNegatif,
+                    ]
+                ],
+                'sekolah' => [
+                    'buku_poin'    => $setting->buku_poin_path ? asset('storage/' . $setting->buku_poin_path) : null,
+                    'wa_kesiswaan' => $setting->no_wa_kesiswaan ?? null,
+                ],
+                'akademik' => [
+                    'kalender' => KalenderAkademik::whereDate('tanggal_mulai', '>=', today())
+                        ->orderBy('tanggal_mulai', 'asc')
+                        ->take(3)
+                        ->get(),
+                    'pengumuman_terbaru' => Pengumuman::latest()->first(),
+                    'berita_terbaru' => BeritaResource::collection(Berita::latest()->take(1)->get()),
                 ]
             ];
-
-            if ($roleName === 'Admin') {
-                $data['statistics'] = [
-                    'total_berita' => Berita::count(),
-                    'total_guru'   => GuruStaf::count(),
-                    'total_siswa'  => Siswa::count(),
-                    'pesan_baru'   => Pesan::where('is_read', 0)->count(),
-                ];
-                $data['recent_logs'] = LogAdminResource::collection(
-                    LogAdmin::with('user')->latest()->take(5)->get()
-                );
-            } elseif ($roleName === 'Guru') {
-                $data['statistics'] = [
-                    'total_siswa_binaan' => Siswa::where('guru_id', $user->id)->count(),
-                    'presensi_hari_ini'  => Presensi::where('guru_id', $user->id)
-                        ->whereDate('created_at', today())->count(),
-                ];
-            } elseif ($roleName === 'Siswa') {
-                $data['statistics'] = $this->getSiswaStats($user->id);
-            } elseif ($roleName === 'Orangtua') {
-                $data['statistics'] = $this->getOrangtuaStats($user->id);
-            }
 
             return response()->json([
                 'success' => true,
@@ -64,41 +90,12 @@ class DashboardController extends Controller
             ], Response::HTTP_OK);
 
         } catch (Throwable $e) {
-            Log::error('Dashboard error', [
-                'error' => $e->getMessage(),
-                'file'  => $e->getFile(),
-                'line'  => $e->getLine()
-            ]);
-
+            Log::error('Dashboard Siswa Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memuat dashboard',
-                'errors'  => [
-                    'exception' => [$e->getMessage()],
-                    'file'      => $e->getFile(),
-                    'line'      => $e->getLine()
-                ]
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-    }
-
-    private function getSiswaStats($siswaId): array
-    {
-        return [
-            'positive_point' => (int) PoinSiswa::where('siswa_id', $siswaId)
-                ->where('skor', '>', 0)->sum('skor'),
-            'negative_point' => (int) PoinSiswa::where('siswa_id', $siswaId)
-                ->where('skor', '<', 0)->sum('skor'),
-        ];
-    }
-
-    private function getOrangtuaStats($userId)
-    {
-        $daftarAnak = Orangtua::with('siswa')->where('user_id', $userId)->get();
-
-        return $daftarAnak->map(fn($item) => [
-            'nama_siswa' => $item->siswa->nama ?? '-',
-            'data'       => $this->getSiswaStats($item->siswa_id)
-        ]);
     }
 }

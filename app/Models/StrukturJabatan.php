@@ -24,7 +24,7 @@ class StrukturJabatan extends Model
         'periode_mulai' => 'date',
     ];
 
-    public function guru(): BelongsTo
+    public function guruStaf(): BelongsTo
     {
         return $this->belongsTo(GuruStaf::class, 'guru_staf_id');
     }

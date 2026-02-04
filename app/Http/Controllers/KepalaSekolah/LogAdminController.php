@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\KepalaSekolah;
 
 use App\Http\Controllers\Controller;
 use App\Models\LogAdmin;
@@ -15,7 +15,6 @@ class LogAdminController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
     }
 
     public function index(): JsonResponse
@@ -34,29 +33,28 @@ class LogAdminController extends Controller
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch admin logs', ['error' => $e->getMessage()]);
+            Log::error('Kepsek Log Index Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal mengambil log admin.',
+                'message' => 'Gagal mengambil log aktivitas.',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-    
-    public function show(LogAdmin $log): JsonResponse
+
+    public function show($id): JsonResponse
     {
         try {
-            $log->load('user');
+            $log = LogAdmin::with('user')->findOrFail($id);
 
             return response()->json([
                 'success' => true,
                 'data'    => new LogAdminResource($log),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch admin log', ['log_id' => (string)$log->id, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal mengambil detail log admin.',
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+                'message' => 'Data log tidak ditemukan.',
+            ], Response::HTTP_NOT_FOUND);
         }
     }
 }

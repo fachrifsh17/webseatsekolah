@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Orangtua;
+use App\Models\Kelas;
+use App\Models\Jurusan;
 use App\Http\Requests\StoreOrangtuaRequest;
 use App\Http\Requests\UpdateOrangtuaRequest;
 use App\Http\Resources\OrangtuaResource;
@@ -16,20 +18,41 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Str;
 
 class OrangtuaController extends Controller
 {
+    private function applyFilters(Request $request, $query)
+    {
+        if ($request->filled('q')) {
+            $search = $request->q;
+            $query->where(function ($q) use ($search) {
+                $q->where('nama_lengkap', 'like', "%{$search}%")
+                  ->orWhere('telepon', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('jurusan_id')) {
+            $query->whereHas('anak.kelas', function ($q) use ($request) {
+                $q->where('jurusan_id', $request->jurusan_id);
+            });
+        }
+
+        if ($request->filled('kelas_id')) {
+            $query->whereHas('anak', function ($q) use ($request) {
+                $q->where('kelas_id', $request->kelas_id);
+            });
+        }
+
+        return $query;
+    }
+
     public function index(Request $request): JsonResponse
     {
-        $search = $request->query('q');
+        $query = Orangtua::with(['user', 'anak.kelas.jurusan']);
+        $query = $this->applyFilters($request, $query);
 
-        $orangtua = Orangtua::with(['user', 'anak.kelas.jurusan'])
-            ->when($search, function ($query, $search) {
-                $query->where('nama_lengkap', 'like', "%{$search}%")
-                      ->orWhere('telepon', 'like', "%{$search}%");
-            })
-            ->latest()
-            ->paginate($request->query('per_page', 20));
+        $orangtua = $query->latest()->paginate($request->query('per_page', 20));
 
         return response()->json([
             'success' => true,
@@ -54,7 +77,7 @@ class OrangtuaController extends Controller
 
                 $orangtua = Orangtua::create($validated);
 
-                if ($anak) {
+                if (!empty($anak)) {
                     $syncData = [];
                     foreach ($anak as $item) {
                         $syncData[(string) $item['siswa_id']] = [
@@ -101,14 +124,14 @@ class OrangtuaController extends Controller
 
                 $orangtua->update($validated);
 
-                if ($anak) {
-                    $syncData = [];
-                    foreach ($anak as $item) {
-                        $syncData[(string) $item['siswa_id']] = [
-                            'hubungan' => $item['hubungan'] ?? null
-                        ];
-                    }
-                    $orangtua->anak()->sync($syncData);
+                if (isset($validated['anak'])) {
+                     $syncData = [];
+                     foreach ($anak as $item) {
+                         $syncData[(string) $item['siswa_id']] = [
+                             'hubungan' => $item['hubungan'] ?? null
+                         ];
+                     }
+                     $orangtua->anak()->sync($syncData);
                 }
             });
 
@@ -118,7 +141,7 @@ class OrangtuaController extends Controller
                 'data'    => new OrangtuaResource($orangtua->load(['user','anak.kelas.jurusan']))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to update orangtua', ['orangtua_id' => (string) $orangtua->id, 'error' => $e->getMessage()]);
+            Log::error('Failed to update orangtua', ['orangtua_id' => (string) $orangtua->id, 'payload' => $validated, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui orang tua',
@@ -136,7 +159,7 @@ class OrangtuaController extends Controller
                 $blockers[] = 'Terdapat akun user yang terhubung';
             }
 
-            if (method_exists($orangtua, 'anak') && $orangtua->anak()->exists()) {
+            if ($orangtua->anak()->exists()) {
                 $blockers[] = 'Terhubung dengan data anak';
             }
 
@@ -153,9 +176,7 @@ class OrangtuaController extends Controller
             }
 
             DB::transaction(function () use ($orangtua) {
-                if (method_exists($orangtua, 'anak')) {
-                    $orangtua->anak()->detach();
-                }
+                $orangtua->anak()->detach();
                 $orangtua->delete();
             });
 
@@ -168,26 +189,68 @@ class OrangtuaController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus orang tua',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function export(Request $request)
     {
-        $filters = $request->only(['q']);
-        return Excel::download(new OrangtuaExport($filters), 'data_orangtua.xlsx');
+        $kelasId = $request->kelas_id;
+        
+        // Memastikan relasi anak difilter sesuai kelas yang dipilih
+        $query = Orangtua::query()->with(['anak' => function($q) use ($kelasId) {
+            if ($kelasId) {
+                $q->where('kelas_id', $kelasId);
+            }
+            $q->with('kelas');
+        }]);
+        
+        $query = $this->applyFilters($request, $query);
+
+        $filename = 'Data_Orangtua';
+        $kelasData = null;
+        
+        if ($request->filled('kelas_id')) {
+            $kelasData = Kelas::find($request->kelas_id);
+            if ($kelasData) {
+                $filename .= '_' . Str::slug($kelasData->nama_kelas);
+            }
+        } elseif ($request->filled('jurusan_id')) {
+            $jurusan = Jurusan::find($request->jurusan_id);
+            if ($jurusan) {
+                $filename .= '_' . Str::slug($jurusan->nama_jurusan);
+            }
+        }
+
+        $filename .= '_' . now()->format('Ymd_His') . '.xlsx';
+
+        $profil = DB::table('profil_sekolah')->first();
+        $kontak = DB::table('data_kontak')->first();
+
+        return Excel::download(
+            new OrangtuaExport($query, $profil, $kontak, $kelasData), 
+            $filename
+        );
     }
 
     public function import(Request $request): JsonResponse
     {
-        $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv|max:2048'
+        ]);
 
         try {
             Excel::import(new OrangtuaImport, $request->file('file'));
-            return response()->json(['success' => true, 'message' => 'Data berhasil diimport.'], Response::HTTP_OK);
+            return response()->json([
+                'success' => true, 
+                'message' => 'Data orang tua berhasil diimport.'
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
+            Log::error('Import Orangtua Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal mengimport data: ' . $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Sarpas;
 
 use App\Http\Controllers\Controller;
 use App\Models\Media;
@@ -19,7 +19,6 @@ class MediaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
@@ -56,7 +55,6 @@ class MediaController extends Controller
         }
     }
 
-    // MENGGUNAKAN MEDIA $media (Route Model Binding)
     public function show(Media $media): JsonResponse
     {
         try {
@@ -119,9 +117,11 @@ class MediaController extends Controller
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
+            Log::error('Failed to store media', ['error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Gagal menyimpan media'], 500);
         }
     }
+
     public function update(Request $request, Media $media): JsonResponse
     {
         $validated = $request->validate([
@@ -156,6 +156,7 @@ class MediaController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
+            Log::error('Failed to update media', ['error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Gagal memperbarui media'], 500);
         }
     }
@@ -177,6 +178,7 @@ class MediaController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
+            Log::error('Failed to delete media', ['error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Gagal menghapus media'], 500);
         }
     }

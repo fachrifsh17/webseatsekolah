@@ -15,12 +15,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Symfony\Component\HttpFoundation\Response;
 use Carbon\Carbon;
-use BadMethodCallException;
 use Throwable;
 
 class PresensiGuruMapelController extends Controller
@@ -30,38 +27,13 @@ class PresensiGuruMapelController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:admin')->only(['destroy']);
+        $this->middleware('role:admin');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
-    }
-
-    protected function isAdmin($user): bool
-    {
-        if (!$user) return false;
-        if (method_exists($user, 'hasRole')) {
-            return $user->hasRole('admin') || $user->hasRole('Admin');
-        }
-        return isset($user->role_id) && (int) $user->role_id === 2;
-    }
-
-    protected function applyGuruMapelOwnershipQuery($query, $user)
-    {
-        return $query->where(function ($q) use ($user) {
-            $q->whereHas('guruStaf', fn($r) => $r->where('user_id', $user->id))
-              ->orWhereHas('guru', fn($r) => $r->where('user_id', $user->id));
-            
-            $candidates = ['guru_staf_id', 'guru_id', 'guru_staff_id'];
-            foreach ($candidates as $col) {
-                if (Schema::hasColumn('guru_mapel', $col)) {
-                    $q->orWhere($col, $user->guruStaf?->id ?? $user->id);
-                }
-            }
-        });
     }
 
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', PresensiGuruMapel::class);
-        $user = Auth::user();
 
         $query = PresensiGuruMapel::with([
             'presensiSiswaDetail.siswa',
@@ -69,10 +41,6 @@ class PresensiGuruMapelController extends Controller
             'mataPelajaran',
             'kelas'
         ]);
-
-        if (!$this->isAdmin($user)) {
-            $query->whereHas('guruMapel', fn($q) => $this->applyGuruMapelOwnershipQuery($q, $user));
-        }
 
         if ($request->filled('tanggal')) {
             $query->whereDate('tanggal', $request->tanggal);
@@ -82,62 +50,45 @@ class PresensiGuruMapelController extends Controller
             $query->where('kelas_id', $request->kelas_id);
         }
 
-        $perPage = min((int) $request->get('per_page', 20), 100);
-        $paginated = $query->latest('tanggal')->paginate($perPage);
+        if ($request->filled('guru_staf_id')) {
+            $query->whereHas('guruMapel', fn($q) => $q->where('guru_staf_id', $request->guru_staf_id));
+        }
+
+        $perHalaman = min((int) $request->get('per_page', 20), 100);
+        $paginasi = $query->latest('tanggal')->paginate($perHalaman);
 
         return response()->json([
             'success' => true,
-            'data' => PresensiGuruMapelResource::collection($paginated),
+            'data' => PresensiGuruMapelResource::collection($paginasi),
             'meta' => [
-                'current_page' => $paginated->currentPage(),
-                'last_page' => $paginated->lastPage(),
-                'total' => $paginated->total(),
+                'current_page' => $paginasi->currentPage(),
+                'last_page' => $paginasi->lastPage(),
+                'total' => $paginasi->total(),
             ]
         ], Response::HTTP_OK);
     }
 
-    public function listJadwalHariIni(): JsonResponse
+    public function show($id): JsonResponse
     {
-        $hariIni = Carbon::now()->locale('id')->dayName;
-        $user = Auth::user();
+        $presensi = PresensiGuruMapel::with([
+            'presensiSiswaDetail.siswa',
+            'guruMapel.guru',
+            'mataPelajaran',
+            'kelas'
+        ])->findOrFail($id);
 
-        $query = GuruMapel::with(['mapel', 'kelas', 'guru'])
-            ->where('hari', $hariIni);
+        $this->authorize('view', $presensi);
 
-        if (!$this->isAdmin($user)) {
-            $this->applyGuruMapelOwnershipQuery($query, $user);
-        }
-
-        $jadwal = $query->get();
-        $sudahAbsen = PresensiGuruMapel::whereDate('tanggal', Carbon::today())
-            ->pluck('guru_mapel_id')->toArray();
-
-        $data = $jadwal->map(fn($j) => [
-            'guru_mapel_id' => $j->id,
-            'nama_guru' => $j->guru?->nama,
-            'mata_pelajaran' => $j->mapel?->nama_mapel,
-            'kelas' => $j->kelas?->nama_kelas,
-            'jam' => $j->jam_mulai_id . ' - ' . $j->jam_selesai_id,
-            'status' => in_array($j->id, $sudahAbsen) ? 'Sudah Absen' : 'Belum Absen'
-        ]);
-
-        return response()->json(['success' => true, 'data' => $data], Response::HTTP_OK);
+        return response()->json([
+            'success' => true,
+            'data' => new PresensiGuruMapelResource($presensi)
+        ], Response::HTTP_OK);
     }
 
     public function store(StorePresensiGuruMapelRequest $request): JsonResponse
     {
         $this->authorize('create', PresensiGuruMapel::class);
-        $user = Auth::user();
-        
         $relasi = GuruMapel::findOrFail($request->input('guru_mapel_id'));
-
-        if (!$this->isAdmin($user)) {
-            $check = GuruMapel::where('id', $relasi->id);
-            $this->applyGuruMapelOwnershipQuery($check, $user);
-            if (!$check->exists()) {
-                return response()->json(['message' => 'Akses ditolak. Ini bukan jadwal Anda.'], 403);
-            }
-        }
 
         try {
             $presensi = DB::transaction(function () use ($request, $relasi) {
@@ -153,7 +104,7 @@ class PresensiGuruMapelController extends Controller
                 );
 
                 $inputPresensi = collect($request->input('presensi', []));
-                $semuaSiswaIds = Siswa::where('kelas_id', $relasi->kelas_id)->pluck('id');
+                $semuaSiswaIds = Siswa::where('kelas_id', $relasi->kelas_id)->where('is_active', true)->pluck('id');
 
                 foreach ($semuaSiswaIds as $siswaId) {
                     $dataSiswa = $inputPresensi->firstWhere('siswa_id', $siswaId);
@@ -170,24 +121,15 @@ class PresensiGuruMapelController extends Controller
 
             return (new PresensiGuruMapelResource($presensi))->response()->setStatusCode(Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            Log::error('Store Jurnal Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal simpan.'], 500);
+            Log::error('Admin Simpan Jurnal Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal simpan data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-    public function update(UpdatePresensiGuruMapelRequest $request, int $id): JsonResponse
+    public function update(UpdatePresensiGuruMapelRequest $request, $id): JsonResponse
     {
         $presensi = PresensiGuruMapel::findOrFail($id);
         $this->authorize('update', $presensi);
-        $user = Auth::user();
-
-        if (!$this->isAdmin($user)) {
-            $check = GuruMapel::where('id', $presensi->guru_mapel_id);
-            $this->applyGuruMapelOwnershipQuery($check, $user);
-            if (!$check->exists()) {
-                return response()->json(['message' => 'Akses ditolak. Jurnal ini bukan milik Anda.'], 403);
-            }
-        }
 
         try {
             $updated = DB::transaction(function () use ($request, $presensi) {
@@ -196,58 +138,84 @@ class PresensiGuruMapelController extends Controller
                 if ($request->has('presensi')) {
                     foreach ($request->input('presensi') as $item) {
                         $presensi->presensiSiswaDetail()->where('siswa_id', $item['siswa_id'])
-                            ->update(['status' => $item['status'], 'catatan' => $item['catatan'] ?? null]);
+                            ->update([
+                                'status' => $item['status'], 
+                                'catatan' => $item['catatan'] ?? null
+                            ]);
                     }
                 }
                 return $presensi->load(['presensiSiswaDetail.siswa', 'guruMapel.guru', 'mataPelajaran', 'kelas']);
             });
 
-            return response()->json(['success' => true, 'data' => new PresensiGuruMapelResource($updated)]);
+            return response()->json([
+                'success' => true, 
+                'data' => new PresensiGuruMapelResource($updated)
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            Log::error('Admin Update Jurnal Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal update data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy($id): JsonResponse
     {
         $presensi = PresensiGuruMapel::findOrFail($id);
         $this->authorize('delete', $presensi);
-        $presensi->delete();
 
-        return response()->json(['success' => true, 'message' => 'Jurnal berhasil dihapus.']);
+        try {
+            $presensi->delete();
+            return response()->json([
+                'success' => true, 
+                'message' => 'Jurnal berhasil dihapus.'
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function export(Request $request)
     {
         $this->authorize('viewAny', PresensiGuruMapel::class);
         
-        $month = $request->query('month', date('m'));
-        $year = $request->query('year', date('Y'));
+        $bulan = $request->query('bulan', date('m'));
+        $tahun = $request->query('tahun', date('Y'));
+        $kelasId = $request->query('kelas_id');
         $guruStafId = $request->query('guru_staf_id');
-        $taAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
-        $tahunAjaranId = $request->query('tahun_ajaran_id') ?? $taAktif?->id;
-
-        $query = PresensiGuruMapel::query()
-            ->whereMonth('tanggal', $month)
-            ->whereYear('tanggal', $year);
-
-        if ($guruStafId) {
-            $query->whereHas('guruMapel', fn($q) => $q->where('guru_staf_id', $guruStafId));
+        
+        if (!$kelasId) {
+            return response()->json(['success' => false, 'message' => 'Pilih kelas terlebih dahulu.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $taData = DB::table('tahun_ajaran')->where('id', $tahunAjaranId)->first();
-        $guruTarget = DB::table('guru_staf')->where('id', $guruStafId)->first();
+        $query = PresensiGuruMapel::query()
+            ->with(['guruMapel.guru', 'mataPelajaran', 'kelas'])
+            ->whereMonth('tanggal', $bulan)
+            ->whereYear('tanggal', $tahun)
+            ->where('kelas_id', $kelasId);
+
+        if ($guruStafId) {
+            $query->whereHas('guruMapel', function($q) use ($guruStafId) {
+                $q->where('guru_staf_id', $guruStafId);
+            });
+        }
+
+        $namaKelas = DB::table('kelas')->where('id', $kelasId)->value('nama_kelas') ?? $kelasId;
+        $taAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+        $taData = DB::table('tahun_ajaran')->where('id', $request->query('tahun_ajaran_id') ?? $taAktif?->id)->first();
+        $guruTarget = $guruStafId ? DB::table('guru_staf')->where('id', $guruStafId)->first() : null;
 
         return Excel::download(
             new PresensiGuruMapelExport(
-                $query, "Bulan-{$month}-{$year}", 
+                $query, 
+                "Bulan-{$bulan}-{$tahun}", 
                 DB::table('profil_sekolah')->first(), 
                 DB::table('data_kontak')->first(),
                 (object)['nama' => $guruTarget->nama ?? 'Semua Guru', 'nip' => $guruTarget->nip ?? '-'],
-                $taData ? $taData->nama . " (" . $taData->semester . ")" : '-',
-                $request->filled('kelas_id')
+                $taData ? ($taData->nama . " (" . $taData->semester . ")") : '-',
+                true, 
+                $bulan,
+                $tahun
             ),
-            "Rekap_Jurnal_" . ($guruTarget->nama ?? 'Semua') . "_{$month}_{$year}.xlsx"
+            "Rekap_Presensi_Kelas_{$namaKelas}_Bulan_{$bulan}_{$tahun}.xlsx"
         );
     }
 }

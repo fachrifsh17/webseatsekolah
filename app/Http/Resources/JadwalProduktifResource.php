@@ -4,7 +4,6 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 class JadwalProduktifResource extends JsonResource
 {
@@ -20,11 +19,11 @@ class JadwalProduktifResource extends JsonResource
             ],
             'guru' => [
                 'id' => $this->guru_staf_id,
-                'nama' => $this->guruStaf->nama_lengkap ?? null,
+                'nama' => $this->guruStaf->nama ?? null,
             ],
-            'file_url' => $this->file_jadwal ? url(Storage::url($this->file_jadwal)) : null,
-            'created_at' => $this->created_at->format('d-m-Y H:i'),
-            'updated_at' => $this->updated_at->format('d-m-Y H:i'),
+            'file_url' => $this->file_jadwal_path ? asset('storage/' . $this->file_jadwal_path) : null,
+            'created_at' => $this->created_at ? $this->created_at->format('d-m-Y H:i') : null,
+            'updated_at' => $this->updated_at ? $this->updated_at->format('d-m-Y H:i') : null,
         ];
     }
 }

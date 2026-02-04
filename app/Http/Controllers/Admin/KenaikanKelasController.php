@@ -29,7 +29,6 @@ class KenaikanKelasController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Daftar kelas aktif untuk pemetaan',
             'data'    => $data
         ], Response::HTTP_OK);
     }
@@ -37,7 +36,6 @@ class KenaikanKelasController extends Controller
     public function prosesMassal(KenaikanKelasRequest $request): JsonResponse
     {
         $validated = $request->validated();
-        
         $summary = [
             'berhasil_naik' => 0,
             'lulus'         => 0,
@@ -48,45 +46,43 @@ class KenaikanKelasController extends Controller
             DB::transaction(function () use ($validated, &$summary) {
                 foreach ($validated['mapping'] as $map) {
                     $kelasLama = Kelas::find($map['kelas_lama_id']);
-                    $isKelulusan = empty($map['kelas_baru_id']);
-                    $kelasBaru = !$isKelulusan ? Kelas::find($map['kelas_baru_id']) : null;
-
+                    
                     if (!$kelasLama) {
                         $summary['peringatan'][] = "Kelas lama ID {$map['kelas_lama_id']} tidak ditemukan.";
                         continue;
                     }
 
+                    $isKelulusan = empty($map['kelas_baru_id']);
                     $excludedIds = $map['excluded_siswa_ids'] ?? [];
+
                     $querySiswa = Siswa::where('kelas_id', $kelasLama->id)
+                        ->where('is_active', true)
                         ->whereNotIn('id', $excludedIds);
 
                     if ($isKelulusan) {
-                        $count = $querySiswa->update(['is_active' => false]);
+                        $count = $querySiswa->update([
+                            'is_active' => false,
+                        ]);
                         $summary['lulus'] += $count;
                     } else {
+                        $kelasBaru = Kelas::find($map['kelas_baru_id']);
+
                         if (!$kelasBaru || $kelasLama->id === $kelasBaru->id) {
                             $summary['peringatan'][] = "Mapping tidak valid untuk {$kelasLama->nama_kelas}.";
                             continue;
                         }
 
                         $count = $querySiswa->update([
-                            'kelas_id'  => $kelasBaru->id,
-                            'is_active' => true
+                            'kelas_id' => $kelasBaru->id,
                         ]);
                         $summary['berhasil_naik'] += $count;
                     }
-
-                    $kelasLama->update(['is_active' => false]);
-                }
-                
-                if ($summary['berhasil_naik'] === 0 && $summary['lulus'] === 0 && count($summary['peringatan']) > 0) {
-                    throw new \Exception('Gagal memproses: Konflik mapping.');
                 }
             });
 
             return response()->json([
                 'success' => true,
-                'message' => 'Proses kenaikan dan kelulusan selesai.',
+                'message' => 'Proses kenaikan/kelulusan kelas berhasil diselesaikan',
                 'detail'  => $summary
             ], Response::HTTP_OK);
 
@@ -94,7 +90,7 @@ class KenaikanKelasController extends Controller
             Log::error('Kenaikan Kelas Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memproses kenaikan kelas.',
+                'message' => 'Gagal memproses kenaikan kelas',
                 'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }

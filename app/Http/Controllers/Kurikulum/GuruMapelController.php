@@ -1,17 +1,24 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
 use App\Models\GuruMapel;
 use App\Models\JamSekolah;
 use App\Models\TahunAjaran;
+use App\Models\ProfilSekolah; 
+use App\Models\DataKontak;   
 use App\Http\Resources\GuruMapelResource;
 use App\Http\Requests\StoreGuruMapelRequest;
 use App\Http\Requests\UpdateGuruMapelRequest;
+use App\Exports\GuruMapelExport;
+use App\Imports\GuruMapelImport;
+use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str; 
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -20,76 +27,125 @@ class GuruMapelController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
+    }
+
+    private function applyFilters(Request $request)
+    {
+        $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran']);
+
+        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
+        $tahunAjaranId = $request->get('tahun_ajaran_id', optional($tahunAktif)->id);
+
+        if ($request->filled('q')) {
+            $search = $request->get('q');
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('guru', fn($g) => $g->where('nama', 'LIKE', "%{$search}%")->orWhere('nip', 'LIKE', "%{$search}%"))
+                  ->orWhereHas('mapel', fn($m) => $m->where('nama_mapel', 'LIKE', "%{$search}%"))
+                  ->orWhereHas('kelas', fn($k) => $k->where('nama_kelas', 'LIKE', "%{$search}%"));
+            });
+        }
+
+        $query->when($tahunAjaranId, fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId))
+              ->when($request->guru_staf_id, fn($q, $id) => $q->where('guru_staf_id', $id))
+              ->when($request->mata_pelajaran_id, fn($q, $id) => $q->where('mata_pelajaran_id', $id))
+              ->when($request->kelas_id, fn($q, $id) => $q->where('kelas_id', $id))
+              ->when($request->hari, fn($q, $hari) => $q->where('hari', $hari));
+
+        return $query;
     }
 
     public function index(Request $request): JsonResponse
     {
-        $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas']);
-
-        if ($request->has('search')) {
-            $search = $request->search;
-
-            $query->where(function ($q) use ($search) {
-                $q->whereHas('guru', function ($g) use ($search) {
-                    $g->where('nama', 'LIKE', "%{$search}%")
-                      ->orWhere('nip', 'LIKE', "%{$search}%");
-                })
-                ->orWhereHas('mapel', function ($m) use ($search) {
-                    $m->where('nama_mapel', 'LIKE', "%{$search}%")
-                      ->orWhere('tipe_mapel', 'LIKE', "%{$search}%")
-                      ->orWhereHas('jurusan', function ($j) use ($search) {
-                          $j->where('nama_jurusan', 'LIKE', "%{$search}%");
-                      });
-                })
-                ->orWhereHas('kelas', function ($k) use ($search) {
-                    $k->where('nama_kelas', 'LIKE', "%{$search}%");
-                });
-            });
-        }
-
-        $perPage = $request->query('per_page', 10);
-
+        $query = $this->applyFilters($request);
+        $perPage = $request->get('per_page', 10);
         $assignments = $query->latest()->paginate($perPage);
 
-        return GuruMapelResource::collection($assignments)
-            ->response()
-            ->setStatusCode(Response::HTTP_OK);
+        return response()->json([
+            'success' => true,
+            'data'    => GuruMapelResource::collection($assignments),
+            'meta'    => [
+                'current_page' => $assignments->currentPage(),
+                'last_page'    => $assignments->lastPage(),
+                'per_page'     => $assignments->perPage(),
+                'total'        => $assignments->total(),
+            ],
+        ], Response::HTTP_OK);
+    }
+
+    public function export(Request $request)
+    {
+        try {
+            $query = $this->applyFilters($request);
+            $profil = ProfilSekolah::first();
+            $kontak = DataKontak::first();
+
+            $fileName = 'Data_Penugasan_Kurikulum';
+            
+            if ($request->filled('tahun_ajaran_id')) {
+                $ta = TahunAjaran::find($request->tahun_ajaran_id);
+                if ($ta) {
+                    $fileName .= '_' . Str::slug($ta->tahun_ajaran);
+                }
+            }
+
+            $fileName .= '_' . now()->format('Ymd_His') . '.xlsx';
+            
+            return Excel::download(new GuruMapelExport($query, $profil, $kontak), $fileName);
+        } catch (Throwable $e) {
+            Log::error('Export Guru Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Gagal mengekspor data penugasan.'], 500);
+        }
+    }
+
+    public function import(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv|max:2048'
+        ]);
+
+        try {
+            DB::transaction(function () use ($request) {
+                Excel::import(new GuruMapelImport, $request->file('file'));
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data penugasan guru berhasil diimport oleh tim Kurikulum.',
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Import Guru Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal import: ' . $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function show(GuruMapel $guruMapel): JsonResponse
     {
-        return response()->json(
-            new GuruMapelResource(
-                $guruMapel->load(['guru', 'mapel.jurusan', 'kelas'])
-            ),
-            Response::HTTP_OK
-        );
+        return response()->json([
+            'success' => true,
+            'data'    => new GuruMapelResource($guruMapel->load(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran']))
+        ], Response::HTTP_OK);
     }
 
     public function getJamByHari(Request $request): JsonResponse
     {
         $hari = $request->query('hari');
-
         $jam = JamSekolah::where('hari', $hari)
             ->orderBy('waktu_mulai')
             ->get();
 
-        return response()->json(
-            [
-                'success' => true,
-                'data'    => $jam
-            ],
-            Response::HTTP_OK
-        );
+        return response()->json([
+            'success' => true,
+            'data'    => $jam
+        ], Response::HTTP_OK);
     }
 
     public function store(StoreGuruMapelRequest $request): JsonResponse
     {
-        $this->authorize('create', GuruMapel::class);
-
         $validated = $request->validated();
-
         $tahunAktif = TahunAjaran::where('is_active', 1)->first();
         $validated['tahun_ajaran_id'] = $validated['tahun_ajaran_id'] ?? optional($tahunAktif)->id;
 
@@ -100,55 +156,33 @@ class GuruMapelController extends Controller
             ->exists();
 
         if ($exists) {
-            return response()->json(
-                [
-                    'success' => false,
-                    'message' => 'Guru sudah terdaftar pada mata pelajaran dan kelas ini.',
-                    'errors'  => [
-                        'conflict' => [
-                            'Kombinasi Guru, Mata Pelajaran, Kelas, dan Tahun Ajaran sudah ada.'
-                        ]
-                    ]
-                ],
-                Response::HTTP_CONFLICT
-            );
+            return response()->json([
+                'success' => false,
+                'message' => 'Konflik: Guru tersebut sudah ditugaskan pada mata pelajaran dan kelas ini.',
+            ], Response::HTTP_CONFLICT);
         }
 
         try {
-            $assignment = DB::transaction(
-                fn() => GuruMapel::create($validated)
-            );
-
-            return response()->json(
-                [
-                    'success' => true,
-                    'message' => 'Penugasan guru berhasil ditambahkan.',
-                    'data'    => new GuruMapelResource(
-                        $assignment->load(['guru', 'mapel.jurusan', 'kelas'])
-                    )
-                ],
-                Response::HTTP_CREATED
-            );
+            $assignment = DB::transaction(fn() => GuruMapel::create($validated));
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Penugasan guru berhasil ditambahkan oleh Kurikulum.',
+                'data'    => new GuruMapelResource($assignment->load(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran']))
+            ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            return response()->json(
-                [
-                    'success' => false,
-                    'message' => 'Gagal menambahkan penugasan guru',
-                    'errors'  => [
-                        'exception' => [$e->getMessage()]
-                    ]
-                ],
-                Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            Log::error('Store Guru Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menambahkan penugasan guru.',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function update(UpdateGuruMapelRequest $request, GuruMapel $guruMapel): JsonResponse
     {
-        $this->authorize('update', $guruMapel);
-
         $validated = $request->validated();
-
         $tahunAktif = TahunAjaran::where('is_active', 1)->first();
         $validated['tahun_ajaran_id'] = $validated['tahun_ajaran_id'] ?? optional($tahunAktif)->id;
 
@@ -160,79 +194,47 @@ class GuruMapelController extends Controller
             ->exists();
 
         if ($exists) {
-            return response()->json(
-                [
-                    'success' => false,
-                    'message' => 'Kombinasi Guru, Mata Pelajaran, Kelas, dan Tahun Ajaran ini sudah digunakan.',
-                    'errors'  => [
-                        'conflict' => [
-                            'Data penugasan serupa sudah ada di sistem.'
-                        ]
-                    ]
-                ],
-                Response::HTTP_CONFLICT
-            );
+            return response()->json([
+                'success' => false,
+                'message' => 'Konflik data: Penugasan serupa sudah ada di sistem.',
+            ], Response::HTTP_CONFLICT);
         }
 
         try {
-            DB::transaction(
-                fn() => $guruMapel->update($validated)
-            );
-
-            $guruMapel->refresh();
-
-            return response()->json(
-                [
-                    'success' => true,
-                    'message' => 'Penugasan guru berhasil diperbarui.',
-                    'data'    => new GuruMapelResource(
-                        $guruMapel->load(['guru', 'mapel.jurusan', 'kelas'])
-                    )
-                ],
-                Response::HTTP_OK
-            );
+            DB::transaction(fn() => $guruMapel->update($validated));
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Penugasan guru berhasil diperbarui oleh Kurikulum.',
+                'data'    => new GuruMapelResource($guruMapel->refresh()->load(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran']))
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            return response()->json(
-                [
-                    'success' => false,
-                    'message' => 'Gagal memperbarui penugasan guru',
-                    'errors'  => [
-                        'exception' => [$e->getMessage()]
-                    ]
-                ],
-                Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            Log::error('Update Guru Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui penugasan guru.',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function destroy(GuruMapel $guruMapel): JsonResponse
     {
-        $this->authorize('delete', $guruMapel);
-
         try {
-            DB::transaction(
-                fn() => $guruMapel->delete()
-            );
-
-            return response()->json(
-                [
-                    'success'      => true,
-                    'message'      => 'Penugasan guru berhasil dihapus',
-                    'notification' => 'Berhasil dihapus'
-                ],
-                Response::HTTP_OK
-            );
+            DB::transaction(fn() => $guruMapel->delete());
+            
+            return response()->json([
+                'success'      => true,
+                'message'      => 'Penugasan berhasil dihapus oleh tim Kurikulum.',
+                'notification' => 'Berhasil dihapus'
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            return response()->json(
-                [
-                    'success' => false,
-                    'message' => 'Gagal menghapus penugasan guru',
-                    'errors'  => [
-                        'exception' => [$e->getMessage()]
-                    ]
-                ],
-                Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            Log::error('Delete Guru Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus penugasan.',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

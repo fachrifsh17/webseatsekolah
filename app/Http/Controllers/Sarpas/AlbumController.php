@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Sarpas;
 
 use App\Http\Controllers\Controller;
 use App\Models\Album;
@@ -19,15 +19,13 @@ class AlbumController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store','update','destroy']);
+        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
     public function index(): JsonResponse
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-
             $data = Album::with('media')->orderByDesc('tanggal_kegiatan')->paginate($perPage);
 
             return response()->json([
@@ -167,12 +165,10 @@ class AlbumController extends Controller
     {
         DB::beginTransaction();
         try {
-            // hapus cover album
             if (!empty($album->cover_path) && Storage::disk('public')->exists($album->cover_path)) {
                 Storage::disk('public')->delete($album->cover_path);
             }
 
-            // hapus semua media terkait
             foreach ($album->media as $media) {
                 if (!empty($media->media_path) && Storage::disk('public')->exists($media->media_path)) {
                     Storage::disk('public')->delete($media->media_path);

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Humas;
 
 use App\Http\Controllers\Controller;
 use App\Models\Pesan;
@@ -16,7 +16,6 @@ class PesanController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['updateStatus', 'destroy']);
     }
 
@@ -49,6 +48,10 @@ class PesanController extends Controller
     public function show(Pesan $pesan): JsonResponse
     {
         try {
+            if (!$pesan->is_read) {
+                $pesan->update(['is_read' => true]);
+            }
+
             return response()->json([
                 'success' => true,
                 'data'    => new PesanResource($pesan),

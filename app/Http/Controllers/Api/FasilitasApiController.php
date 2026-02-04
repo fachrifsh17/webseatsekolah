@@ -11,11 +11,18 @@ class FasilitasApiController extends Controller
     public function index()
     {
         $data = Fasilitas::orderBy('id', 'desc')->get();
-        return response()->json(['success' => true, 'data' => $data], Response::HTTP_OK);
+
+        return response()->json([
+            'success' => true,
+            'data' => $data
+        ], Response::HTTP_OK);
     }
 
-    public function show(Fasilitas $fasilita)
+    public function show(Fasilitas $fasilitas)
     {
-        return response()->json(['success' => true, 'data' => $fasilita], Response::HTTP_OK);
+        return response()->json([
+            'success' => true,
+            'data' => $fasilitas
+        ], Response::HTTP_OK);
     }
 }

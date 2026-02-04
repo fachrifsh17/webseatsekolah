@@ -21,9 +21,39 @@ class ProfilSekolahController extends Controller
         $this->middleware('log.admin')->only(['update', 'destroy']);
     }
 
+    public function index(): JsonResponse
+    {
+        try {
+            $profil = ProfilSekolah::with(['guruStaf'])->first();
+
+            if (!$profil) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Data profil tidak ditemukan'
+                ], Response::HTTP_NOT_FOUND);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data'    => new ProfilSekolahResource($profil)
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Internal Server Error'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
     public function update(UpdateProfilSekolahRequest $request): JsonResponse
     {
         $validated = $request->validated();
+
+        $kepsekOtomatis = DB::table('struktur_jabatan')
+            ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
+            ->where('jabatans.slug', 'kepala-sekolah')
+            ->select('struktur_jabatan.guru_staf_id')
+            ->first();
 
         DB::beginTransaction();
         try {
@@ -37,7 +67,7 @@ class ProfilSekolahController extends Controller
                     'misi'            => $validated['misi'] ?? null,
                     'sejarah'         => $validated['sejarah'] ?? null,
                     'sambutan_kepsek' => $validated['sambutan_kepsek'] ?? null,
-                    'guru_staf_id'    => $validated['guru_staf_id'] ?? null,
+                    'guru_staf_id'    => $kepsekOtomatis->guru_staf_id ?? ($validated['guru_staf_id'] ?? null),
                 ]
             );
 
@@ -51,10 +81,7 @@ class ProfilSekolahController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to update profil sekolah', [
-                'payload' => $validated,
-                'error'   => $e->getMessage()
-            ]);
+            Log::error('Admin Update Profil Error: ' . $e->getMessage());
 
             return response()->json([
                 'success'      => false,
@@ -83,9 +110,7 @@ class ProfilSekolahController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to delete profil sekolah', [
-                'error' => $e->getMessage()
-            ]);
+            Log::error('Admin Delete Profil Error: ' . $e->getMessage());
 
             return response()->json([
                 'success'      => false,

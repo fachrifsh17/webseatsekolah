@@ -12,12 +12,12 @@ class PoinSiswaPolicy
 
     private function getJabatan(User $user): string
     {
-        return $user->guruStaf?->jabatan ?? '';
+        return strtolower(trim($user->guruStaf?->jabatan ?? ''));
     }
 
     public function before(User $user, string $ability)
     {
-        // Admin selalu punya akses penuh
+        // Admin (semua variasi penulisan) memiliki hak akses penuh ke semua fitur
         if ($user->hasAnyRole(['admin', 'Admin', 'ADMIN'])) {
             return true;
         }
@@ -25,6 +25,7 @@ class PoinSiswaPolicy
 
     public function viewAny(User $user): bool
     {
+        // Semua user terautentikasi bisa melihat daftar poin (difilter di query controller)
         return true; 
     }
 
@@ -32,22 +33,22 @@ class PoinSiswaPolicy
     {
         $jabatan = $this->getJabatan($user);
 
-        // Kepsek dan Waka Kesiswaan bisa melihat semua poin
-        if (in_array($jabatan, ['Kepala Sekolah', 'Waka Kesiswaan', 'Kesiswaan'])) {
+        // Menyesuaikan Controller Kepsek & Kesiswaan: Boleh melihat data semua siswa
+        if (in_array($jabatan, ['kepala sekolah', 'waka kesiswaan', 'kesiswaan'])) {
             return true;
         }
 
-        // Guru hanya bisa melihat poin yang mereka input sendiri
-        if ($user->guruStaf && (int) $user->guruStaf->id === (int) $poinSiswa->guru_staf_id) {
+        // Guru: Hanya boleh lihat jika dia adalah penginputnya (guru_staf_id)
+        if ($user->guru_staf_id && (int) $user->guru_staf_id === (int) $poinSiswa->guru_staf_id) {
             return true;
         }
 
-        // Siswa hanya bisa melihat poin miliknya sendiri
-        if ($user->siswa && (int) $user->siswa->id === (int) $poinSiswa->siswa_id) {
+        // Siswa: Hanya boleh lihat poin miliknya sendiri
+        if ($user->siswa_id && (int) $user->siswa_id === (int) $poinSiswa->siswa_id) {
             return true;
         }
 
-        // Orang tua hanya bisa melihat poin anaknya
+        // Orang Tua: Melihat poin berdasarkan relasi anak
         if ($user->orangtua) {
             return $user->orangtua->anak()->where('siswa.id', $poinSiswa->siswa_id)->exists();
         }
@@ -59,41 +60,34 @@ class PoinSiswaPolicy
     {
         $jabatan = $this->getJabatan($user);
 
-        // Kepsek tidak input poin, Siswa & Ortu juga tidak bisa
-        if ($jabatan === 'Kepala Sekolah' || $user->hasAnyRole(['siswa', 'Siswa', 'orangtua', 'Orangtua'])) {
+        // Sesuai Controller Kesiswaan/Admin: Hanya Guru/Staf yang bisa input
+        // Kepsek, Siswa, Ortu tidak diberikan akses input
+        if (in_array($jabatan, ['kepala sekolah']) || $user->hasAnyRole(['siswa', 'orangtua'])) {
             return false;
         }
 
-        // Semua Guru/Staf lainnya boleh input poin
-        return $user->guruStaf !== null;
+        return $user->guru_staf_id !== null;
     }
 
     public function update(User $user, PoinSiswa $poinSiswa): bool
     {
         $jabatan = $this->getJabatan($user);
 
-        // Waka Kesiswaan punya wewenang mengedit poin siapapun
-        if ($jabatan === 'Waka Kesiswaan') {
+        // Waka Kesiswaan atau Staf Kesiswaan bisa memperbaiki data poin siapapun
+        if (in_array($jabatan, ['waka kesiswaan', 'kesiswaan'])) {
             return true;
         }
 
-        // Guru hanya bisa edit poin yang mereka buat sendiri
-        if ($user->guruStaf && (int) $user->guruStaf->id === (int) $poinSiswa->guru_staf_id) {
-            return true;
-        }
-
-        return false;
+        // Guru: Hanya bisa update jika dia penginput poin tersebut
+        return $user->guru_staf_id && (int) $user->guru_staf_id === (int) $poinSiswa->guru_staf_id;
     }
 
     public function delete(User $user, PoinSiswa $poinSiswa): bool
     {
         $jabatan = $this->getJabatan($user);
 
-        // Hanya Admin atau Waka Kesiswaan yang boleh menghapus poin
-        if ($jabatan === 'Waka Kesiswaan' || $user->hasAnyRole(['admin', 'Admin', 'ADMIN'])) {
-            return true;
-        }
-
-        return false;
+        // Sesuai standar keamanan di Controller Anda:
+        // Hanya Waka Kesiswaan yang memiliki wewenang menghapus record
+        return $jabatan === 'waka kesiswaan';
     }
 }

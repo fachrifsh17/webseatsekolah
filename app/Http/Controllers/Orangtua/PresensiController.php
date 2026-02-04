@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\OrangTua;
+namespace App\Http\Controllers\Orangtua;
 
 use App\Http\Controllers\Controller;
 use App\Models\Presensi;

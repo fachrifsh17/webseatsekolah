@@ -11,7 +11,7 @@ class StorePresensiGuruMapelRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('create', \App\Models\PresensiGuruMapel::class) ?? true;
+        return true; 
     }
 
     public function prepareForValidation(): void
@@ -27,17 +27,23 @@ class StorePresensiGuruMapelRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // guru_mapel_id tetap wajib karena ini kunci utama
             'guru_mapel_id'     => ['required', 'integer', 'exists:guru_mapel,id'],
+            
+            // Materi pembelajaran sebaiknya wajib agar jurnal kelas terisi
+            'materi'            => ['required', 'string', 'min:5'],
+
+            // Field ini diubah menjadi nullable karena server akan mengisinya otomatis
             'kelas_id'          => ['nullable', 'string', 'exists:kelas,id'],
             'mata_pelajaran_id' => ['nullable', 'string', 'exists:mata_pelajaran,id'],
-            'tanggal'           => ['required', 'date'],
-            'jam_masuk'         => ['required', 'string'],
-            'jam_keluar'        => ['required', 'string'],
-            'materi'            => ['nullable', 'string'],
+            'tanggal'           => ['nullable', 'date'],
+            'jam_masuk'         => ['nullable', 'string'],
+            'jam_keluar'        => ['nullable', 'string'],
 
+            // Validasi data kehadiran siswa
             'presensi'              => ['required', 'array', 'min:1'],
             'presensi.*.siswa_id'   => ['required', 'string', 'exists:siswa,id'],
-            'presensi.*.status'     => ['required', 'in:hadir,sakit,izin,alfa,Hadir,Sakit,Izin,Alpa'],
+            'presensi.*.status'     => ['required', 'in:hadir,sakit,izin,alpa,Hadir,Sakit,Izin,Alpa'],
             'presensi.*.catatan'    => ['nullable', 'string'],
         ];
     }
@@ -47,22 +53,10 @@ class StorePresensiGuruMapelRequest extends FormRequest
         return [
             'guru_mapel_id.required' => 'ID penugasan guru wajib diisi.',
             'guru_mapel_id.exists'   => 'Data penugasan guru tidak ditemukan.',
-            
-            'tanggal.required'       => 'Tanggal tidak boleh kosong.',
-            'tanggal.date'           => 'Format tanggal tidak valid.',
-
-            'jam_masuk.required'     => 'Jam masuk harus diisi.',
-            'jam_keluar.required'    => 'Jam keluar harus diisi.',
-
+            'materi.required'        => 'Materi pembelajaran tidak boleh kosong.',
             'presensi.required'      => 'Data kehadiran siswa tidak boleh kosong.',
-            'presensi.array'         => 'Format presensi tidak valid.',
             'presensi.min'           => 'Minimal harus ada satu data siswa.',
-
-            'presensi.*.siswa_id.required' => 'ID siswa wajib diisi.',
-            'presensi.*.siswa_id.exists'   => 'Data siswa tidak terdaftar.',
-            
-            'presensi.*.status.required'   => 'Status kehadiran wajib diisi.',
-            'presensi.*.status.in'         => 'Status harus berupa Hadir, Sakit, Izin, atau Alpa.',
+            'presensi.*.status.in'   => 'Status harus berupa Hadir, Sakit, Izin, atau Alpa.',
         ];
     }
 

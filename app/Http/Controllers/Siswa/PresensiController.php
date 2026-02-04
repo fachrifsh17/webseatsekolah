@@ -3,13 +3,12 @@
 namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
-use App\Models\Presensi;
-use App\Models\TahunAjaran;
+use App\Models\{Presensi, TahunAjaran};
 use App\Http\Resources\PresensiResource;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use Illuminate\Http\{JsonResponse, Request};
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class PresensiController extends Controller
 {
@@ -21,76 +20,93 @@ class PresensiController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $user = Auth::user();
-        
-        $query = Presensi::where('siswa_id', $user->siswa_id)
-            ->with(['siswa.kelas', 'guruStaf', 'tahunAjaran']);
+        try {
+            $user = Auth::user();
+            $siswaId = $user->siswa_id ?? $user->siswa?->id;
 
-        if ($request->filled('tahun_ajaran_id')) {
-            $tahunAjaranId = $request->tahun_ajaran_id;
-        } else {
-            $tahunAktif = TahunAjaran::where('is_active', true)->first();
-            $tahunAjaranId = $tahunAktif?->id;
+            if (!$siswaId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Data profil siswa tidak ditemukan.'
+                ], Response::HTTP_NOT_FOUND);
+            }
+
+            $query = Presensi::where('siswa_id', $siswaId)
+                ->with(['siswa.kelas', 'guruStaf', 'tahunAjaran']);
+
+            // Filter Tahun Ajaran
+            if ($request->filled('tahun_ajaran_id')) {
+                $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
+            }
+
+            // Filter Search
+            if ($request->filled('search')) {
+                $search = $request->search;
+                $query->where(function($q) use ($search) {
+                    $q->where('status', 'like', "%{$search}%")
+                      ->orWhere('keterangan', 'like', "%{$search}%")
+                      ->orWhere('tanggal', 'like', "%{$search}%");
+                });
+            }
+
+            // Filter Tanggal
+            if ($request->filled('tanggal')) {
+                $query->whereDate('tanggal', $request->tanggal);
+            }
+
+            $perPage = min((int) $request->get('per_page', 15), 50);
+            
+            $data = $query->orderBy('tanggal', 'desc')
+                          ->orderBy('created_at', 'desc')
+                          ->paginate($perPage);
+
+            // Perbaikan struktur return agar tidak double "data"
+            return PresensiResource::collection($data)
+                ->additional([
+                    'success' => true,
+                    'message' => 'Data presensi berhasil diambil.'
+                ])
+                ->response()
+                ->setStatusCode(Response::HTTP_OK);
+
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        if (!$request->filled('tahun_ajaran_id')) {
-            $query->whereHas('siswa.kelas', fn($q) => $q->where('is_active', true));
-        }
-
-        if ($tahunAjaranId) {
-            $query->where('tahun_ajaran_id', $tahunAjaranId);
-        }
-
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('status', 'like', "%{$search}%")
-                  ->orWhere('keterangan', 'like', "%{$search}%")
-                  ->orWhere('tanggal', 'like', "%{$search}%")
-                  ->orWhereHas('guruStaf', function($qg) use ($search) {
-                      $qg->where('nama_lengkap', 'like', "%{$search}%");
-                  });
-            });
-        }
-
-        if ($request->filled('mulai_tanggal') && $request->filled('sampai_tanggal')) {
-            $query->whereBetween('tanggal', [$request->mulai_tanggal, $request->sampai_tanggal]);
-        }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        $perPage = min((int) $request->get('per_page', 15), 50);
-        $data = $query->orderBy('tanggal', 'desc')
-                      ->orderBy('created_at', 'desc')
-                      ->paginate($perPage);
-
-        return response()->json([
-            'success' => true,
-            'tahun_ajaran_pilihan' => $tahunAjaranId,
-            'data'    => PresensiResource::collection($data),
-            'meta'    => [
-                'current_page' => $data->currentPage(),
-                'last_page'    => $data->lastPage(),
-                'per_page'     => (int) $data->perPage(),
-                'total'        => $data->total(),
-            ],
-        ], Response::HTTP_OK);
     }
 
-    public function show(Presensi $presensi): JsonResponse
+    public function show($id): JsonResponse
     {
-        if ((string) $presensi->siswa_id !== (string) Auth::user()->siswa_id) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Akses dilarang.'
-            ], Response::HTTP_FORBIDDEN);
-        }
+        try {
+            $user = Auth::user();
+            $siswaId = $user->siswa_id ?? $user->siswa?->id;
 
-        return response()->json([
-            'success' => true,
-            'data' => new PresensiResource($presensi->load(['siswa.kelas', 'guruStaf', 'tahunAjaran']))
-        ], Response::HTTP_OK);
+            $presensi = Presensi::where('id', $id)
+                ->where('siswa_id', $siswaId)
+                ->first();
+
+            if (!$presensi) {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Data tidak ditemukan.'
+                ], Response::HTTP_FORBIDDEN);
+            }
+
+            return (new PresensiResource($presensi->load(['siswa.kelas', 'guruStaf', 'tahunAjaran'])))
+                ->additional([
+                    'success' => true,
+                    'message' => 'Detail presensi berhasil diambil.'
+                ])
+                ->response()
+                ->setStatusCode(Response::HTTP_OK);
+
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 }

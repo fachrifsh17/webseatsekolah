@@ -1,10 +1,12 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
 use App\Models\MataPelajaran;
 use App\Models\User;
+use App\Models\ProfilSekolah;
+use App\Models\DataKontak;
 use App\Http\Resources\MapelResource;
 use App\Http\Requests\StoreMapelRequest;
 use App\Http\Requests\UpdateMapelRequest;
@@ -13,6 +15,7 @@ use App\Imports\MapelImport;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
@@ -24,13 +27,11 @@ class MapelController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
     }
 
     private function getUserAccess()
     {
-        /** @var User $user */
         $user = User::with(['guruStaf.strukturJabatan.jabatan'])->find(Auth::id());
         $guruStaf = $user?->guruStaf;
         $namaJabatan = $guruStaf?->strukturJabatan?->jabatan?->nama_jabatan;
@@ -44,43 +45,12 @@ class MapelController extends Controller
         ];
     }
 
-    public function export(Request $request)
-    {
-        try {
-            $access = $this->getUserAccess();
-            
-            // Siapkan array filter dari request
-            $filters = [
-                'jurusan_id'     => $request->query('jurusan_id'),
-                'search'         => $request->query('search'),
-                'tipe_mapel'     => $request->query('tipe_mapel'),
-                'kategori_mapel' => $request->query('kategori_mapel'),
-            ];
-
-            // Proteksi: Jika bukan Admin/Kurikulum, paksa jurusan_id ke jurusan milik user
-            if (!$access['isFullAccess']) {
-                if ($access['namaJabatan'] === 'Ketua Jurusan' && $access['guruStaf']) {
-                    $filters['jurusan_id'] = $access['guruStaf']->jurusan_id;
-                } else {
-                    return response()->json(['success' => false, 'message' => 'Akses ditolak'], Response::HTTP_FORBIDDEN);
-                }
-            }
-
-            // Pastikan Class MapelExport Anda sudah diupdate untuk menerima array $filters
-            return Excel::download(new MapelExport($filters), 'data_mata_pelajaran.xlsx');
-        } catch (Throwable $e) {
-            Log::error('Export Mapel Error', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal mengekspor data'], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
     public function index(Request $request): JsonResponse
     {
         try {
             $access = $this->getUserAccess();
             $query = MataPelajaran::with('jurusan');
 
-            // 1. Filter Berdasarkan Hak Akses (Role/Jabatan)
             if (!$access['isFullAccess']) {
                 if ($access['namaJabatan'] === 'Ketua Jurusan' && $access['guruStaf']) {
                     $query->where('jurusan_id', $access['guruStaf']->jurusan_id);
@@ -88,23 +58,19 @@ class MapelController extends Controller
                     $query->whereRaw('1 = 0');
                 }
             } else {
-                // Admin dapat memfilter berdasarkan jurusan secara manual
                 if ($request->filled('jurusan_id')) {
                     $query->where('jurusan_id', $request->jurusan_id);
                 }
             }
 
-            // 2. Filter Berdasarkan Tipe Mapel
             if ($request->filled('tipe_mapel')) {
                 $query->where('tipe_mapel', $request->tipe_mapel);
             }
 
-            // 3. Filter Berdasarkan Kategori Mapel
             if ($request->filled('kategori_mapel')) {
                 $query->where('kategori_mapel', $request->kategori_mapel);
             }
 
-            // 4. Filter Berdasarkan Pencarian Nama
             if ($request->filled('search')) {
                 $query->where('nama_mapel', 'like', "%{$request->search}%");
             }
@@ -131,8 +97,6 @@ class MapelController extends Controller
         }
     }
 
-    // ... (Method show, store, update, destroy, dan import tetap sama dengan logika sebelumnya)
-    
     public function show(MataPelajaran $mapel): JsonResponse
     {
         try {
@@ -283,6 +247,37 @@ class MapelController extends Controller
                 'message' => 'Gagal menghapus mata pelajaran',
                 'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function export(Request $request)
+    {
+        try {
+            $access = $this->getUserAccess();
+            $filters = [
+                'jurusan_id'     => $request->query('jurusan_id'),
+                'search'         => $request->query('search'),
+                'tipe_mapel'     => $request->query('tipe_mapel'),
+                'kategori_mapel' => $request->query('kategori_mapel'),
+            ];
+
+            if (!$access['isFullAccess']) {
+                if ($access['namaJabatan'] === 'Ketua Jurusan' && $access['guruStaf']) {
+                    $filters['jurusan_id'] = $access['guruStaf']->jurusan_id;
+                } else {
+                    return response()->json(['success' => false, 'message' => 'Akses ditolak'], Response::HTTP_FORBIDDEN);
+                }
+            }
+
+            $profil = ProfilSekolah::first();
+            $kontak = DataKontak::first();
+
+            $fileName = 'Data_Mata_Pelajaran_' . now()->format('Ymd_His') . '.xlsx';
+
+            return Excel::download(new MapelExport($filters, $profil, $kontak), $fileName);
+        } catch (Throwable $e) {
+            Log::error('Export Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Gagal mengekspor data'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 

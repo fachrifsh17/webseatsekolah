@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Storage;
 use App\Http\Requests\UpdateProfileRequest;
 use App\Http\Requests\ChangePasswordRequest;
 use Symfony\Component\HttpFoundation\Response;
+use App\Models\User; 
 
 class ProfilController extends Controller
 {
@@ -40,6 +41,8 @@ class ProfilController extends Controller
     public function updateProfile(UpdateProfileRequest $request): JsonResponse
     {
         $user = $request->user();
+   
+        $this->authorize('updateSelf', $user);
 
         if ($request->hasFile('foto')) {
             $path = $request->file('foto')->store('foto', 'public');
@@ -71,6 +74,8 @@ class ProfilController extends Controller
     public function changePassword(ChangePasswordRequest $request): JsonResponse
     {
         $user = $request->user();
+
+        $this->authorize('updateSelf', $user);
 
         if (!Hash::check($request->current_password, $user->password)) {
             return response()->json([

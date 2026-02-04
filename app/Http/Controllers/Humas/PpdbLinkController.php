@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Humas;
 
 use App\Http\Controllers\Controller;
 use App\Models\PpdbLink;
@@ -17,7 +17,6 @@ class PpdbLinkController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['update']);
     }
 

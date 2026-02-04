@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
 use App\Models\KalenderAkademik;
@@ -18,7 +18,6 @@ class KalenderController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
@@ -26,7 +25,7 @@ class KalenderController extends Controller
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-            $data    = KalenderAkademik::orderBy('tanggal_mulai')->paginate($perPage);
+            $data = KalenderAkademik::orderBy('tanggal_mulai')->paginate($perPage);
 
             return response()->json([
                 'success' => true,

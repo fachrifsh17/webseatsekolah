@@ -7,19 +7,40 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithStyles;
+use Maatwebsite\Excel\Concerns\WithEvents;
+use Maatwebsite\Excel\Concerns\WithCustomStartCell;
+use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
-class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles
+class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
 {
-    protected $query;
+    protected $query, $profil, $kontak, $namaKelas;
 
-    public function __construct($query)
+    /**
+     * @param $query
+     * @param $profil
+     * @param $kontak
+     * @param $namaKelas -> Bisa berupa String atau Objek Kelas
+     */
+    public function __construct($query, $profil, $kontak, $namaKelas = null)
     {
         $this->query = $query;
+        $this->profil = $profil;
+        $this->kontak = $kontak;
+        
+        // Logika agar tetap terbaca jika yang dikirim adalah Objek Kelas
+        if (is_object($namaKelas)) {
+            $this->namaKelas = $namaKelas->nama_kelas;
+        } else {
+            $this->namaKelas = $namaKelas;
+        }
     }
+
+    public function startCell(): string { return 'A11'; }
 
     public function query()
     {
@@ -49,7 +70,7 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             "'" . $siswa->nisn,
             $siswa->nama_lengkap,
             $siswa->tempat_lahir,
-            $siswa->tanggal_lahir,
+            $siswa->tanggal_lahir ? date('d-m-Y', strtotime($siswa->tanggal_lahir)) : '-',
             $siswa->jenis_kelamin,
             $siswa->kelas->nama_kelas ?? '-',
             $siswa->is_active ? 'Aktif' : 'Tidak Aktif',
@@ -60,18 +81,19 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
 
     public function styles(Worksheet $sheet)
     {
-        $sheet->getStyle('1')->applyFromArray([
+        $lastRow = $sheet->getHighestRow();
+        $lastCol = 'J';
+
+        $sheet->getStyle("A11:{$lastCol}11")->applyFromArray([
             'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_WHITE]],
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
                 'startColor' => ['argb' => 'FF2E75B6']
             ],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
         ]);
 
-        $lastRow = $sheet->getHighestRow();
-
-        for ($row = 2; $row <= $lastRow; $row++) {
+        for ($row = 12; $row <= $lastRow; $row++) {
             $status = $sheet->getCell("H{$row}")->getValue();
             if ($status == 'Aktif') {
                 $sheet->getStyle("H{$row}")->getFont()->getColor()->setARGB('FF008000');
@@ -80,7 +102,7 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             }
         }
 
-        $sheet->getStyle("A1:J{$lastRow}")->applyFromArray([
+        $sheet->getStyle("A11:{$lastCol}{$lastRow}")->applyFromArray([
             'borders' => [
                 'allBorders' => [
                     'borderStyle' => Border::BORDER_THIN,
@@ -88,5 +110,41 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 ],
             ],
         ]);
+    }
+
+    public function registerEvents(): array
+    {
+        return [
+            AfterSheet::class => function(AfterSheet $event) {
+                $sheet = $event->sheet;
+                $lastCol = 'J';
+
+                $namaSekolah = strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH');
+                $alamatLengkap = $this->kontak->alamat_lengkap ?? 'Alamat belum diatur';
+                $telepon = $this->kontak->telepon ?? '-';
+                $email = $this->kontak->email_resmi ?? '-';
+                $npsn = $this->profil->npsn ?? '-';
+
+                $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
+                $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
+                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', $namaSekolah);
+                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', "{$alamatLengkap} | Telp: {$telepon}");
+                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "Email: {$email} | NPSN: {$npsn}");
+                
+                $sheet->getStyle("A1:{$lastCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
+                $sheet->getStyle("A5:{$lastCol}5")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
+
+                $sheet->mergeCells("A7:{$lastCol}7"); $sheet->setCellValue('A7', 'DATA INDUK PESERTA DIDIK');
+                $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12);
+                $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+                // Menampilkan nama kelas yang sudah difilter
+                $sheet->setCellValue('A9', "Kelas: " . ($this->namaKelas ?? 'Semua Kelas'));
+                $sheet->getStyle('A9')->getFont()->setBold(true);
+
+                $sheet->setCellValue('A10', "Tanggal Unduh: " . date('d/m/Y H:i'));
+            },
+        ];
     }
 }

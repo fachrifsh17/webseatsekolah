@@ -25,18 +25,16 @@ class GuruController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        // Menambahkan 'import' ke dalam log admin sesuai versi master
         $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
     }
 
     public function index(Request $request): JsonResponse
     {
-        // Menggunakan logika filter dinamis dari versi master
         $search = $request->get('q');
         $jabatan = $request->get('jabatan_fungsional');
         $status = $request->get('status_kepegawaian');
         $jurusan = $request->get('jurusan_id');
-        $active = $request->get('is_active');
+        $active = $request->has('is_active') ? $request->get('is_active') : 1;
 
         $data = GuruStaf::with(['jurusan', 'user'])
             ->when($search, function ($query, $search) {
@@ -49,7 +47,8 @@ class GuruController extends Controller
             ->when($jabatan, fn($q) => $q->where('jabatan_fungsional', $jabatan))
             ->when($status, fn($q) => $q->where('status_kepegawaian', $status))
             ->when($jurusan, fn($q) => $q->where('jurusan_id', $jurusan))
-            ->when(isset($active), fn($q) => $q->where('is_active', $active))
+            ->where('is_active', $active)
+            ->latest()
             ->paginate($request->get('per_page', 12));
 
         return response()->json([
@@ -66,10 +65,23 @@ class GuruController extends Controller
 
     public function export(Request $request)
     {
-        $filters = $request->only(['q', 'jabatan_fungsional', 'status_kepegawaian', 'jurusan_id', 'is_active']);
-        $fileName = 'data_guru_' . now()->format('Y-m-d_His') . '.xlsx';
-        
-        return Excel::download(new GuruExport($filters), $fileName);
+        try {
+            $filters = $request->only(['q', 'jabatan_fungsional', 'status_kepegawaian', 'jurusan_id', 'is_active']);
+            
+            if (!isset($filters['is_active'])) {
+                $filters['is_active'] = 1;
+            }
+
+            $profil = DB::table('profil_sekolah')->first();
+            $kontak = DB::table('data_kontak')->first();
+
+            $fileName = 'Data_Guru_Staf_' . now()->format('Ymd_His') . '.xlsx';
+            
+            return Excel::download(new GuruExport($filters, $profil, $kontak), $fileName);
+        } catch (Throwable $e) {
+            Log::error('Export Guru Error', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Gagal mengekspor data guru.'], 500);
+        }
     }
 
     public function import(Request $request): JsonResponse
@@ -99,8 +111,8 @@ class GuruController extends Controller
         $search = $request->get('q');
 
         $gurus = GuruStaf::query()
+            ->where('is_active', 1)
             ->when($search, function ($query, $search) {
-                // Menggunakan kolom 'nama' sesuai versi master
                 $query->where('nama', 'like', "%{$search}%")
                       ->orWhere('nip', 'like', "%{$search}%");
             })
@@ -232,6 +244,7 @@ class GuruController extends Controller
 
         try {
             $blockers = [];
+
             $relations = [
                 'user' => 'Terdapat akun user yang terhubung',
                 'guruMapel' => 'Terhubung dengan data guru_mapel',

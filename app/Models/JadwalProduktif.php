@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 
 class JadwalProduktif extends Model
 {
@@ -22,22 +21,17 @@ class JadwalProduktif extends Model
     ];
 
     protected $casts = [
-        'jurusan_id' => 'integer',
-        'guru_staf_id' => 'integer',
+        'jurusan_id' => 'string',
+        'guru_staf_id' => 'string',
     ];
 
     public function jurusan(): BelongsTo
     {
-        return $this->belongsTo(Jurusan::class, 'jurusan_id');
+        return $this->belongsTo(Jurusan::class, 'jurusan_id', 'id');
     }
 
     public function guruStaf(): BelongsTo
     {
-        return $this->belongsTo(GuruStaf::class, 'guru_staf_id');
-    }
-
-    public function getFileJadwalUrlAttribute(): ?string
-    {
-        return $this->file_jadwal_path ? Storage::url($this->file_jadwal_path) : null;
+        return $this->belongsTo(GuruStaf::class, 'guru_staf_id', 'id');
     }
 }

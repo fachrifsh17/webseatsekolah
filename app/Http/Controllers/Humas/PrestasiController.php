@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Humas;
 
 use App\Http\Controllers\Controller;
 use App\Models\Prestasi;
@@ -19,7 +19,6 @@ class PrestasiController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 

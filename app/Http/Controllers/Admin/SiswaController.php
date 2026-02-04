@@ -21,42 +21,20 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Arr;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Str;
 
 class SiswaController extends Controller
 {
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru,Pembimbing')->only(['index', 'show', 'export']);
-        $this->middleware('role:Admin')->except(['index', 'show', 'export']);
+        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
     }
 
     private function applyFilters(Request $request, $query)
     {
-        /** @var User $user */
-        $user = User::with(['guruStaf.strukturJabatan.jabatan'])->find(Auth::id());
-        $guruStaf = $user?->guruStaf;
-        $namaJabatan = $guruStaf?->strukturJabatan?->jabatan?->nama_jabatan;
-
-        if (!$this->hasFullAccess($request, $user, $namaJabatan)) {
-            if ($guruStaf) {
-                if ($namaJabatan === 'Ketua Jurusan') {
-                    $query->whereHas('kelas', function ($q) use ($guruStaf) {
-                        $q->where('jurusan_id', $guruStaf->jurusan_id);
-                    });
-                    $this->applyAdditionalFilters($request, $query);
-                } else {
-                    $kelasWali = Kelas::where('guru_staf_id', $guruStaf->id)->first();
-                    $query->where('kelas_id', $kelasWali ? $kelasWali->id : 0);
-                }
-            } else {
-                $query->whereRaw('1 = 0');
-            }
-        } else {
-            $this->applyAdditionalFilters($request, $query);
-        }
-
+        $this->applyAdditionalFilters($request, $query);
         return $query;
     }
 
@@ -87,17 +65,6 @@ class SiswaController extends Controller
         }
     }
 
-    private function hasFullAccess(Request $request, ?User $user, ?string $jabatan): bool
-    {
-        if (!$user) return false;
-        if ($request->is('api/guru/*') || $request->is('guru/*')) return false;
-
-        $isAdmin = $user->hasRole('Admin');
-        $isKesiswaan = in_array($jabatan, ['Waka Kesiswaan', 'Kesiswaan']);
-
-        return $isAdmin || $isKesiswaan;
-    }
-
     public function index(Request $request): JsonResponse
     {
         $query = Siswa::with(['user', 'kelas.jurusan', 'orangtua']);
@@ -120,10 +87,34 @@ class SiswaController extends Controller
 
     public function export(Request $request)
     {
-        $query = Siswa::query();
+        $query = Siswa::query()->with(['kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
 
-        return Excel::download(new SiswaExport($query), 'data_siswa_' . now()->format('Ymd_His') . '.xlsx');
+        $filename = 'data_siswa';
+        $kelasData = null;
+
+        if ($request->filled('kelas_id')) {
+            $kelasData = Kelas::find($request->kelas_id);
+            if ($kelasData) {
+                $filename .= '_' . Str::slug($kelasData->nama_kelas);
+            }
+        } elseif ($request->filled('jurusan_id')) {
+            $jurusan = DB::table('data_jurusan')->where('id', $request->jurusan_id)->first();
+            if ($jurusan) {
+                $filename .= '_' . Str::slug($jurusan->nama_jurusan);
+            }
+        }
+
+        if ($request->filled('is_active')) {
+            $filename .= $request->is_active ? '_aktif' : '_tidak_aktif';
+        }
+
+        $filename .= '_' . now()->format('Ymd_His') . '.xlsx';
+
+        $profil = DB::table('profil_sekolah')->first();
+        $kontak = DB::table('data_kontak')->first();
+
+        return Excel::download(new SiswaExport($query, $profil, $kontak, $kelasData), $filename);
     }
 
     public function import(Request $request): JsonResponse
@@ -150,26 +141,6 @@ class SiswaController extends Controller
 
     public function show(Siswa $siswa): JsonResponse
     {
-        $user = User::with(['guruStaf.strukturJabatan.jabatan'])->find(Auth::id());
-        $guruStaf = $user?->guruStaf;
-        $namaJabatan = $guruStaf?->strukturJabatan?->jabatan?->nama_jabatan;
-
-        if (!$this->hasFullAccess(request(), $user, $namaJabatan)) {
-            $allowed = false;
-            if ($guruStaf) {
-                if ($namaJabatan === 'Ketua Jurusan') {
-                    $allowed = ($siswa->kelas?->jurusan_id === $guruStaf->jurusan_id);
-                } else {
-                    $kelasWali = Kelas::where('guru_staf_id', $guruStaf->id)->first();
-                    $allowed = ($kelasWali && $siswa->kelas_id === $kelasWali->id);
-                }
-            }
-
-            if (!$allowed) {
-                return response()->json(['success' => false, 'message' => 'Akses ditolak'], 403);
-            }
-        }
-
         $siswa->load(['user', 'kelas.jurusan', 'orangtua']);
         return response()->json([
             'success' => true,

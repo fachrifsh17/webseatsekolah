@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\KepalaSekolah;
 
 use App\Http\Controllers\Controller;
 use App\Models\SekolahSetting;
@@ -20,8 +20,7 @@ class SettingController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['updateGeneral']);
+        $this->middleware('Log.admin')->only(('updateGeneral'));
     }
 
     public function index(): JsonResponse
@@ -54,11 +53,10 @@ class SettingController extends Controller
                 'contact_data'     => new DataKontakResource($kontak),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch settings', ['error' => $e->getMessage()]);
+            Log::error('Kepsek Settings Index Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil data pengaturan',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -71,24 +69,21 @@ class SettingController extends Controller
 
         DB::beginTransaction();
         try {
-            $setting = SekolahSetting::firstOrCreate(
-                ['id' => 1],
-                [
-                    'tagline'              => '-',
-                    'logo'                 => null,
-                    'pesan_selamat_datang' => '-',
-                    'buku_poin_path'       => null,
-                    'no_wa_kesiswaan'      => '-',
-                ]
-            );
+            $setting = SekolahSetting::firstOrCreate(['id' => 1]);
 
             if ($request->hasFile('logo')) {
                 $newLogoPath = $request->file('logo')->store('uploads/logo', 'public');
+                if ($setting->logo) {
+                    Storage::disk('public')->delete($setting->logo);
+                }
                 $setting->logo = $newLogoPath;
             }
 
             if ($request->hasFile('buku_poin_path')) {
                 $newPdfPath = $request->file('buku_poin_path')->store('uploads/buku_poin', 'public');
+                if ($setting->buku_poin_path) {
+                    Storage::disk('public')->delete($setting->buku_poin_path);
+                }
                 $setting->buku_poin_path = $newPdfPath;
             }
 
@@ -100,20 +95,13 @@ class SettingController extends Controller
 
             $setting->save();
 
-            if ($newLogoPath && $setting->getOriginal('logo') && $setting->getOriginal('logo') !== $newLogoPath) {
-                Storage::disk('public')->delete($setting->getOriginal('logo'));
-            }
-            if ($newPdfPath && $setting->getOriginal('buku_poin_path') && $setting->getOriginal('buku_poin_path') !== $newPdfPath) {
-                Storage::disk('public')->delete($setting->getOriginal('buku_poin_path'));
-            }
-
             DB::commit();
 
             $fresh = $setting->fresh();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Pengaturan umum berhasil diperbarui',
+                'message' => 'Pengaturan sekolah berhasil diperbarui oleh Kepala Sekolah',
                 'data'    => [
                     'id'                   => $fresh->id,
                     'tagline'              => $fresh->tagline,
@@ -129,11 +117,10 @@ class SettingController extends Controller
             if ($newLogoPath) Storage::disk('public')->delete($newLogoPath);
             if ($newPdfPath) Storage::disk('public')->delete($newPdfPath);
 
-            Log::error('Failed to update settings', ['error' => $e->getMessage()]);
+            Log::error('Kepsek Update Settings Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menyimpan pengaturan umum',
-                'errors'  => ['exception' => [$e->getMessage()]]
+                'message' => 'Gagal memperbarui pengaturan sekolah',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

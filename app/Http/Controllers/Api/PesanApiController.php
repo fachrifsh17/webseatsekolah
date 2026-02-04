@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\QueryException;
+use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class PesanApiController extends Controller
@@ -44,19 +45,21 @@ class PesanApiController extends Controller
                 'success' => true,
                 'message' => 'Terima kasih, pesan Anda telah kami terima.',
                 'data'    => new PesanResource($pesan),
-            ], 201);
+            ], Response::HTTP_CREATED); // 201
         } catch (QueryException $e) {
             Log::error('Pesan create QueryException', ['exception' => $e]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menyimpan pesan. Silakan coba lagi.',
-            ], 500);
+                'data'    => (object) [],
+            ], Response::HTTP_UNPROCESSABLE_ENTITY); // 422
         } catch (Throwable $e) {
             Log::error('Pesan create Exception', ['exception' => $e]);
             return response()->json([
                 'success' => false,
                 'message' => 'Terjadi kesalahan pada server.',
-            ], 500);
+                'data'    => (object) [],
+            ], Response::HTTP_INTERNAL_SERVER_ERROR); // 500
         }
     }
 }

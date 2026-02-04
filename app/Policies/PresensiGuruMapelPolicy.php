@@ -15,23 +15,25 @@ class PresensiGuruMapelPolicy
         return $user->guru?->id ?? $user->guruStaf?->id;
     }
 
-    private function isFullAccess(User $user): bool
+    private function isAdmin(User $user): bool
     {
-        $isAdmin = method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('Admin'));
+        return method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('Admin') || $user->hasRole('ADMIN'));
+    }
 
+    private function isWakaKesiswaan(User $user): bool
+    {
         $jabatanUser = $user->guruStaf?->strukturJabatan ?? collect();
-        $isWakaKesiswaan = $jabatanUser->contains(function ($sj) {
-            return ($sj->jabatan?->nama_jabatan ?? '') === 'Waka Kesiswaan';
+        return $jabatanUser->contains(function ($sj) {
+            $namaJabatan = strtolower($sj->jabatan?->nama_jabatan ?? '');
+            return $namaJabatan === 'waka kesiswaan' || $namaJabatan === 'kesiswaan';
         });
-
-        return $isAdmin || $isWakaKesiswaan;
     }
 
     private function isKepalaSekolah(User $user): bool
     {
         $jabatanUser = $user->guruStaf?->strukturJabatan ?? collect();
         return $jabatanUser->contains(function ($sj) {
-            return ($sj->jabatan?->nama_jabatan ?? '') === 'Kepala Sekolah';
+            return strtolower($sj->jabatan?->nama_jabatan ?? '') === 'kepala sekolah';
         });
     }
 
@@ -42,7 +44,8 @@ class PresensiGuruMapelPolicy
 
     public function view(User $user, PresensiGuruMapel $presensi): bool
     {
-        if ($this->isFullAccess($user) || $this->isKepalaSekolah($user)) {
+        // Admin, Kesiswaan, dan Kepsek bisa melihat semua data presensi
+        if ($this->isAdmin($user) || $this->isWakaKesiswaan($user) || $this->isKepalaSekolah($user)) {
             return true;
         }
 
@@ -52,17 +55,29 @@ class PresensiGuruMapelPolicy
 
     public function create(User $user): bool
     {
-        if ($this->isFullAccess($user)) {
+        // Kesiswaan dan Kepsek TIDAK BISA input (create)
+        if ($this->isWakaKesiswaan($user) || $this->isKepalaSekolah($user)) {
+            return false;
+        }
+
+        // Admin bisa input
+        if ($this->isAdmin($user)) {
             return true;
         }
 
+        // Guru bisa input jika memiliki ID Guru
         return !is_null($this->getGuruId($user));
     }
 
     public function update(User $user, PresensiGuruMapel $presensi): bool
     {
-        if ($this->isFullAccess($user)) {
+        if ($this->isAdmin($user)) {
             return true;
+        }
+
+        // Kesiswaan hanya boleh memantau, jika ingin diizinkan update ganti ke true
+        if ($this->isWakaKesiswaan($user)) {
+            return false; 
         }
 
         if ($this->isKepalaSekolah($user)) {
@@ -75,6 +90,8 @@ class PresensiGuruMapelPolicy
 
     public function delete(User $user, PresensiGuruMapel $presensi): bool
     {
-        return $this->isFullAccess($user);
+        // Hanya Admin yang bisa menghapus
+        // Kesiswaan, Kepsek, dan Guru tidak bisa hapus
+        return $this->isAdmin($user);
     }
 }

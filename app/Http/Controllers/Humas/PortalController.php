@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Humas;
 
 use App\Http\Controllers\Controller;
 use App\Models\PortalSosmed;
@@ -18,7 +18,6 @@ class PortalController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin'); 
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
@@ -104,6 +103,14 @@ class PortalController extends Controller
     public function update(UpdatePortalRequest $request, PortalSosmed $portal): JsonResponse
     {
         $validated = $request->validated();
+
+        if (isset($validated['is_active'])) {
+            $validated['is_active'] = (int) $validated['is_active'];
+        }
+
+        if (!empty($validated['url_link'])) {
+            $validated['url_link'] = rtrim($validated['url_link'], '/');
+        }
 
         DB::beginTransaction();
         try {

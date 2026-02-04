@@ -3,17 +3,10 @@
 namespace App\Exports;
 
 use App\Models\PoinSiswa;
-use Maatwebsite\Excel\Concerns\FromQuery;
-use Maatwebsite\Excel\Concerns\WithMapping;
-use Maatwebsite\Excel\Concerns\WithStyles;
-use Maatwebsite\Excel\Concerns\WithEvents;
-use Maatwebsite\Excel\Concerns\WithCustomStartCell;
-use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\{FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings};
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\{Alignment, Border, Fill};
 use Illuminate\Support\Facades\DB;
 
 class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings
@@ -27,18 +20,17 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
         $this->query = $query;
         $this->namaKelas = $namaKelas;
         $this->labelWaktu = $labelWaktu;
-        $this->profil = $profil;
-        $this->kontak = $kontak;
+        
+        // Pastikan data profil dan kontak dikonversi ke object jika sebelumnya array
+        $this->profil = is_array($profil) ? (object)$profil : $profil;
+        $this->kontak = is_array($kontak) ? (object)$kontak : $kontak;
     }
 
-    public function startCell(): string { return 'A10'; }
+    public function startCell(): string { return 'A11'; }
 
     public function query() 
     { 
-        return $this->query->with(['siswa.kelas', 'guruStaf'])
-            ->whereHas('siswa', function($q) {
-                $q->where('is_active', true);
-            }); 
+        return $this->query->with(['siswa.kelas', 'guruStaf']); 
     }
 
     public function headings(): array 
@@ -50,14 +42,13 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
     {
         $this->rowNumber++;
         $idSiswa = $poin->siswa_id;
-        $namaSiswa = $poin->siswa->nama_lengkap ?? '-';
         $positif = $poin->poin_positif ?? 0;
         $negatif = $poin->poin_negatif ?? 0;
 
         if (!isset($this->totalsPeriode[$idSiswa])) {
             $this->totalsPeriode[$idSiswa] = [
-                'nama' => $namaSiswa, 
-                'nis' => $poin->siswa->nis ?? '-',
+                'nama' => $poin->siswa->nama_lengkap ?? '-', 
+                'nis'  => $poin->siswa->nis ?? '-',
                 'nisn' => $poin->siswa->nisn ?? '-', 
                 'p_bulan_ini' => 0, 
                 'n_bulan_ini' => 0
@@ -71,7 +62,7 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
             $poin->tanggal ? date('d/m/Y', strtotime($poin->tanggal)) : '-',
             "'" . ($poin->siswa->nis ?? '-'),
             "'" . ($poin->siswa->nisn ?? '-'), 
-            $namaSiswa,
+            $poin->siswa->nama_lengkap ?? '-',
             $positif > 0 ? $positif : '',
             $negatif > 0 ? $negatif : '',
             $poin->indikator ?? '-',
@@ -82,12 +73,12 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
     public function styles(Worksheet $sheet)
     {
         $lastRow = $sheet->getHighestRow();
-        $sheet->getStyle("A10:I10")->getFont()->setBold(true); 
-        $sheet->getStyle("A10:I{$lastRow}")->applyFromArray([
+        $sheet->getStyle("A11:I11")->getFont()->setBold(true); 
+        $sheet->getStyle("A11:I{$lastRow}")->applyFromArray([
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
         ]);
-        $sheet->getStyle("A10:D{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER); 
-        $sheet->getStyle("F10:G{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER); 
+        $sheet->getStyle("A11:D{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER); 
+        $sheet->getStyle("F11:G{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER); 
 
         foreach (range('A', 'I') as $col) { 
             $sheet->getColumnDimension($col)->setAutoSize(true);
@@ -102,32 +93,44 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $lastCol = 'I'; 
                 $dataLastRow = $sheet->getHighestRow();
 
+                // --- PERBAIKAN KOP SURAT ---
+                // Mengambil data dari variabel $this->profil dan $this->kontak secara spesifik
+                $namaSekolah = $this->profil->nama_sekolah ?? 'NAMA SEKOLAH TIDAK TERSEDIA';
+                $alamat = $this->kontak->alamat_lengkap ?? 'Alamat Belum Diatur';
+                $telp = $this->kontak->telepon ?? '-';
+                $email = $this->kontak->email_resmi ?? '-';
+                $npsn = $this->profil->npsn ?? '-';
+
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'SMK NEGERI'));
-                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', ($this->kontak->alamat_lengkap ?? '') . " | Telp: " . ($this->kontak->telepon ?? ''));
-                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "Email: " . ($this->kontak->email_resmi ?? ''));
+                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($namaSekolah));
+                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', $alamat . " | Telp: " . $telp);
+                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "Email: " . $email . " | NPSN: " . $npsn);
+                
+                $sheet->getStyle("A1:{$lastCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
                 $sheet->getStyle("A5:{$lastCol}5")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
+                // Judul Laporan
                 $sheet->mergeCells("A7:{$lastCol}7"); $sheet->setCellValue('A7', 'LAPORAN REKAP POIN KEDISIPLINAN SISWA');
                 $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12);
-                $sheet->getStyle("A1:{$lastCol}7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
                 $sheet->setCellValue('A8', "Kelas: {$this->namaKelas}");
                 $sheet->setCellValue('A9', "Periode: " . $this->labelWaktu);
 
-                $isFiltered = !str_contains($this->labelWaktu, 'Seluruh');
+                // Ringkasan Logic
+                $isFiltered = (stripos($this->labelWaktu, 'Kumulatif') === false);
                 $summaryRow = $dataLastRow + 2;
-                $sheet->setCellValue("A{$summaryRow}", $isFiltered ? "RINGKASAN POIN: BULAN INI VS KESELURUHAN" : "RINGKASAN TOTAL POIN SISWA");
+                $sheet->setCellValue("A{$summaryRow}", $isFiltered ? "RINGKASAN POIN: PERIODE INI VS KESELURUHAN" : "RINGKASAN TOTAL POIN SISWA");
                 $sheet->getStyle("A{$summaryRow}")->getFont()->setBold(true);
                 
                 $h = $summaryRow + 1;
-                if ($isFiltered) {
-                    $headers = ['NO', 'NIS', 'NISN', 'NAMA SISWA', 'POS (+) BULAN INI', 'NEG (-) BULAN INI', 'TOTAL (+) KESELURUHAN', 'TOTAL (-) KESELURUHAN'];
-                    $lastSumCol = 'H';
-                } else {
-                    $headers = ['NO', 'NIS', 'NISN', 'NAMA SISWA', 'TOTAL POIN (+)', 'TOTAL POIN (-)'];
-                    $lastSumCol = 'F';
-                }
+                $headers = $isFiltered ? 
+                    ['NO', 'NIS', 'NISN', 'NAMA SISWA', 'POS (+) PERIODE INI', 'NEG (-) PERIODE INI', 'TOTAL (+) KESELURUHAN', 'TOTAL (-) KESELURUHAN'] : 
+                    ['NO', 'NIS', 'NISN', 'NAMA SISWA', 'TOTAL POIN (+)', 'TOTAL POIN (-)'];
+                
+                $lastSumCol = $isFiltered ? 'H' : 'F';
 
                 foreach ($headers as $key => $val) {
                     $col = chr(65 + $key);
@@ -157,15 +160,12 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                     $sheet->setCellValue("B{$curr}", "'" . $data['nis']);
                     $sheet->setCellValue("C{$curr}", "'" . $data['nisn']); 
                     $sheet->setCellValue("D{$curr}", $data['nama']);
+                    $sheet->setCellValue("E{$curr}", $data['p_bulan_ini']);
+                    $sheet->setCellValue("F{$curr}", $data['n_bulan_ini']);
 
                     if ($isFiltered) {
-                        $sheet->setCellValue("E{$curr}", $data['p_bulan_ini']);
-                        $sheet->setCellValue("F{$curr}", $data['n_bulan_ini']);
                         $sheet->setCellValue("G{$curr}", $akumulasiGlobal[$id]->tot_p ?? 0);
                         $sheet->setCellValue("H{$curr}", $akumulasiGlobal[$id]->tot_n ?? 0);
-                    } else {
-                        $sheet->setCellValue("E{$curr}", $data['p_bulan_ini']);
-                        $sheet->setCellValue("F{$curr}", $data['n_bulan_ini']);
                     }
                     $curr++;
                 }
@@ -173,9 +173,8 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $sheet->getStyle("A{$h}:{$lastSumCol}" . ($curr - 1))->applyFromArray([
                     'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
                 ]);
-                $sheet->getStyle("A" . ($h+1) . ":C" . ($curr - 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle("E" . ($h+1) . ":{$lastSumCol}" . ($curr - 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+                // Tanda Tangan
                 $waka = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 3)
@@ -184,8 +183,10 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                     ->first();
 
                 $ttdRow = $curr + 2;
-                $ttdCol = $isFiltered ? 'H' : 'F';
-                $sheet->setCellValue("{$ttdCol}{$ttdRow}", "Tasikmalaya, " . date('d F Y'));
+                $ttdCol = $lastSumCol;
+                $kab = $this->profil->kabupaten ?? 'Tasikmalaya';
+                
+                $sheet->setCellValue("{$ttdCol}{$ttdRow}", $kab . ", " . date('d F Y'));
                 $sheet->setCellValue("{$ttdCol}" . ($ttdRow + 1), "Waka Kesiswaan,");
                 $sheet->setCellValue("{$ttdCol}" . ($ttdRow + 5), $waka ? "( " . $waka->nama . " )" : "( ____________________ )");
                 $sheet->setCellValue("{$ttdCol}" . ($ttdRow + 6), $waka ? "NIP. " . $waka->nip : "NIP. ..........................");

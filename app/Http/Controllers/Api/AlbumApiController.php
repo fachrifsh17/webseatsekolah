@@ -6,23 +6,54 @@ use App\Http\Controllers\Controller;
 use App\Models\Album;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class AlbumApiController extends Controller
 {
-    // Mengambil semua album untuk ditampilkan di website publik
     public function index()
     {
-        // Disarankan menggunakan pagination agar tidak berat saat data banyak
-        $albums = Album::orderBy('tanggal_kegiatan', 'desc')->paginate(12);
-        return response()->json(['success' => true, 'data' => $albums], Response::HTTP_OK);
+        try {
+            $albums = Album::orderBy('tanggal_kegiatan', 'desc')->paginate(12);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Daftar album berhasil diambil',
+                'data'    => $albums
+            ], Response::HTTP_OK);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil data album',
+                'error'   => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
-    // Menampilkan detail satu album beserta foto/media di dalamnya
-    public function show(Album $album)
+    public function show($id)
     {
-        $album->load('media');
-        return response()->json(['success' => true, 'data' => $album], Response::HTTP_OK);
+        try {
+            $album = Album::with(['media' => function($query) {
+                $query->orderBy('created_at', 'desc');
+            }])->findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Detail album ditemukan',
+                'data'    => $album
+            ], Response::HTTP_OK);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Album tidak ditemukan'
+            ], Response::HTTP_NOT_FOUND);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan sistem',
+                'error'   => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
-    
-    // Fungsi store, update, destroy dihapus karena sudah ada di folder Admin
 }

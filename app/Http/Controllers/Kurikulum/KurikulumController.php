@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
 use App\Models\Kurikulum;
@@ -19,7 +19,6 @@ class KurikulumController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
@@ -27,7 +26,7 @@ class KurikulumController extends Controller
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-            $data    = Kurikulum::paginate($perPage);
+            $data = Kurikulum::paginate($perPage);
 
             return response()->json([
                 'success' => true,

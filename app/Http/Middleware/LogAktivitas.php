@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use App\Models\LogAdmin;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 
 class LogAktivitas
 {
@@ -14,11 +15,12 @@ class LogAktivitas
     {
         $response = $next($request);
 
-        if ($response->isOk()
-            && $request->user()
+        // PERBAIKAN: Gunakan isSuccessful() agar status 201 (Created) ikut tercatat
+        if ($response->isSuccessful()
+            && Auth::check()
             && in_array($request->method(), ['POST','PUT','PATCH','DELETE'])) {
 
-            $user = $request->user();
+            $user = Auth::user();
 
             $roles = $user->roles()->pluck('role_name')->toArray();
             $roleLabel = !empty($roles) ? implode(', ', $roles) : 'User';
@@ -33,9 +35,7 @@ class LogAktivitas
                     'user_agent' => $request->userAgent(),
                 ]);
             } catch (\Exception $e) {
-                Log::error("Log Error: " . $e->getMessage(), [
-                    'trace' => $e->getTraceAsString(),
-                ]);
+                Log::error("Log Error: " . $e->getMessage());
             }
         }
 
