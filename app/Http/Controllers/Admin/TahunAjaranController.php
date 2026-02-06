@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\TahunAjaran;
+use App\Models\Kurikulum;
 use App\Http\Requests\StoreTahunAjaranRequest;
 use App\Http\Requests\UpdateTahunAjaranRequest;
 use App\Http\Resources\TahunAjaranResource;
@@ -25,7 +26,7 @@ class TahunAjaranController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $tahunAjaran = TahunAjaran::orderBy('nama', 'desc')->get();
+            $tahunAjaran = TahunAjaran::with('kurikulum')->orderBy('nama', 'desc')->get();
 
             return response()->json([
                 'success' => true,
@@ -44,17 +45,36 @@ class TahunAjaranController extends Controller
     public function store(StoreTahunAjaranRequest $request): JsonResponse
     {
         try {
+            $exists = TahunAjaran::where('nama', $request->nama)
+                ->where('semester', $request->semester)
+                ->exists();
+
+            if ($exists) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tahun ajaran ' . $request->nama . ' semester ' . $request->semester . ' sudah terdaftar.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             $tahunAjaran = DB::transaction(function () use ($request) {
-                if ($request->aktif) {
-                    TahunAjaran::where('aktif', true)->update(['aktif' => false]);
+                $data = $request->validated();
+
+                if (empty($data['kurikulum_id'])) {
+                    $activeKurikulum = Kurikulum::where('is_active', true)->first();
+                    $data['kurikulum_id'] = $activeKurikulum?->id;
                 }
-                return TahunAjaran::create($request->validated());
+
+                if (!empty($data['is_active']) && $data['is_active'] == true) {
+                    TahunAjaran::where('is_active', true)->update(['is_active' => false]);
+                }
+
+                return TahunAjaran::create($data);
             });
 
             return response()->json([
                 'success' => true,
                 'message' => 'Tahun ajaran berhasil ditambahkan.',
-                'data'    => new TahunAjaranResource($tahunAjaran)
+                'data'    => new TahunAjaranResource($tahunAjaran->load('kurikulum'))
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             Log::error('Failed to create tahun ajaran', ['payload' => $request->validated(), 'error' => $e->getMessage()]);
@@ -71,7 +91,7 @@ class TahunAjaranController extends Controller
         try {
             return response()->json([
                 'success' => true,
-                'data'    => new TahunAjaranResource($tahunAjaran),
+                'data'    => new TahunAjaranResource($tahunAjaran->load('kurikulum')),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Failed to fetch tahun ajaran detail', ['tahun_ajaran_id' => (string) $tahunAjaran->id, 'error' => $e->getMessage()]);
@@ -86,19 +106,40 @@ class TahunAjaranController extends Controller
     public function update(UpdateTahunAjaranRequest $request, TahunAjaran $tahunAjaran): JsonResponse
     {
         try {
+            $exists = TahunAjaran::where('nama', $request->nama)
+                ->where('semester', $request->semester)
+                ->where('id', '!=', $tahunAjaran->id)
+                ->exists();
+
+            if ($exists) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tahun ajaran ' . $request->nama . ' semester ' . $request->semester . ' sudah digunakan data lain.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             DB::transaction(function () use ($request, $tahunAjaran) {
-                if ($request->aktif) {
-                    TahunAjaran::where('id', '!=', (string) $tahunAjaran->id)
-                        ->where('aktif', true)
-                        ->update(['aktif' => false]);
+                $data = $request->validated();
+
+                // Logika otomatis kurikulum jika tidak diinput
+                if (empty($data['kurikulum_id'])) {
+                    $activeKurikulum = Kurikulum::where('is_active', true)->first();
+                    $data['kurikulum_id'] = $activeKurikulum?->id;
                 }
-                $tahunAjaran->update($request->validated());
+
+                if (!empty($data['is_active']) && $data['is_active'] == true) {
+                    TahunAjaran::where('id', '!=', (string) $tahunAjaran->id)
+                        ->where('is_active', true)
+                        ->update(['is_active' => false]);
+                }
+                
+                $tahunAjaran->update($data);
             });
 
             return response()->json([
                 'success' => true,
                 'message' => 'Tahun ajaran berhasil diperbarui.',
-                'data'    => new TahunAjaranResource($tahunAjaran->refresh())
+                'data'    => new TahunAjaranResource($tahunAjaran->refresh()->load('kurikulum'))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Failed to update tahun ajaran', ['tahun_ajaran_id' => (string) $tahunAjaran->id, 'payload' => $request->validated(), 'error' => $e->getMessage()]);

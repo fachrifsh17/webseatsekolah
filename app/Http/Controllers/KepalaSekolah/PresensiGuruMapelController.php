@@ -5,6 +5,7 @@ namespace App\Http\Controllers\KepalaSekolah;
 use App\Http\Controllers\Controller;
 use App\Models\PresensiGuruMapel;
 use App\Models\GuruMapel;
+use App\Models\TahunAjaran;
 use App\Http\Resources\PresensiGuruMapelResource;
 use App\Exports\PresensiGuruMapelExport;
 use Maatwebsite\Excel\Facades\Excel;
@@ -26,6 +27,12 @@ class PresensiGuruMapelController extends Controller
     {
         try {
             $query = PresensiGuruMapel::with(['presensiSiswaDetail.siswa', 'guruMapel.guru', 'mataPelajaran', 'kelas']);
+
+            if (!$request->has('show_all')) {
+                $query->whereHas('mataPelajaran', function ($q) {
+                    $q->where('is_active', 1);
+                });
+            }
 
             if ($request->filled('tanggal')) {
                 $query->whereDate('tanggal', $request->tanggal);
@@ -58,18 +65,34 @@ class PresensiGuruMapelController extends Controller
 
     public function listJadwalHariIni(): JsonResponse
     {
-        $hariIni = Carbon::now()->locale('id')->dayName;
-        $jadwal = GuruMapel::with(['mapel', 'kelas', 'guru'])->where('hari', $hariIni)->get();
-        $sudahAbsen = PresensiGuruMapel::whereDate('tanggal', Carbon::today())->pluck('guru_mapel_id')->toArray();
+        $hariIni = Carbon::now('Asia/Jakarta')->locale('id')->dayName;
+        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
+        
+        $jadwal = GuruMapel::with(['mapel', 'kelas', 'guru', 'jamMulai', 'jamSelesai'])
+            ->where('hari', $hariIni)
+            ->where('tahun_ajaran_id', optional($tahunAktif)->id)
+            ->whereHas('mapel', function ($q) {
+                $q->where('is_active', 1);
+            })
+            ->get();
 
-        $data = $jadwal->map(fn($j) => [
-            'id_jadwal' => $j->id,
-            'nama_guru' => $j->guru?->nama,
-            'mapel' => $j->mapel?->nama_mapel,
-            'kelas' => $j->kelas?->nama_kelas,
-            'jam' => $j->jam_mulai . ' - ' . $j->jam_selesai,
-            'status' => in_array($j->id, $sudahAbsen) ? 'Sudah Jurnal' : 'Belum Jurnal'
-        ]);
+        $sudahAbsen = PresensiGuruMapel::whereDate('tanggal', Carbon::today())
+            ->pluck('guru_mapel_id')
+            ->toArray();
+
+        $data = $jadwal->map(function($j) use ($sudahAbsen) {
+            $mulai = $j->jamMulai?->jam_ke;
+            $selesai = $j->jamSelesai?->jam_ke;
+            
+            return [
+                'id_jadwal' => $j->id,
+                'nama_guru' => $j->guru?->nama,
+                'mapel' => $j->mapel?->nama_mapel,
+                'kelas' => $j->kelas?->nama_kelas,
+                'jam' => ($mulai && $selesai) ? "Jam Ke $mulai - $selesai" : "-",
+                'status' => in_array($j->id, $sudahAbsen) ? 'Sudah Jurnal' : 'Belum Jurnal'
+            ];
+        });
 
         return response()->json(['success' => true, 'data' => $data], Response::HTTP_OK);
     }
@@ -80,15 +103,20 @@ class PresensiGuruMapelController extends Controller
             $month = $request->query('month', date('m'));
             $year = $request->query('year', date('Y'));
             $guruStafId = $request->query('guru_staf_id');
+            $taAktif = TahunAjaran::where('is_active', 1)->first();
             
             $query = PresensiGuruMapel::whereMonth('tanggal', $month)->whereYear('tanggal', $year);
-            
+           
+            if (!$request->has('include_inactive')) {
+                $query->whereHas('mataPelajaran', fn($q) => $q->where('is_active', 1));
+            }
+
             if ($guruStafId) {
                 $query->whereHas('guruMapel', fn($q) => $q->where('guru_staf_id', $guruStafId));
             }
 
             $guruTarget = $guruStafId ? DB::table('guru_staf')->where('id', $guruStafId)->first() : null;
-            $namaGuru = $guruTarget ? $guruTarget->nama : 'Semua_Guru';
+            $namaGuru = $guruTarget ? str_replace(' ', '_', $guruTarget->nama) : 'Semua_Guru';
 
             return Excel::download(
                 new PresensiGuruMapelExport(
@@ -97,7 +125,7 @@ class PresensiGuruMapelController extends Controller
                     DB::table('profil_sekolah')->first(), 
                     DB::table('data_kontak')->first(), 
                     (object)['nama' => $guruTarget->nama ?? 'Semua', 'nip' => $guruTarget->nip ?? '-'], 
-                    '-', 
+                    $taAktif ? $taAktif->nama : '-', 
                     $request->filled('kelas_id')
                 ),
                 "Jurnal_Guru_{$namaGuru}_Bulan_{$month}_{$year}.xlsx"

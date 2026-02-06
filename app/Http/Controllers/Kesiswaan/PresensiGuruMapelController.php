@@ -30,7 +30,9 @@ class PresensiGuruMapelController extends Controller
             'guruMapel.guru', 
             'mataPelajaran', 
             'kelas'
-        ]);
+        ])->whereHas('mataPelajaran', function ($q) {
+            $q->where('is_active', 1);
+        });
 
         if ($request->filled('tanggal')) {
             $query->whereDate('tanggal', $request->tanggal);
@@ -115,9 +117,12 @@ class PresensiGuruMapelController extends Controller
 
     public function listJadwalHariIni(): JsonResponse
     {
-        $hariIni = Carbon::now()->locale('id')->dayName;
+        $hariIni = Carbon::now('Asia/Jakarta')->locale('id')->dayName;
 
-        $jadwal = GuruMapel::with(['mapel', 'kelas', 'guru'])
+        $jadwal = GuruMapel::with(['mapel', 'kelas', 'guru', 'jamMulai', 'jamSelesai'])
+            ->whereHas('mapel', function ($q) {
+                $q->where('is_active', 1);
+            })
             ->where('hari', $hariIni)
             ->get();
 
@@ -125,14 +130,19 @@ class PresensiGuruMapelController extends Controller
             ->pluck('guru_mapel_id')
             ->toArray();
 
-        $data = $jadwal->map(fn($j) => [
-            'guru_mapel_id' => $j->id,
-            'nama_guru' => $j->guru?->nama,
-            'mata_pelajaran' => $j->mapel?->nama_mapel,
-            'kelas' => $j->kelas?->nama_kelas,
-            'jam' => $j->jam_mulai_id . ' - ' . $j->jam_selesai_id,
-            'status' => in_array($j->id, $sudahAbsen) ? 'Sudah Absen' : 'Belum Absen'
-        ]);
+        $data = $jadwal->map(function($j) use ($sudahAbsen) {
+            $mulai = $j->jamMulai?->jam_ke;
+            $selesai = $j->jamSelesai?->jam_ke;
+
+            return [
+                'guru_mapel_id' => $j->id,
+                'nama_guru' => $j->guru?->nama,
+                'mata_pelajaran' => $j->mapel?->nama_mapel,
+                'kelas' => $j->kelas?->nama_kelas,
+                'jam' => ($mulai && $selesai) ? "Jam Ke $mulai - $selesai" : "-",
+                'status' => in_array($j->id, $sudahAbsen) ? 'Sudah Absen' : 'Belum Absen'
+            ];
+        });
 
         return response()->json(['success' => true, 'data' => $data], Response::HTTP_OK);
     }
@@ -154,6 +164,9 @@ class PresensiGuruMapelController extends Controller
             'mataPelajaran', 
             'kelas'
         ])
+        ->whereHas('mataPelajaran', function ($q) {
+            $q->where('is_active', 1);
+        })
         ->whereMonth('tanggal', $bulan)
         ->whereYear('tanggal', $tahun)
         ->where('kelas_id', $kelasId);

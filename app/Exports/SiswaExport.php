@@ -18,21 +18,15 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
 class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
 {
-    protected $query, $profil, $kontak, $namaKelas;
+    protected $query, $profil, $kontak, $namaKelas, $filters;
 
-    /**
-     * @param $query
-     * @param $profil
-     * @param $kontak
-     * @param $namaKelas -> Bisa berupa String atau Objek Kelas
-     */
-    public function __construct($query, $profil, $kontak, $namaKelas = null)
+    public function __construct($query, $profil, $kontak, $namaKelas = null, $filters = [])
     {
         $this->query = $query;
         $this->profil = $profil;
         $this->kontak = $kontak;
+        $this->filters = $filters;
         
-        // Logika agar tetap terbaca jika yang dikirim adalah Objek Kelas
         if (is_object($namaKelas)) {
             $this->namaKelas = $namaKelas->nama_kelas;
         } else {
@@ -139,11 +133,25 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12);
                 $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // Menampilkan nama kelas yang sudah difilter
-                $sheet->setCellValue('A9', "Kelas: " . ($this->namaKelas ?? 'Semua Kelas'));
-                $sheet->getStyle('A9')->getFont()->setBold(true);
+                // --- LOGIKA FILTER DINAMIS ---
+                $filterTexts = [];
+                $filterTexts[] = "Kelas: " . ($this->namaKelas ?? 'Semua Kelas');
+                
+                if (!empty($this->filters['q'])) {
+                    $filterTexts[] = "Pencarian: " . $this->filters['q'];
+                }
 
-                $sheet->setCellValue('A10', "Tanggal Unduh: " . date('d/m/Y H:i'));
+                $statusAktif = (isset($this->filters['is_active']) && $this->filters['is_active'] == '0') ? 'Tidak Aktif' : 'Aktif';
+                $filterTexts[] = "Status: " . $statusAktif;
+
+                $sheet->mergeCells("A8:{$lastCol}8");
+                $sheet->setCellValue('A8', implode(' | ', $filterTexts));
+                $sheet->getStyle('A8')->getFont()->setItalic(true);
+                $sheet->getStyle("A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+                $sheet->mergeCells("A9:{$lastCol}9");
+                $sheet->setCellValue('A9', "Tanggal Cetak: " . date('d/m/Y H:i'));
+                $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
     }

@@ -17,6 +17,7 @@ class UpdateKurikulumRequest extends FormRequest
             'judul'                => ['required', 'string', 'max:255'],
             'penjelasan_kurikulum' => ['nullable', 'string'],
             'file_jadwal'          => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:5120'],
+            'is_active'            => ['nullable', 'boolean'],
         ];
     }
 
@@ -26,12 +27,11 @@ class UpdateKurikulumRequest extends FormRequest
             'judul.required' => 'Judul kurikulum wajib diisi.',
             'judul.string'   => 'Judul kurikulum harus berupa teks.',
             'judul.max'      => 'Judul kurikulum tidak boleh lebih dari 255 karakter.',
-
             'penjelasan_kurikulum.string' => 'Penjelasan kurikulum harus berupa teks.',
-
             'file_jadwal.file'  => 'File jadwal harus berupa file.',
             'file_jadwal.mimes' => 'Format file hanya boleh PDF, JPG, JPEG, PNG, atau WEBP.',
             'file_jadwal.max'   => 'Ukuran file maksimal 5MB.',
+            'is_active.boolean' => 'Status aktif harus bernilai true atau false.',
         ];
     }
 
@@ -41,6 +41,7 @@ class UpdateKurikulumRequest extends FormRequest
             'judul'                => 'Judul kurikulum',
             'penjelasan_kurikulum' => 'Penjelasan kurikulum',
             'file_jadwal'          => 'File jadwal kurikulum',
+            'is_active'            => 'Status aktif',
         ];
     }
 }

@@ -17,10 +17,12 @@ class StoreMapelRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama_mapel'     => ['bail','required','string','max:100'],
-            'jurusan_id'     => ['nullable','string','exists:jurusan,id'],
-            'tipe_mapel'     => ['nullable','in:umum,khusus'],
-            'kategori_mapel' => ['nullable','in:normatif,adaptif,produktif'],
+            'nama_mapel'     => ['bail', 'required', 'string', 'max:100'],
+            'jurusan_id'     => ['nullable', 'string', 'exists:jurusan,id'],
+            'tipe_mapel'     => ['nullable', 'in:umum,khusus'],
+            'kategori_mapel' => ['nullable', 'in:normatif,adaptif,produktif'],
+            // Tambahkan is_active di sini
+            'is_active'      => ['nullable', 'boolean'],
         ];
     }
 
@@ -36,6 +38,9 @@ class StoreMapelRequest extends FormRequest
 
             'tipe_mapel.in'       => 'Tipe mata pelajaran harus berupa: umum atau khusus.',
             'kategori_mapel.in'   => 'Kategori mata pelajaran harus berupa: normatif, adaptif, atau produktif.',
+            
+            // Pesan validasi untuk status aktif
+            'is_active.boolean'   => 'Status aktif harus berupa nilai boolean (1 atau 0).',
         ];
     }
 
@@ -46,6 +51,7 @@ class StoreMapelRequest extends FormRequest
             'jurusan_id'     => 'Jurusan',
             'tipe_mapel'     => 'Tipe mata pelajaran',
             'kategori_mapel' => 'Kategori mata pelajaran',
+            'is_active'      => 'Status Aktif',
         ];
     }
 

@@ -25,6 +25,7 @@ class JamSekolahResource extends JsonResource
             'waktu_mulai'     => $this->waktu_mulai ? $this->waktu_mulai->format('H:i') : null,
             'waktu_selesai'   => $this->waktu_selesai ? $this->waktu_selesai->format('H:i') : null,
             'jenis'           => $this->jenis,
+            'keterangan'      => $this->keterangan, // Tambahkan baris ini
             'created_at'      => $this->created_at?->format('d-m-Y H:i'),
             'updated_at'      => $this->updated_at?->format('d-m-Y H:i'),
         ];

@@ -22,6 +22,7 @@ class MataPelajaran extends Model
         'jurusan_id',
         'tipe_mapel',
         'kategori_mapel',
+        'is_active', // Ditambahkan
     ];
 
     protected static function boot()
@@ -30,7 +31,11 @@ class MataPelajaran extends Model
 
         static::creating(function ($model) {
             if (empty($model->id)) {
-                $lastId = static::max('id');
+                // Mencari ID terakhir dengan format Mxxx
+                $lastId = static::where('id', 'like', 'M%')
+                    ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
+                    ->value('id');
+
                 $num = $lastId ? (int) substr($lastId, 1) + 1 : 1;
                 $model->id = 'M' . str_pad($num, 3, '0', STR_PAD_LEFT);
             }

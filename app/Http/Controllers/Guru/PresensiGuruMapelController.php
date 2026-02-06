@@ -21,7 +21,7 @@ class PresensiGuruMapelController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(('store'));
+        $this->middleware('log.admin')->only(['store']);
     }
 
     private function getGuruId(Request $request)
@@ -47,12 +47,29 @@ class PresensiGuruMapelController extends Controller
         $jadwal = GuruMapel::with(['mataPelajaran', 'kelas', 'jamMulai', 'jamSelesai'])
             ->where('guru_staf_id', $guruId)
             ->where('hari', $hariIni)
+            ->whereHas('mataPelajaran', function ($query) {
+                $query->where('is_active', 1);
+            })
             ->get();
+
+        $dataTransformed = $jadwal->map(function ($item) {
+            $mulai = $item->jamMulai?->jam_ke;
+            $selesai = $item->jamSelesai?->jam_ke;
+
+            return [
+                'guru_mapel_id'  => $item->id,
+                'nama_guru'      => $item->guru?->nama,
+                'mata_pelajaran' => $item->mataPelajaran?->nama_mapel,
+                'kelas'          => $item->kelas?->nama_kelas,
+                'jam'            => ($mulai && $selesai) ? "Jam Ke $mulai - $selesai" : "-",
+                'status'         => 'Belum Absen'
+            ];
+        });
 
         return response()->json([
             'success' => true,
-            'message' => "Daftar jadwal mengajar hari $hariIni",
-            'data' => $jadwal
+            'message' => "Daftar jadwal mengajar hari $hariIni (Aktif)",
+            'data'    => $dataTransformed
         ], Response::HTTP_OK);
     }
 
@@ -61,7 +78,7 @@ class PresensiGuruMapelController extends Controller
         $guruId = $this->getGuruId($request);
         $tanggal = $request->get('tanggal', date('Y-m-d'));
 
-        $query = PresensiGuruMapel::with(['mataPelajaran', 'kelas', 'presensiSiswaDetail.siswa'])
+        $query = PresensiGuruMapel::with(['mataPelajaran', 'kelas', 'presensiSiswaDetail.siswa', 'guruMapel.jamMulai', 'guruMapel.jamSelesai'])
             ->whereHas('guruMapel', function ($q) use ($guruId) {
                 $q->where('guru_staf_id', $guruId);
             })
@@ -78,7 +95,12 @@ class PresensiGuruMapelController extends Controller
     public function show($id, Request $request): JsonResponse
     {
         $guruId = $this->getGuruId($request);
-        $jadwal = GuruMapel::with(['mataPelajaran', 'kelas', 'jamMulai', 'jamSelesai'])->findOrFail($id);
+        
+        $jadwal = GuruMapel::with(['mataPelajaran', 'kelas', 'jamMulai', 'jamSelesai'])
+            ->whereHas('mataPelajaran', function ($q) {
+                $q->where('is_active', 1);
+            })
+            ->findOrFail($id);
 
         if ($jadwal->guru_staf_id !== $guruId) {
             return response()->json([
@@ -115,7 +137,12 @@ class PresensiGuruMapelController extends Controller
             ], Response::HTTP_BAD_REQUEST);
         }
 
-        $relasi = GuruMapel::with(['jamMulai', 'jamSelesai', 'kelas'])->findOrFail($request->input('guru_mapel_id'));
+        $relasi = GuruMapel::with(['jamMulai', 'jamSelesai', 'kelas', 'mataPelajaran'])
+            ->whereHas('mataPelajaran', function ($q) {
+                $q->where('is_active', 1);
+            })
+            ->findOrFail($request->input('guru_mapel_id'));
+
         $guruId = $this->getGuruId($request);
 
         if ($relasi->guru_staf_id !== $guruId) {
@@ -162,8 +189,8 @@ class PresensiGuruMapelController extends Controller
                     [
                         'kelas_id' => $relasi->kelas_id,
                         'mata_pelajaran_id' => $relasi->mata_pelajaran_id,
-                        'jam_masuk' => $relasi->jam_mulai_id, 
-                        'jam_keluar' => $relasi->jam_selesai_id,
+                        'jam_masuk' => $relasi->jamMulai?->waktu_mulai, 
+                        'jam_keluar' => $relasi->jamSelesai?->waktu_selesai,
                         'materi' => $request->input('materi'),
                     ]
                 );
@@ -178,7 +205,7 @@ class PresensiGuruMapelController extends Controller
                         ]
                     );
                 }
-                return $header->load('presensiSiswaDetail.siswa', 'mataPelajaran', 'kelas');
+                return $header->load('presensiSiswaDetail.siswa', 'mataPelajaran', 'kelas', 'guruMapel.jamMulai', 'guruMapel.jamSelesai');
             });
 
             return (new PresensiGuruMapelResource($presensi))->response()->setStatusCode(Response::HTTP_CREATED);

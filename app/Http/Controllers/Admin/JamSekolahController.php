@@ -33,7 +33,7 @@ class JamSekolahController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $data = JamSekolah::with('tahunAjaran')->get();
+            $data = JamSekolah::with('tahunAjaran')->orderBy('hari')->orderBy('waktu_mulai')->get();
             return response()->json([
                 'success' => true,
                 'data'    => JamSekolahResource::collection($data)
@@ -106,20 +106,14 @@ class JamSekolahController extends Controller
 
         $exists = JamSekolah::where('tahun_ajaran_id', $tahunAktif->id)
             ->where('hari', $validated['hari'])
-            ->where('jam_ke', $validated['jam_ke'])
+            ->where('waktu_mulai', $validated['waktu_mulai'])
             ->exists();
 
         if ($exists) {
             return response()->json([
                 'success' => false,
-                'message' => "Gagal: Jadwal hari {$validated['hari']} jam ke {$validated['jam_ke']} sudah ada."
+                'message' => "Gagal: Jadwal hari {$validated['hari']} pukul {$validated['waktu_mulai']} sudah ada."
             ], Response::HTTP_CONFLICT);
-        }
-
-        if ($request->hasFile('file_path')) {
-            $validated['file_path'] = $request->file('file_path')->store('jam_sekolah', 'public');
-        } elseif ($request->hasFile('file')) {
-            $validated['file_path'] = $request->file('file')->store('jam_sekolah', 'public');
         }
 
         DB::beginTransaction();
@@ -134,9 +128,6 @@ class JamSekolahController extends Controller
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
-            if (!empty($validated['file_path'])) {
-                Storage::disk('public')->delete($validated['file_path']);
-            }
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal membuat jadwal jam sekolah.',
@@ -165,36 +156,23 @@ class JamSekolahController extends Controller
             ], Response::HTTP_BAD_REQUEST);
         }
 
-        $validated['tahun_ajaran_id'] = $tahunAktif->id;
-
         $exists = JamSekolah::where('tahun_ajaran_id', $tahunAktif->id)
-            ->where('hari', $validated['hari'])
-            ->where('jam_ke', $validated['jam_ke'])
+            ->where('hari', $validated['hari'] ?? $jamSekolah->hari)
+            ->where('waktu_mulai', $validated['waktu_mulai'] ?? $jamSekolah->waktu_mulai)
             ->where('id', '!=', $jamSekolah->id)
             ->exists();
 
         if ($exists) {
             return response()->json([
                 'success' => false,
-                'message' => "Gagal: Jadwal hari {$validated['hari']} jam ke {$validated['jam_ke']} sudah ada."
+                'message' => "Gagal: Jadwal di hari dan waktu tersebut sudah terdaftar."
             ], Response::HTTP_CONFLICT);
-        }
-
-        if ($request->hasFile('file_path')) {
-            $validated['file_path'] = $request->file('file_path')->store('jam_sekolah', 'public');
-        } elseif ($request->hasFile('file')) {
-            $validated['file_path'] = $request->file('file')->store('jam_sekolah', 'public');
         }
 
         DB::beginTransaction();
         try {
-            $oldPath = $jamSekolah->file_path;
             $jamSekolah->update($validated);
             DB::commit();
-
-            if (!empty($validated['file_path']) && $oldPath && $validated['file_path'] !== $oldPath) {
-                Storage::disk('public')->delete($oldPath);
-            }
 
             return response()->json([
                 'success' => true,
@@ -203,9 +181,6 @@ class JamSekolahController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            if (!empty($validated['file_path']) && $jamSekolah->file_path !== $validated['file_path']) {
-                Storage::disk('public')->delete($validated['file_path']);
-            }
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui jadwal jam sekolah.',
@@ -218,13 +193,8 @@ class JamSekolahController extends Controller
     {
         DB::beginTransaction();
         try {
-            $oldPath = $jamSekolah->file_path;
             $jamSekolah->delete();
             DB::commit();
-
-            if ($oldPath) {
-                Storage::disk('public')->delete($oldPath);
-            }
 
             return response()->json([
                 'success' => true,

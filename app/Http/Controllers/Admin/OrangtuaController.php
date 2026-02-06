@@ -44,6 +44,10 @@ class OrangtuaController extends Controller
             });
         }
 
+        if ($request->filled('is_active')) {
+            $query->where('is_active', $request->is_active);
+        }
+
         return $query;
     }
 
@@ -124,7 +128,7 @@ class OrangtuaController extends Controller
 
                 $orangtua->update($validated);
 
-                if (isset($validated['anak'])) {
+                if (isset($anak)) {
                      $syncData = [];
                      foreach ($anak as $item) {
                          $syncData[(string) $item['siswa_id']] = [
@@ -154,11 +158,9 @@ class OrangtuaController extends Controller
     {
         try {
             $blockers = [];
-
             if ($orangtua->user()->exists()) {
                 $blockers[] = 'Terdapat akun user yang terhubung';
             }
-
             if ($orangtua->anak()->exists()) {
                 $blockers[] = 'Terhubung dengan data anak';
             }
@@ -197,7 +199,6 @@ class OrangtuaController extends Controller
     {
         $kelasId = $request->kelas_id;
         
-        // Memastikan relasi anak difilter sesuai kelas yang dipilih
         $query = Orangtua::query()->with(['anak' => function($q) use ($kelasId) {
             if ($kelasId) {
                 $q->where('kelas_id', $kelasId);
@@ -228,7 +229,7 @@ class OrangtuaController extends Controller
         $kontak = DB::table('data_kontak')->first();
 
         return Excel::download(
-            new OrangtuaExport($query, $profil, $kontak, $kelasData), 
+            new OrangtuaExport($query, $profil, $kontak, $kelasData, $request->all()), 
             $filename
         );
     }

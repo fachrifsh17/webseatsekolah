@@ -51,6 +51,10 @@ class MapelController extends Controller
             $access = $this->getUserAccess();
             $query = MataPelajaran::with('jurusan');
 
+            if (!$request->has('show_all')) {
+                $query->where('is_active', 1);
+            }
+
             if (!$access['isFullAccess']) {
                 if ($access['namaJabatan'] === 'Ketua Jurusan' && $access['guruStaf']) {
                     $query->where('jurusan_id', $access['guruStaf']->jurusan_id);
@@ -233,18 +237,18 @@ class MapelController extends Controller
                 }
             }
 
-            DB::transaction(fn() => $mapel->delete());
+            DB::transaction(fn() => $mapel->update(['is_active' => 0]));
 
             return response()->json([
                 'success'      => true,
-                'message'      => 'Data mata pelajaran berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
+                'message'      => 'Data mata pelajaran berhasil dinonaktifkan',
+                'notification' => 'Berhasil dinonaktifkan'
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to delete mata pelajaran', ['mapel_id' => (string) $mapel->id, 'error' => $e->getMessage()]);
+            Log::error('Failed to disable mata pelajaran', ['mapel_id' => (string) $mapel->id, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus mata pelajaran',
+                'message' => 'Gagal menonaktifkan mata pelajaran',
                 'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
@@ -269,8 +273,8 @@ class MapelController extends Controller
                 }
             }
 
-            $profil = ProfilSekolah::first();
-            $kontak = DataKontak::first();
+            $profil = ProfilSekolah::first() ?? new ProfilSekolah();
+            $kontak = DataKontak::first() ?? new DataKontak();
 
             $fileName = 'Data_Mata_Pelajaran_' . now()->format('Ymd_His') . '.xlsx';
 

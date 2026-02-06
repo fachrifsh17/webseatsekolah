@@ -31,6 +31,7 @@ class GuruImport implements ToModel, WithHeadingRow
         return DB::transaction(function () use ($row) {
             $lastUser = User::where('id', 'like', 'U%')
                 ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
+                ->lockForUpdate()
                 ->first();
                 
             $lastId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
@@ -50,7 +51,7 @@ class GuruImport implements ToModel, WithHeadingRow
                 'updated_at' => now(),
             ]);
 
-            $jurusan = Jurusan::where('nama_jurusan', $row['jurusan'])->first();
+            $jurusan = Jurusan::where('nama_jurusan', 'LIKE', '%' . $row['jurusan'] . '%')->first();
 
             return new GuruStaf([
                 'user_id'            => $newUserId,

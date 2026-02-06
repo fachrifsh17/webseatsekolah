@@ -23,6 +23,7 @@ class JamSekolah extends Model
         'waktu_mulai',
         'waktu_selesai',
         'jenis',
+        'keterangan',
     ];
 
     protected $casts = [

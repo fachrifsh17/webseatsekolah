@@ -15,6 +15,18 @@ class Kurikulum extends Model
         'judul',
         'penjelasan_kurikulum',
         'file_jadwal_path',
+        'is_active',
     ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+    ];
+
     public $timestamps = true;
+
+    
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
 }

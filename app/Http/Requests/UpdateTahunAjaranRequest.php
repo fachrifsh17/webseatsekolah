@@ -3,7 +3,6 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Auth;
 
 class UpdateTahunAjaranRequest extends FormRequest
 {
@@ -15,9 +14,10 @@ class UpdateTahunAjaranRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama'      => ['sometimes', 'required', 'string', 'max:50'],
-            'semester'  => ['sometimes', 'required', 'in:Ganjil,Genap'],
-            'is_active' => ['sometimes', 'required', 'boolean'],
+            'nama'         => ['sometimes', 'required', 'string', 'max:50'],
+            'semester'     => ['sometimes', 'required', 'in:Ganjil,Genap'],
+            'is_active'    => ['sometimes', 'required', 'boolean'],
+            'kurikulum_id' => ['sometimes', 'nullable', 'integer', 'exists:kurikulum,id'],
         ];
     }
 
@@ -33,15 +33,19 @@ class UpdateTahunAjaranRequest extends FormRequest
 
             'is_active.required' => 'Status aktif wajib diisi.',
             'is_active.boolean'  => 'Format status aktif tidak valid.',
+
+            'kurikulum_id.integer' => 'ID kurikulum harus berupa angka.',
+            'kurikulum_id.exists'  => 'Kurikulum yang dipilih tidak ditemukan.',
         ];
     }
 
     public function attributes(): array
     {
         return [
-            'nama'      => 'Nama tahun ajaran',
-            'semester'  => 'Semester',
-            'is_active' => 'Status aktif',
+            'nama'         => 'Nama tahun ajaran',
+            'semester'     => 'Semester',
+            'is_active'    => 'Status aktif',
+            'kurikulum_id' => 'Kurikulum',
         ];
     }
 }

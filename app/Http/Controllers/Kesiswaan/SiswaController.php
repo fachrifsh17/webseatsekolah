@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Kesiswaan;
 use App\Http\Controllers\Controller;
 use App\Models\Siswa;
 use App\Models\Kelas;
-use App\Models\User;
+use App\Models\Jurusan;
 use App\Http\Requests\UpdateSiswaRequest;
 use App\Http\Resources\SiswaResource;
 use App\Exports\SiswaExport;
@@ -15,7 +15,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Arr;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
@@ -30,12 +29,6 @@ class SiswaController extends Controller
     }
 
     private function applyFilters(Request $request, $query)
-    {
-        $this->applyAdditionalFilters($request, $query);
-        return $query;
-    }
-
-    private function applyAdditionalFilters(Request $request, $query)
     {
         if ($request->filled('jurusan_id')) {
             $query->whereHas('kelas', fn($q) => $q->where('jurusan_id', $request->jurusan_id));
@@ -60,6 +53,8 @@ class SiswaController extends Controller
                   });
             });
         }
+
+        return $query;
     }
 
     public function index(Request $request): JsonResponse
@@ -88,20 +83,29 @@ class SiswaController extends Controller
         $query = $this->applyFilters($request, $query);
 
         $kelasData = null;
+        $filename = 'data_siswa';
+
         if ($request->filled('kelas_id')) {
             $kelasData = Kelas::find($request->kelas_id);
+            if ($kelasData) {
+                $filename .= '_' . Str::slug($kelasData->nama_kelas);
+            }
+        } elseif ($request->filled('jurusan_id')) {
+            $jurusan = Jurusan::find($request->jurusan_id);
+            if ($jurusan) {
+                $filename .= '_' . Str::slug($jurusan->nama_jurusan);
+            }
         }
 
-        $filename = 'data_siswa';
-        if ($kelasData) {
-            $filename .= '_' . Str::slug($kelasData->nama_kelas);
-        }
         $filename .= '_' . now()->format('Ymd_His') . '.xlsx';
 
         $profil = DB::table('profil_sekolah')->first();
         $kontak = DB::table('data_kontak')->first();
 
-        return Excel::download(new SiswaExport($query, $profil, $kontak, $kelasData), $filename);
+        return Excel::download(
+            new SiswaExport($query, $profil, $kontak, $kelasData, $request->all()), 
+            $filename
+        );
     }
 
     public function show(Siswa $siswa): JsonResponse
@@ -138,10 +142,11 @@ class SiswaController extends Controller
 
         } catch (Throwable $e) {
             if (isset($data['foto'])) Storage::disk('public')->delete($data['foto']);
-            Log::error("Update Siswa ID {$siswa->id} Error: " . $e->getMessage());
+            Log::error("Kesiswaan - Update Siswa ID {$siswa->id} Error: " . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui siswa'
+                'message' => 'Gagal memperbarui siswa',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

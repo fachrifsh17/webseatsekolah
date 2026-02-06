@@ -22,6 +22,7 @@ class UpdateJamSekolahRequest extends FormRequest
             'waktu_mulai'   => ['sometimes', 'required', 'date_format:H:i'],
             'waktu_selesai' => ['sometimes', 'required', 'date_format:H:i', 'after:waktu_mulai'],
             'jenis'         => ['sometimes', 'required', 'in:Pelajaran,Istirahat,Kegiatan'],
+            'keterangan'    => ['sometimes', 'nullable', 'string', 'max:100'],
         ];
     }
 
@@ -39,6 +40,8 @@ class UpdateJamSekolahRequest extends FormRequest
             'waktu_selesai.after'       => 'Waktu selesai harus setelah waktu mulai.',
             'jenis.required'            => 'Jenis wajib diisi.',
             'jenis.in'                  => 'Jenis harus Pelajaran, Istirahat, atau Kegiatan.',
+            'keterangan.string'         => 'Keterangan harus berupa teks.',
+            'keterangan.max'            => 'Keterangan tidak boleh lebih dari 100 karakter.',
         ];
     }
 
@@ -50,6 +53,7 @@ class UpdateJamSekolahRequest extends FormRequest
             'waktu_mulai'   => 'Waktu Mulai',
             'waktu_selesai' => 'Waktu Selesai',
             'jenis'         => 'Jenis',
+            'keterangan'    => 'Keterangan',
         ];
     }
 

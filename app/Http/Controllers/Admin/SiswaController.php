@@ -34,12 +34,6 @@ class SiswaController extends Controller
 
     private function applyFilters(Request $request, $query)
     {
-        $this->applyAdditionalFilters($request, $query);
-        return $query;
-    }
-
-    private function applyAdditionalFilters(Request $request, $query)
-    {
         if ($request->filled('jurusan_id')) {
             $query->whereHas('kelas', fn($q) => $q->where('jurusan_id', $request->jurusan_id));
         }
@@ -63,6 +57,8 @@ class SiswaController extends Controller
                   });
             });
         }
+
+        return $query;
     }
 
     public function index(Request $request): JsonResponse
@@ -114,7 +110,10 @@ class SiswaController extends Controller
         $profil = DB::table('profil_sekolah')->first();
         $kontak = DB::table('data_kontak')->first();
 
-        return Excel::download(new SiswaExport($query, $profil, $kontak, $kelasData), $filename);
+        return Excel::download(
+            new SiswaExport($query, $profil, $kontak, $kelasData, $request->all()), 
+            $filename
+        );
     }
 
     public function import(Request $request): JsonResponse

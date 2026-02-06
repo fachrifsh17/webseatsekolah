@@ -222,10 +222,14 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::apiResource('kalender', KalenderController::class);
     
     Route::post('kelas/import', [KelasController::class, 'import']);
+    Route::get('kelas/export', [KelasController::class, 'export']);
     Route::post('kelas/generate', [KelasController::class, 'generateFromPreviousYear']);
     Route::apiResource('kelas', KelasController::class);
     
+    Route::get('mapel/export', [MapelController::class, 'export']);
+    Route::post('mapel/import', [MapelController::class, 'import']);
     Route::apiResource('mapel', MapelController::class);
+    
     Route::apiResource('tahun-ajaran', TahunAjaranController::class);
     Route::apiResource('jadwal-produktif', JadwalProduktifController::class);
     
@@ -404,6 +408,7 @@ Route::prefix('siswa')->middleware(['auth.token', 'role:siswa'])->group(function
     Route::get('poin-saya', [SiswaPoin::class, 'index']); 
     Route::get('jadwal', [SiswaJadwal::class, 'index']);
     Route::get('jam-sekolah', [SiswaJamSekolah::class, 'index']);
+    Route::get('jam-sekolah/export', [SiswaJamSekolah::class, 'export']);
     Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);
     Route::post('change-password', [ProfilApiController::class, 'changePassword']);
 });

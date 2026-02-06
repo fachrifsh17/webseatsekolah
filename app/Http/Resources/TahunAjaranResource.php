@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Http\Resources\KurikulumResource;
 
 class TahunAjaranResource extends JsonResource
 {
@@ -14,6 +15,9 @@ class TahunAjaranResource extends JsonResource
             'nama' => $this->nama,
             'semester' => $this->semester,
             'is_active' => (bool) $this->is_active,
+           
+            'kurikulum' => new KurikulumResource($this->whenLoaded('kurikulum')),
+
             'created_at' => $this->created_at?->format('d-m-Y H:i'),
             'updated_at' => $this->updated_at?->format('d-m-Y H:i'),
         ];

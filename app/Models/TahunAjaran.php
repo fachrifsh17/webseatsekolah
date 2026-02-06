@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TahunAjaran extends Model
 {
@@ -19,11 +20,13 @@ class TahunAjaran extends Model
         'id',
         'nama',
         'semester',
+        'kurikulum_id', // Tambahkan ini
         'is_active'
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'kurikulum_id' => 'integer', // Pastikan dicast ke integer
     ];
 
     protected static function boot()
@@ -37,6 +40,12 @@ class TahunAjaran extends Model
                 $model->id = 'TA' . str_pad($num, 3, '0', STR_PAD_LEFT);
             }
         });
+    }
+
+    // --- Tambahkan Relasi ke Kurikulum ---
+    public function kurikulum(): BelongsTo
+    {
+        return $this->belongsTo(Kurikulum::class, 'kurikulum_id');
     }
 
     public function kelas(): HasMany

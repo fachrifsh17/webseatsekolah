@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\GuruStaf;
+use App\Models\Jurusan;
 use App\Http\Resources\GuruResource;
 use App\Http\Requests\StoreGuruRequest;
 use App\Http\Requests\UpdateGuruRequest;
@@ -72,10 +73,34 @@ class GuruController extends Controller
                 $filters['is_active'] = 1;
             }
 
+            $labels = [];
+
+            if (!empty($filters['q'])) {
+                $labels[] = 'Cari_' . str_replace(' ', '_', $filters['q']);
+            }
+
+            if (!empty($filters['jabatan_fungsional'])) {
+                $labels[] = str_replace(' ', '_', $filters['jabatan_fungsional']);
+            }
+
+            if (!empty($filters['status_kepegawaian'])) {
+                $labels[] = str_replace(' ', '_', $filters['status_kepegawaian']);
+            }
+
+            if (!empty($filters['jurusan_id'])) {
+                $jurusan = Jurusan::find($filters['jurusan_id']);
+                if ($jurusan) {
+                    $cleanJurusan = str_replace(' ', '_', preg_replace('/[^A-Za-z0-9 ]/', '', $jurusan->nama_jurusan));
+                    $labels[] = $cleanJurusan;
+                }
+            }
+
+            $suffix = !empty($labels) ? '_' . implode('_', $labels) : '';
+            
             $profil = DB::table('profil_sekolah')->first();
             $kontak = DB::table('data_kontak')->first();
 
-            $fileName = 'Data_Guru_Staf_' . now()->format('Ymd_His') . '.xlsx';
+            $fileName = 'Data_Guru_Staf' . $suffix . '_' . now()->format('Ymd_His') . '.xlsx';
             
             return Excel::download(new GuruExport($filters, $profil, $kontak), $fileName);
         } catch (Throwable $e) {

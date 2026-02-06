@@ -5,19 +5,17 @@ namespace App\Exports;
 use App\Models\JamSekolah;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
-use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
-use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithCustomStartCell;
 use Maatwebsite\Excel\Events\AfterSheet;
-use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Style\Color;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
-class JamSekolahExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
+class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, WithEvents, WithCustomStartCell
 {
     protected $profil, $kontak;
 
@@ -27,62 +25,19 @@ class JamSekolahExport implements FromCollection, WithHeadings, WithMapping, Sho
         $this->kontak = $kontak;
     }
 
-    public function startCell(): string { return 'A11'; }
+    public function startCell(): string 
+    { 
+        return 'A11'; 
+    }
 
-    public function collection()
-    {
-        return JamSekolah::with('tahunAjaran')->get();
+    public function collection() 
+    { 
+        return collect([]); 
     }
 
     public function headings(): array
     {
-        return ['ID', 'HARI', 'JAM KE', 'MULAI', 'SELESAI', 'TAHUN AJARAN', 'KETERANGAN'];
-    }
-
-    public function map($jam): array
-    {
-        return [
-            $jam->id,
-            $jam->hari,
-            $jam->jam_ke,
-            $jam->waktu_mulai,
-            $jam->waktu_selesai,
-            $jam->tahunAjaran->tahun_ajaran ?? '-',
-            $jam->keterangan ?? '-'
-        ];
-    }
-
-    public function styles(Worksheet $sheet)
-    {
-        $lastRow = $sheet->getHighestRow();
-        $lastCol = $sheet->getHighestColumn();
-
-        // Header Tabel (Baris 11)
-        $sheet->getStyle("A11:{$lastCol}11")->applyFromArray([
-            'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_WHITE]],
-            'fill' => [
-                'fillType' => Fill::FILL_SOLID,
-                'startColor' => ['argb' => 'FF2E75B6']
-            ],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
-        ]);
-
-        // Border untuk seluruh isi tabel
-        $sheet->getStyle("A11:{$lastCol}{$lastRow}")->applyFromArray([
-            'borders' => [
-                'allBorders' => [
-                    'borderStyle' => Border::BORDER_THIN,
-                    'color' => ['argb' => 'FF000000'],
-                ],
-            ],
-            'alignment' => [
-                'vertical' => Alignment::VERTICAL_CENTER,
-            ],
-        ]);
-
-        // Center alignment untuk kolom ID, Jam Ke, dan Waktu
-        $sheet->getStyle("A12:A{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("C12:E{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        return ['PUKUL', 'SENIN', 'PUKUL', 'SELASA', 'PUKUL', 'RABU', 'PUKUL', 'KAMIS', 'PUKUL', 'JUM\'AT'];
     }
 
     public function registerEvents(): array
@@ -90,25 +45,80 @@ class JamSekolahExport implements FromCollection, WithHeadings, WithMapping, Sho
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
-                $lastCol = 'G';
+                $lastCol = 'J';
 
-                // Kop Surat
-                $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
-                $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
-                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', ($this->kontak->alamat_lengkap ?? '') . " | Telp: " . ($this->kontak->telepon ?? ''));
-                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "Email: " . ($this->kontak->email_resmi ?? '') . " | NPSN: " . ($this->profil->npsn ?? '-'));
+                $sheet->mergeCells("A1:{$lastCol}1"); 
+                $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
+                $sheet->mergeCells("A2:{$lastCol}2"); 
+                $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
+                $sheet->mergeCells("A3:{$lastCol}3"); 
+                $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'SMKN 1 BANTARKALONG'));
+                $sheet->mergeCells("A4:{$lastCol}4"); 
+                $sheet->setCellValue('A4', ($this->kontak->alamat_lengkap ?? '') . " | Telp: " . ($this->kontak->telepon ?? ''));
+                $sheet->mergeCells("A5:{$lastCol}5"); 
+                $sheet->setCellValue('A5', "Email: " . ($this->kontak->email_resmi ?? '') . " | NPSN: " . ($this->profil->npsn ?? '-'));
                 
                 $sheet->getStyle("A1:{$lastCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
                 $sheet->getStyle("A5:{$lastCol}5")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
-                // Judul Laporan
-                $sheet->mergeCells("A7:{$lastCol}7"); $sheet->setCellValue('A7', 'DAFTAR ALOKASI WAKTU / JAM PELAJARAN');
-                $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12);
-                $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->mergeCells("A7:{$lastCol}7"); 
+                $sheet->setCellValue('A7', 'PENYESUAIAN JAM PELAJARAN');
+                $sheet->mergeCells("A8:{$lastCol}8"); 
+                
+                $ta = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+                $sheet->setCellValue('A8', 'TAHUN PELAJARAN ' . ($ta->nama ?? '2024/2025'));
+                
+                $sheet->getStyle("A7:A8")->getFont()->setBold(true);
+                $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $sheet->setCellValue('A9', "Tanggal Unduh: " . date('d/m/Y H:i'));
+                $hariMap = [
+                    'Senin' => ['t' => 'A', 'l' => 'B'],
+                    'Selasa' => ['t' => 'C', 'l' => 'D'],
+                    'Rabu' => ['t' => 'E', 'l' => 'F'],
+                    'Kamis' => ['t' => 'G', 'l' => 'H'],
+                    'Jumat' => ['t' => 'I', 'l' => 'J']
+                ];
+
+                $dataPerHari = JamSekolah::orderBy('waktu_mulai')->get()->groupBy('hari');
+                $rowStart = 12;
+
+                foreach ($hariMap as $namaHari => $cols) {
+                    $currentRow = $rowStart;
+                    if (isset($dataPerHari[$namaHari])) {
+                        foreach ($dataPerHari[$namaHari] as $jam) {
+                            $waktu = Carbon::parse($jam->waktu_mulai)->format('H.i') . ' - ' . Carbon::parse($jam->waktu_selesai)->format('H.i');
+                            $sheet->setCellValue($cols['t'] . $currentRow, $waktu);
+                            
+                            $label = '';
+                            if ($jam->jenis === 'Pelajaran') {
+                                $label = $jam->jam_ke;
+                            } elseif ($jam->jenis === 'Istirahat') {
+                                $label = 'ISTIRAHAT';
+                            } else {
+                                $label = strtoupper($jam->keterangan ?? 'KEGIATAN');
+                            }
+                            $sheet->setCellValue($cols['l'] . $currentRow, $label);
+
+                            if ($jam->jenis === 'Istirahat') {
+                                $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)
+                                      ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFFF00');
+                            } elseif ($jam->jenis === 'Kegiatan') {
+                                $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)
+                                      ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFC6E0B4');
+                            }
+
+                            $currentRow++;
+                        }
+                    }
+                }
+
+                $maxRow = $sheet->getHighestRow();
+                $sheet->getStyle("A11:J$maxRow")->applyFromArray([
+                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]
+                ]);
+                $sheet->getStyle("A11:J11")->getFont()->setBold(true);
             },
         ];
     }

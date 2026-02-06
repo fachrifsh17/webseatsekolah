@@ -26,7 +26,7 @@ class KurikulumController extends Controller
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-            $data = Kurikulum::paginate($perPage);
+            $data = Kurikulum::orderBy('is_active', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -78,6 +78,10 @@ class KurikulumController extends Controller
 
         DB::beginTransaction();
         try {
+            if (!empty($validated['is_active']) && $validated['is_active'] == true) {
+                Kurikulum::where('is_active', true)->update(['is_active' => false]);
+            }
+
             $kurikulum = Kurikulum::create($validated);
             DB::commit();
 
@@ -116,6 +120,12 @@ class KurikulumController extends Controller
 
         DB::beginTransaction();
         try {
+            if (isset($validated['is_active']) && $validated['is_active'] == true) {
+                 Kurikulum::where('id', '!=', $kurikulum->id)
+                          ->where('is_active', true)
+                          ->update(['is_active' => false]);
+            }
+
             $kurikulum->update($validated);
             DB::commit();
 

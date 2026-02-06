@@ -17,19 +17,21 @@ class StoreKurikulumRequest extends FormRequest
             'judul'                => ['required', 'string', 'max:255'],
             'penjelasan_kurikulum' => ['nullable', 'string'],
             'file_jadwal'          => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:5120'],
+            'is_active'            => ['nullable', 'boolean'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'judul.required'            => 'Judul kurikulum wajib diisi.',
-            'judul.string'              => 'Judul kurikulum harus berupa teks.',
-            'judul.max'                 => 'Judul maksimal 255 karakter.',
+            'judul.required'              => 'Judul kurikulum wajib diisi.',
+            'judul.string'                => 'Judul kurikulum harus berupa teks.',
+            'judul.max'                   => 'Judul maksimal 255 karakter.',
             'penjelasan_kurikulum.string' => 'Penjelasan kurikulum harus berupa teks.',
-            'file_jadwal.file'          => 'File jadwal harus berupa file.',
-            'file_jadwal.mimes'         => 'Format file harus berupa PDF, JPG, JPEG, PNG, atau WEBP.',
-            'file_jadwal.max'           => 'Ukuran file maksimal adalah 5MB.',
+            'file_jadwal.file'            => 'File jadwal harus berupa file.',
+            'file_jadwal.mimes'           => 'Format file harus berupa PDF, JPG, JPEG, PNG, atau WEBP.',
+            'file_jadwal.max'             => 'Ukuran file maksimal adalah 5MB.',
+            'is_active.boolean'           => 'Status aktif harus bernilai true atau false.',
         ];
     }
 
@@ -39,6 +41,7 @@ class StoreKurikulumRequest extends FormRequest
             'judul'                => 'Judul kurikulum',
             'penjelasan_kurikulum' => 'Penjelasan kurikulum',
             'file_jadwal'          => 'File jadwal kurikulum',
+            'is_active'            => 'Status aktif',
         ];
     }
 }

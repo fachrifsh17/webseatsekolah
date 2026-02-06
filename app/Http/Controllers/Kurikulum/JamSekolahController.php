@@ -26,14 +26,13 @@ class JamSekolahController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        // Middleware log tetap dipasang untuk mencatat aktivitas perubahan data
         $this->middleware('log.admin')->only(['store', 'update', 'import', 'destroy']);
     }
 
     public function index(): JsonResponse
     {
         try {
-            $data = JamSekolah::with('tahunAjaran')->get();
+            $data = JamSekolah::with('tahunAjaran')->orderBy('hari')->orderBy('waktu_mulai')->get();
             return response()->json([
                 'success' => true,
                 'data'    => JamSekolahResource::collection($data)
@@ -54,7 +53,6 @@ class JamSekolahController extends Controller
             $kontak = DataKontak::first();
             $fileName = 'data_jam_sekolah_' . date('Ymd_His') . '.xlsx';
 
-            // Mengirim profil dan kontak ke Class Export untuk Kop Surat
             return Excel::download(new JamSekolahExport($profil, $kontak), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Jam Sekolah Error', ['error' => $e->getMessage()]);
@@ -107,19 +105,17 @@ class JamSekolahController extends Controller
 
         $exists = JamSekolah::where('tahun_ajaran_id', $tahunAktif->id)
             ->where('hari', $validated['hari'])
-            ->where('jam_ke', $validated['jam_ke'])
+            ->where('waktu_mulai', $validated['waktu_mulai'])
             ->exists();
 
         if ($exists) {
             return response()->json([
                 'success' => false,
-                'message' => "Gagal: Jadwal hari {$validated['hari']} jam ke {$validated['jam_ke']} sudah ada."
+                'message' => "Gagal: Jadwal hari {$validated['hari']} pukul {$validated['waktu_mulai']} sudah ada."
             ], Response::HTTP_CONFLICT);
         }
 
-        if ($request->hasFile('file_path')) {
-            $validated['file_path'] = $request->file('file_path')->store('jam_sekolah', 'public');
-        } elseif ($request->hasFile('file')) {
+        if ($request->hasFile('file')) {
             $validated['file_path'] = $request->file('file')->store('jam_sekolah', 'public');
         }
 
@@ -166,24 +162,20 @@ class JamSekolahController extends Controller
             ], Response::HTTP_BAD_REQUEST);
         }
 
-        $validated['tahun_ajaran_id'] = $tahunAktif->id;
-
         $exists = JamSekolah::where('tahun_ajaran_id', $tahunAktif->id)
-            ->where('hari', $validated['hari'])
-            ->where('jam_ke', $validated['jam_ke'])
+            ->where('hari', $validated['hari'] ?? $jamSekolah->hari)
+            ->where('waktu_mulai', $validated['waktu_mulai'] ?? $jamSekolah->waktu_mulai)
             ->where('id', '!=', $jamSekolah->id)
             ->exists();
 
         if ($exists) {
             return response()->json([
                 'success' => false,
-                'message' => "Gagal: Jadwal hari {$validated['hari']} jam ke {$validated['jam_ke']} sudah ada."
+                'message' => "Gagal: Jadwal di hari dan waktu tersebut sudah terdaftar."
             ], Response::HTTP_CONFLICT);
         }
 
-        if ($request->hasFile('file_path')) {
-            $validated['file_path'] = $request->file('file_path')->store('jam_sekolah', 'public');
-        } elseif ($request->hasFile('file')) {
+        if ($request->hasFile('file')) {
             $validated['file_path'] = $request->file('file')->store('jam_sekolah', 'public');
         }
 
@@ -204,7 +196,7 @@ class JamSekolahController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            if (!empty($validated['file_path'])) {
+            if (!empty($validated['file_path']) && $jamSekolah->file_path !== $validated['file_path']) {
                 Storage::disk('public')->delete($validated['file_path']);
             }
             Log::error('JamSekolah update error', ['id' => $jamSekolah->id, 'error' => $e->getMessage()]);

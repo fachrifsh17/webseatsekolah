@@ -17,10 +17,12 @@ class UpdateMapelRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama_mapel'     => ['bail','sometimes','required','string','max:100'],
-            'jurusan_id'     => ['nullable','string','exists:jurusan,id'],
-            'tipe_mapel'     => ['nullable','in:umum,khusus'],
-            'kategori_mapel' => ['nullable','in:normatif,adaptif,produktif'],
+            'nama_mapel'     => ['bail', 'sometimes', 'required', 'string', 'max:100'],
+            'jurusan_id'     => ['nullable', 'string', 'exists:jurusan,id'],
+            'tipe_mapel'     => ['nullable', 'in:umum,khusus'],
+            'kategori_mapel' => ['nullable', 'in:normatif,adaptif,produktif'],
+            // --- TAMBAHKAN IS_ACTIVE DI SINI ---
+            'is_active'      => ['nullable', 'boolean'], 
         ];
     }
 
@@ -36,6 +38,9 @@ class UpdateMapelRequest extends FormRequest
 
             'tipe_mapel.in'       => 'Tipe mata pelajaran hanya boleh bernilai umum atau khusus.',
             'kategori_mapel.in'   => 'Kategori mata pelajaran hanya boleh normatif, adaptif, atau produktif.',
+            
+            // Pesan error untuk is_active
+            'is_active.boolean'   => 'Status aktif harus bernilai true atau false (1 atau 0).',
         ];
     }
 
@@ -46,6 +51,7 @@ class UpdateMapelRequest extends FormRequest
             'jurusan_id'     => 'Jurusan',
             'tipe_mapel'     => 'Tipe mata pelajaran',
             'kategori_mapel' => 'Kategori mata pelajaran',
+            'is_active'      => 'Status Aktif',
         ];
     }
 

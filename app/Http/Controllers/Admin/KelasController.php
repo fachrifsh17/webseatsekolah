@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Kelas;
+use App\Models\Jurusan;
 use App\Models\TahunAjaran;
 use App\Models\ProfilSekolah;
 use App\Models\DataKontak; 
@@ -66,12 +67,37 @@ class KelasController extends Controller
     public function export(Request $request)
     {
         try {
-            $filters = $request->only(['search', 'jurusan_id', 'wali_kelas_id', 'tahun_ajaran_id', 'is_active']);
+            $filters = $request->only([
+                'search', 
+                'jurusan_id', 
+                'wali_kelas_id', 
+                'tahun_ajaran_id'
+            ]);
             
-            $profil = ProfilSekolah::first(); 
-            $kontak = DataKontak::first(); 
+            // Memaksa filter hanya untuk data yang aktif
+            $filters['is_active'] = 1;
+            
+            $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 
+            $kontak = DataKontak::first() ?? new DataKontak(); 
 
-            $fileName = 'data_kelas_' . date('Ymd_His') . '.xlsx';
+            $fileNameParts = ['data_kelas_aktif'];
+
+            if ($request->filled('jurusan_id')) {
+                $jurusan = Jurusan::find($request->jurusan_id);
+                if ($jurusan) {
+                    $fileNameParts[] = str_replace(' ', '_', strtolower($jurusan->nama_jurusan));
+                }
+            }
+
+            if ($request->filled('tahun_ajaran_id')) {
+                $ta = TahunAjaran::find($request->tahun_ajaran_id);
+                if ($ta) {
+                    $fileNameParts[] = str_replace('/', '-', $ta->tahun_ajaran);
+                }
+            }
+
+            $fileNameParts[] = date('Ymd_His');
+            $fileName = implode('_', $fileNameParts) . '.xlsx';
 
             return Excel::download(new KelasExport($filters, $profil, $kontak), $fileName);
 

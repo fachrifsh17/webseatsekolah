@@ -29,10 +29,11 @@ class SiswaImport implements ToModel, WithHeadingRow
         return DB::transaction(function () use ($row) {
             $lastUser = User::where('id', 'like', 'U%')
                 ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
+                ->lockForUpdate()
                 ->first();
                 
-            $lastId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
-            $newUserId = 'U' . str_pad($lastId + 1, 3, '0', STR_PAD_LEFT);
+            $lastUserId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
+            $newUserId = 'U' . str_pad($lastUserId + 1, 3, '0', STR_PAD_LEFT);
 
             User::create([
                 'id'        => $newUserId,
@@ -48,9 +49,18 @@ class SiswaImport implements ToModel, WithHeadingRow
                 'updated_at' => now(),
             ]);
 
-            $kelas = Kelas::where('nama_kelas', $row['kelas'])->first();
+            $lastSiswa = Siswa::where('id', 'like', 'S%')
+                ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
+                ->lockForUpdate()
+                ->first();
+
+            $lastSiswaId = $lastSiswa ? (int) substr($lastSiswa->id, 1) : 0;
+            $newSiswaId = 'S' . str_pad($lastSiswaId + 1, 3, '0', STR_PAD_LEFT);
+
+            $kelas = Kelas::where('nama_kelas', 'LIKE', '%' . $row['kelas'] . '%')->first();
 
             return new Siswa([
+                'id'            => $newSiswaId,
                 'user_id'       => $newUserId,
                 'nis'           => $row['nis'],
                 'nisn'          => $row['nisn'] ?? null,
