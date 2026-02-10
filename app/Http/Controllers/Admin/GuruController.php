@@ -116,17 +116,23 @@ class GuruController extends Controller
         ]);
 
         try {
-            Excel::import(new GuruImport, $request->file('file'));
+            $import = new GuruImport();
+            Excel::import($import, $request->file('file'));
+            $conflicts = $import->getMessages();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data guru berhasil diimport secara massal.',
+                'message' => count($conflicts) > 0 
+                            ? 'Import selesai dengan beberapa catatan' 
+                            : 'Data guru berhasil diimport secara massal.',
+                'conflicts' => $conflicts
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Import Guru Error', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal import: ' . $e->getMessage(),
+                'message' => 'Gagal import',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

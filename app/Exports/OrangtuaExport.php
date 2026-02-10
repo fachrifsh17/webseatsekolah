@@ -16,14 +16,12 @@ use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
 {
-    protected $queryBuilder, $profil, $kontak, $kelasData, $filters;
+    protected $queryBuilder, $profil, $kontak, $kelasData, $filters, $tahunAjaranText, $tahunAjaranId;
 
-    /**
-     * Menambahkan parameter $filters untuk menangkap inputan filter
-     */
     public function __construct($queryBuilder, $profil, $kontak, $kelasData = null, $filters = [])
     {
         $this->queryBuilder = $queryBuilder;
@@ -31,6 +29,19 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
         $this->kontak = $kontak;
         $this->kelasData = $kelasData;
         $this->filters = $filters;
+
+        $taId = $filters['tahun_ajaran_id'] ?? null;
+        
+        if ($taId) {
+            $ta = DB::table('tahun_ajaran')->where('id', $taId)->first();
+            $this->tahunAjaranText = $ta ? $ta->nama . ' ' . $ta->semester : '-';
+            $this->tahunAjaranId = $taId;
+        } else {
+            $ta = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+            $namaTa = $ta ? $ta->nama . ' ' . $ta->semester : '-';
+            $this->tahunAjaranText = $namaTa . ' (Aktif)';
+            $this->tahunAjaranId = $ta?->id;
+        }
     }
 
     public function startCell(): string { return 'A11'; }
@@ -53,7 +64,12 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
 
     public function map($orangtua): array
     {
-        $daftarAnak = $orangtua->anak->map(function($anak) {
+        $daftarAnak = $orangtua->anak->filter(function($anak) {
+            if ($this->kelasData) {
+                return $anak->kelas_id == $this->kelasData->id;
+            }
+            return $anak->kelas->tahun_ajaran_id == $this->tahunAjaranId;
+        })->map(function($anak) {
             $namaKelas = $anak->kelas->nama_kelas ?? '-';
             return "{$anak->nama_lengkap} ({$namaKelas})";
         })->implode(', ');
@@ -62,7 +78,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
             $orangtua->id,
             $orangtua->nama_lengkap,
             "'" . $orangtua->telepon,
-            $daftarAnak,
+            $daftarAnak ?: '-',
             $orangtua->is_active ? 'Aktif' : 'Non-Aktif',
         ];
     }
@@ -73,7 +89,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
         $lastCol = 'E';
 
         $sheet->getStyle("A11:{$lastCol}11")->applyFromArray([
-            'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_WHITE]],
+            'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_WHITE], 'name' => 'Arial', 'size' => 10],
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
                 'startColor' => ['argb' => 'FF2E75B6']
@@ -83,7 +99,8 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
 
         $sheet->getStyle("A11:{$lastCol}{$lastRow}")->applyFromArray([
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FFCCCCCC']]],
-            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER]
+            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+            'font' => ['name' => 'Arial', 'size' => 10]
         ]);
 
         $sheet->getStyle("D12:D{$lastRow}")->getAlignment()->setWrapText(true);
@@ -96,7 +113,6 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $sheet = $event->sheet;
                 $lastCol = 'E';
 
-                // --- KOP SURAT ---
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
@@ -104,36 +120,36 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "Email: " . ($this->kontak->email_resmi ?? '') . " | NPSN: " . ($this->profil->npsn ?? '-'));
                 
                 $sheet->getStyle("A1:{$lastCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
+                $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true)->setName('Arial')->setSize(11);
+                $sheet->getStyle("A4:{$lastCol}5")->getFont()->setName('Arial')->setSize(9);
                 $sheet->getStyle("A5:{$lastCol}5")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
-                // --- JUDUL ---
                 $sheet->mergeCells("A7:{$lastCol}7"); 
                 $sheet->setCellValue('A7', 'DATA ORANG TUA / WALI MURID');
-                $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(14);
+                $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12)->setName('Arial');
                 $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // --- INFORMASI FILTER DINAMIS ---
+                $sheet->mergeCells("A8:{$lastCol}8");
+                $taClean = strtoupper(str_replace(['(Aktif)', '  '], [' ', ' '], $this->tahunAjaranText));
+                $sheet->setCellValue('A8', "TAHUN PELAJARAN " . trim($taClean));
+                $sheet->getStyle('A8')->getFont()->setBold(true)->setSize(11)->setName('Arial');
+                $sheet->getStyle("A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
                 $filterInfo = [];
                 $filterInfo[] = "Kelas: " . ($this->kelasData ? $this->kelasData->nama_kelas : 'Semua Kelas');
-                
-                if (!empty($this->filters['q'])) {
-                    $filterInfo[] = "Pencarian: " . $this->filters['q'];
-                }
-                
-                // Cek status aktif (default 1 jika tidak ada di filter)
                 $activeStatus = $this->filters['is_active'] ?? '1';
                 $filterInfo[] = "Status: " . ($activeStatus == '1' ? 'Aktif' : 'Non-Aktif');
+                if (!empty($this->filters['q'])) { $filterInfo[] = "Pencarian: " . $this->filters['q']; }
 
-                $sheet->mergeCells("A8:{$lastCol}8");
-                $sheet->setCellValue('A8', implode(' | ', $filterInfo));
-                $sheet->getStyle('A8')->getFont()->setItalic(true);
-                $sheet->getStyle("A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                
-                // --- TANGGAL EXPORT ---
                 $sheet->mergeCells("A9:{$lastCol}9");
-                $sheet->setCellValue('A9', "Tanggal Cetak: " . Carbon::now()->format('d/m/Y H:i'));
+                $sheet->setCellValue('A9', implode(' | ', $filterInfo));
+                $sheet->getStyle('A9')->getFont()->setItalic(true)->setName('Arial')->setSize(9);
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                
+                $sheet->mergeCells("A10:{$lastCol}10");
+                $sheet->setCellValue('A10', "Tanggal Cetak: " . Carbon::now()->format('d/m/Y H:i'));
+                $sheet->getStyle("A10")->getFont()->setName('Arial')->setSize(8);
+                $sheet->getStyle("A10")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
     }

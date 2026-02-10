@@ -17,12 +17,12 @@ class StoreEkstrakurikulerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama_ekskul' => ['required', 'string', 'max:100'],
+            'nama_ekskul' => ['required', 'string', 'max:100', 'unique:ekstrakurikulers,nama_ekskul'],
             'deskripsi'   => ['nullable', 'string'],
-            'hari'        => ['nullable', 'string', 'max:50'],
-            'jam_mulai'   => ['nullable', 'date_format:H:i'],
-            'jam_selesai' => ['nullable', 'date_format:H:i', 'after:jam_mulai'],
-            'pembina_id'  => ['nullable', 'string', 'exists:guru_staf,id'],
+            'hari'        => ['required', 'string', 'max:50'],
+            'jam_mulai'   => ['required', 'date_format:H:i'],
+            'jam_selesai' => ['required', 'date_format:H:i', 'after:jam_mulai'],
+            'pembina_id'  => ['required', 'string', 'exists:guru_staf,id'],
             'foto'        => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'keterangan'  => ['nullable', 'string', 'max:255'],
         ];
@@ -32,20 +32,25 @@ class StoreEkstrakurikulerRequest extends FormRequest
     {
         return [
             'nama_ekskul.required' => 'Nama ekstrakurikuler wajib diisi.',
+            'nama_ekskul.unique'   => 'Ekstrakurikuler dengan nama ini sudah terdaftar.',
             'nama_ekskul.string'   => 'Nama ekstrakurikuler harus berupa teks.',
             'nama_ekskul.max'      => 'Nama ekstrakurikuler tidak boleh lebih dari 100 karakter.',
+            'hari.required'        => 'Hari pelaksanaan wajib diisi.',
             'hari.string'          => 'Hari harus berupa teks.',
             'hari.max'             => 'Hari tidak boleh lebih dari 50 karakter.',
-            'jam_mulai.date_format'=> 'Format jam mulai harus HH:ii.',
-            'jam_selesai.date_format' => 'Format jam selesai harus HH:ii.',
+            'jam_mulai.required'   => 'Jam mulai wajib diisi.',
+            'jam_mulai.date_format'=> 'Format jam mulai harus HH:mm (contoh 15:00).',
+            'jam_selesai.required' => 'Jam selesai wajib diisi.',
+            'jam_selesai.date_format' => 'Format jam selesai harus HH:mm (contoh 17:00).',
             'jam_selesai.after'    => 'Jam selesai harus setelah jam mulai.',
-            'pembina_id.string'    => 'Pembina harus berupa ID string.',
-            'pembina_id.exists'    => 'Pembina yang dipilih tidak terdaftar di data Guru/Staf.',
+            'pembina_id.required'  => 'Pembina wajib dipilih.',
+            'pembina_id.string'    => 'ID Pembina tidak valid.',
+            'pembina_id.exists'    => 'Pembina tidak terdaftar di sistem.',
             'foto.image'           => 'File harus berupa gambar.',
-            'foto.mimes'           => 'Format gambar yang didukung: JPG, JPEG, PNG, dan WEBP.',
-            'foto.max'             => 'Ukuran foto maksimal adalah 2MB.',
+            'foto.mimes'           => 'Format didukung: JPG, JPEG, PNG, WEBP.',
+            'foto.max'             => 'Ukuran foto maksimal 2MB.',
             'keterangan.string'    => 'Keterangan harus berupa teks.',
-            'keterangan.max'       => 'Keterangan tidak boleh lebih dari 255 karakter.',
+            'keterangan.max'       => 'Keterangan maksimal 255 karakter.',
         ];
     }
 
@@ -66,6 +71,7 @@ class StoreEkstrakurikulerRequest extends FormRequest
     protected function failedValidation(Validator $validator)
     {
         throw new HttpResponseException(response()->json([
+            'success' => false,
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
         ], Response::HTTP_UNPROCESSABLE_ENTITY));

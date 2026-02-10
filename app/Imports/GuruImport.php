@@ -12,23 +12,31 @@ use Illuminate\Support\Facades\DB;
 
 class GuruImport implements ToModel, WithHeadingRow
 {
+    public array $importMessages = [];
+    private int $rows = 0;
+
     public function model(array $row)
     {
-        if (empty($row['nip']) || empty($row['nama'])) {
+        $this->rows++;
+        
+        $nip = isset($row['nip']) ? trim($row['nip']) : null;
+        $nama = isset($row['nama']) ? trim($row['nama']) : null;
+        $namaJurusan = isset($row['jurusan']) ? trim($row['jurusan']) : null;
+
+        if (empty($nama)) {
+            $this->importMessages[] = "Baris {$this->rows}: Nama kosong (Dilewati).";
             return null;
         }
 
-        $existingGuru = GuruStaf::where('nip', $row['nip'])
-            ->when(!empty($row['nuptk']), function ($q) use ($row) {
-                return $q->orWhere('nuptk', $row['nuptk']);
-            })
-            ->first();
-
-        if ($existingGuru) {
-            return null;
+        if (!empty($nip)) {
+            $existingGuru = GuruStaf::where('nip', $nip)->first();
+            if ($existingGuru) {
+                $this->importMessages[] = "Baris {$this->rows}: Guru dengan NIP '{$nip}' sudah terdaftar.";
+                return null;
+            }
         }
 
-        return DB::transaction(function () use ($row) {
+        return DB::transaction(function () use ($row, $nip, $nama, $namaJurusan) {
             $lastUser = User::where('id', 'like', 'U%')
                 ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                 ->lockForUpdate()
@@ -37,10 +45,19 @@ class GuruImport implements ToModel, WithHeadingRow
             $lastId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
             $newUserId = 'U' . str_pad($lastId + 1, 3, '0', STR_PAD_LEFT);
 
+            $username = !empty($nip) ? $nip : strtolower(str_replace(' ', '', $nama));
+            
+            $finalUsername = $username;
+            $count = 1;
+            while (User::where('username', $finalUsername)->exists()) {
+                $finalUsername = $username . $count;
+                $count++;
+            }
+
             User::create([
                 'id'        => $newUserId,
-                'username'  => $row['nip'], 
-                'password'  => Hash::make($row['nip']),
+                'username'  => $finalUsername, 
+                'password'  => Hash::make($finalUsername),
                 'is_active' => 1,
             ]);
 
@@ -51,19 +68,28 @@ class GuruImport implements ToModel, WithHeadingRow
                 'updated_at' => now(),
             ]);
 
-            $jurusan = Jurusan::where('nama_jurusan', 'LIKE', '%' . $row['jurusan'] . '%')->first();
+            $jurusanId = null;
+            if ($namaJurusan) {
+                $jurusan = Jurusan::where('nama_jurusan', 'LIKE', '%' . $namaJurusan . '%')->first();
+                $jurusanId = $jurusan ? $jurusan->id : null;
+            }
 
             return new GuruStaf([
                 'user_id'            => $newUserId,
-                'nip'                => $row['nip'],
+                'nip'                => $nip,
                 'nuptk'              => $row['nuptk'] ?? null,
-                'nama'               => $row['nama'],
-                'jabatan_fungsional' => $row['jabatan_fungsional'] ?? null,
-                'status_kepegawaian' => $row['status_kepegawaian'] ?? null,
-                'jurusan_id'         => $jurusan ? $jurusan->id : null,
+                'nama'               => $nama,
+                'jabatan_fungsional' => $row['jabatan_fungsional'] ?? $row['jabatan'] ?? null,
+                'status_kepegawaian' => $row['status_kepegawaian'] ?? $row['status'] ?? null,
+                'jurusan_id'         => $jurusanId,
                 'is_active'          => 1,
                 'foto'               => null,
             ]);
         });
+    }
+
+    public function getMessages(): array
+    {
+        return $this->importMessages;
     }
 }

@@ -20,8 +20,6 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
         $this->query = $query;
         $this->namaKelas = $namaKelas;
         $this->labelWaktu = $labelWaktu;
-        
-        // Pastikan data profil dan kontak dikonversi ke object jika sebelumnya array
         $this->profil = is_array($profil) ? (object)$profil : $profil;
         $this->kontak = is_array($kontak) ? (object)$kontak : $kontak;
     }
@@ -50,12 +48,12 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 'nama' => $poin->siswa->nama_lengkap ?? '-', 
                 'nis'  => $poin->siswa->nis ?? '-',
                 'nisn' => $poin->siswa->nisn ?? '-', 
-                'p_bulan_ini' => 0, 
-                'n_bulan_ini' => 0
+                'p_periode' => 0, 
+                'n_periode' => 0
             ];
         }
-        $this->totalsPeriode[$idSiswa]['p_bulan_ini'] += $positif;
-        $this->totalsPeriode[$idSiswa]['n_bulan_ini'] += $negatif;
+        $this->totalsPeriode[$idSiswa]['p_periode'] += $positif;
+        $this->totalsPeriode[$idSiswa]['n_periode'] += $negatif;
 
         return [
             $this->rowNumber,
@@ -93,10 +91,8 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $lastCol = 'I'; 
                 $dataLastRow = $sheet->getHighestRow();
 
-                // --- PERBAIKAN KOP SURAT ---
-                // Mengambil data dari variabel $this->profil dan $this->kontak secara spesifik
-                $namaSekolah = $this->profil->nama_sekolah ?? 'NAMA SEKOLAH TIDAK TERSEDIA';
-                $alamat = $this->kontak->alamat_lengkap ?? 'Alamat Belum Diatur';
+                $namaSekolah = $this->profil->nama_sekolah ?? 'NAMA SEKOLAH';
+                $alamat = $this->kontak->alamat_lengkap ?? '-';
                 $telp = $this->kontak->telepon ?? '-';
                 $email = $this->kontak->email_resmi ?? '-';
                 $npsn = $this->profil->npsn ?? '-';
@@ -111,7 +107,6 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
                 $sheet->getStyle("A5:{$lastCol}5")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
-                // Judul Laporan
                 $sheet->mergeCells("A7:{$lastCol}7"); $sheet->setCellValue('A7', 'LAPORAN REKAP POIN KEDISIPLINAN SISWA');
                 $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12);
                 $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -119,15 +114,14 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $sheet->setCellValue('A8', "Kelas: {$this->namaKelas}");
                 $sheet->setCellValue('A9', "Periode: " . $this->labelWaktu);
 
-                // Ringkasan Logic
                 $isFiltered = (stripos($this->labelWaktu, 'Kumulatif') === false);
                 $summaryRow = $dataLastRow + 2;
-                $sheet->setCellValue("A{$summaryRow}", $isFiltered ? "RINGKASAN POIN: PERIODE INI VS KESELURUHAN" : "RINGKASAN TOTAL POIN SISWA");
+                $sheet->setCellValue("A{$summaryRow}", $isFiltered ? "RINGKASAN POIN: PERIODE INI VS KUMULATIF (KLAS 10-12)" : "RINGKASAN TOTAL POIN KUMULATIF SISWA");
                 $sheet->getStyle("A{$summaryRow}")->getFont()->setBold(true);
                 
                 $h = $summaryRow + 1;
                 $headers = $isFiltered ? 
-                    ['NO', 'NIS', 'NISN', 'NAMA SISWA', 'POS (+) PERIODE INI', 'NEG (-) PERIODE INI', 'TOTAL (+) KESELURUHAN', 'TOTAL (-) KESELURUHAN'] : 
+                    ['NO', 'NIS', 'NISN', 'NAMA SISWA', 'POS (+) PERIODE', 'NEG (-) PERIODE', 'TOTAL (+) KUMULATIF', 'TOTAL (-) KUMULATIF'] : 
                     ['NO', 'NIS', 'NISN', 'NAMA SISWA', 'TOTAL POIN (+)', 'TOTAL POIN (-)'];
                 
                 $lastSumCol = $isFiltered ? 'H' : 'F';
@@ -149,8 +143,13 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                         ->groupBy('siswa_id')->get()->keyBy('siswa_id');
                 }
 
-                uasort($this->totalsPeriode, function($a, $b) {
-                    return $b['n_bulan_ini'] <=> $a['n_bulan_ini'];
+                uasort($this->totalsPeriode, function($a, $b) use ($akumulasiGlobal, $siswaIds) {
+                    $idA = array_search($a['nama'], array_column($this->totalsPeriode, 'nama', 'id')); 
+                    $idB = array_search($b['nama'], array_column($this->totalsPeriode, 'nama', 'id'));
+                    
+                    $valA = $akumulasiGlobal[array_search($a, $this->totalsPeriode)]->tot_n ?? 0;
+                    $valB = $akumulasiGlobal[array_search($b, $this->totalsPeriode)]->tot_n ?? 0;
+                    return $valB <=> $valA;
                 });
 
                 $curr = $h + 1;
@@ -160,12 +159,18 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                     $sheet->setCellValue("B{$curr}", "'" . $data['nis']);
                     $sheet->setCellValue("C{$curr}", "'" . $data['nisn']); 
                     $sheet->setCellValue("D{$curr}", $data['nama']);
-                    $sheet->setCellValue("E{$curr}", $data['p_bulan_ini']);
-                    $sheet->setCellValue("F{$curr}", $data['n_bulan_ini']);
+                    
+                    $pGlobal = $akumulasiGlobal[$id]->tot_p ?? 0;
+                    $nGlobal = $akumulasiGlobal[$id]->tot_n ?? 0;
 
                     if ($isFiltered) {
-                        $sheet->setCellValue("G{$curr}", $akumulasiGlobal[$id]->tot_p ?? 0);
-                        $sheet->setCellValue("H{$curr}", $akumulasiGlobal[$id]->tot_n ?? 0);
+                        $sheet->setCellValue("E{$curr}", $data['p_periode']);
+                        $sheet->setCellValue("F{$curr}", $data['n_periode']);
+                        $sheet->setCellValue("G{$curr}", $pGlobal);
+                        $sheet->setCellValue("H{$curr}", $nGlobal);
+                    } else {
+                        $sheet->setCellValue("E{$curr}", $pGlobal);
+                        $sheet->setCellValue("F{$curr}", $nGlobal);
                     }
                     $curr++;
                 }
@@ -174,7 +179,6 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                     'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
                 ]);
 
-                // Tanda Tangan
                 $waka = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 3)
@@ -184,7 +188,7 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
 
                 $ttdRow = $curr + 2;
                 $ttdCol = $lastSumCol;
-                $kab = $this->profil->kabupaten ?? 'Tasikmalaya';
+                $kab = $this->profil->kabupaten ?? 'Kabupaten';
                 
                 $sheet->setCellValue("{$ttdCol}{$ttdRow}", $kab . ", " . date('d F Y'));
                 $sheet->setCellValue("{$ttdCol}" . ($ttdRow + 1), "Waka Kesiswaan,");

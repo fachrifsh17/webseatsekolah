@@ -25,37 +25,26 @@ class StrukturJabatanController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $data = StrukturJabatan::with(['guru', 'jabatan'])->orderBy('urutan_tampil')->get();
+            // Menambahkan eager loading yang kuat dan pengecekan data
+            $data = StrukturJabatan::with(['guru', 'jabatan'])
+                ->orderBy('urutan_tampil', 'asc')
+                ->get();
 
             return response()->json([
                 'success' => true,
                 'data'    => StrukturJabatanResource::collection($data),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch struktur jabatan', ['error' => $e->getMessage()]);
+            // Log secara detail untuk debugging 500 error
+            Log::error('Struktur Jabatan Index Error: ' . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar struktur jabatan.',
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    public function show(StrukturJabatan $strukturJabatan): JsonResponse
-    {
-        try {
-            $strukturJabatan->load(['guru', 'jabatan']);
-
-            return response()->json([
-                'success' => true,
-                'data'    => new StrukturJabatanResource($strukturJabatan),
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to fetch struktur jabatan', ['id' => (string)$strukturJabatan->id, 'error' => $e->getMessage()]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail struktur jabatan.',
+                'debug'   => $e->getMessage() // Lepaskan ini hanya saat development
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -64,40 +53,36 @@ class StrukturJabatanController extends Controller
     {
         $validated = $request->validated();
 
-        $guruExists = StrukturJabatan::where('guru_staf_id', $validated['guru_staf_id'])->exists();
-        if ($guruExists) {
+        // Validasi Duplikasi: 1 Pejabat = 1 Jabatan
+        $conflict = StrukturJabatan::where('guru_staf_id', $validated['guru_staf_id'])
+            ->orWhere('jabatan_id', $validated['jabatan_id'])
+            ->exists();
+
+        if ($conflict) {
             return response()->json([
                 'success' => false,
-                'message' => 'Guru/Staf sudah memiliki struktur jabatan.',
-                'errors'  => ['guru_staf_id' => ['Guru/Staf sudah memiliki struktur jabatan.']],
+                'message' => 'Konflik Data: Guru sudah menjabat atau jabatan sudah terisi.',
+                'errors'  => ['conflict' => ['Pastikan guru dan jabatan tidak ganda.']]
             ], Response::HTTP_CONFLICT);
         }
 
-        $jabatanExists = StrukturJabatan::where('jabatan_id', $validated['jabatan_id'])->exists();
-        if ($jabatanExists) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Jabatan sudah terisi oleh orang lain.',
-                'errors'  => ['jabatan_id' => ['Jabatan ini sudah memiliki pejabat.']],
-            ], Response::HTTP_CONFLICT);
-        }
-
+        DB::beginTransaction();
         try {
-            $item = DB::transaction(fn () => StrukturJabatan::create($validated));
-            $item->load(['guru', 'jabatan']);
+            $item = StrukturJabatan::create($validated);
+            DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data struktur jabatan berhasil ditambahkan.',
-                'data'    => new StrukturJabatanResource($item),
+                'message' => 'Struktur jabatan berhasil ditambahkan.',
+                'data'    => new StrukturJabatanResource($item->load(['guru', 'jabatan'])),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            Log::error('Failed to create struktur jabatan', ['payload' => $validated, 'error' => $e->getMessage()]);
-
+            DB::rollBack();
+            Log::error('Store Struktur Jabatan Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan struktur jabatan.',
-                'errors'  => ['exception' => [$e->getMessage()]],
+                'message' => 'Gagal menambahkan data.',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -106,51 +91,38 @@ class StrukturJabatanController extends Controller
     {
         $validated = $request->validated();
 
-        if (isset($validated['guru_staf_id'])) {
-            $guruConflict = StrukturJabatan::where('guru_staf_id', $validated['guru_staf_id'])
-                ->where('id', '<>', $strukturJabatan->id)
-                ->exists();
+        // Cek duplikasi dengan mengecualikan ID saat ini
+        if (isset($validated['guru_staf_id']) || isset($validated['jabatan_id'])) {
+            $conflict = StrukturJabatan::where('id', '!=', $strukturJabatan->id)
+                ->where(function($q) use ($validated) {
+                    $q->where('guru_staf_id', $validated['guru_staf_id'] ?? null)
+                      ->orWhere('jabatan_id', $validated['jabatan_id'] ?? null);
+                })->exists();
 
-            if ($guruConflict) {
+            if ($conflict) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Guru/Staf sudah memiliki struktur jabatan.',
-                    'errors'  => ['guru_staf_id' => ['Guru/Staf sudah memiliki struktur jabatan.']],
+                    'message' => 'Data baru bertabrakan dengan data jabatan lain yang sudah ada.',
                 ], Response::HTTP_CONFLICT);
             }
         }
 
-        if (isset($validated['jabatan_id'])) {
-            $jabatanConflict = StrukturJabatan::where('jabatan_id', $validated['jabatan_id'])
-                ->where('id', '<>', $strukturJabatan->id)
-                ->exists();
-
-            if ($jabatanConflict) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Jabatan sudah terisi oleh orang lain.',
-                    'errors'  => ['jabatan_id' => ['Jabatan ini sudah memiliki pejabat.']],
-                ], Response::HTTP_CONFLICT);
-            }
-        }
-
+        DB::beginTransaction();
         try {
-            DB::transaction(fn () => $strukturJabatan->update($validated));
-            $strukturJabatan->refresh();
-            $strukturJabatan->load(['guru', 'jabatan']);
+            $strukturJabatan->update($validated);
+            DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data struktur jabatan berhasil diperbarui.',
-                'data'    => new StrukturJabatanResource($strukturJabatan),
+                'message' => 'Struktur jabatan berhasil diperbarui.',
+                'data'    => new StrukturJabatanResource($strukturJabatan->load(['guru', 'jabatan'])),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to update struktur jabatan', ['id' => (string)$strukturJabatan->id, 'payload' => $validated, 'error' => $e->getMessage()]);
-
+            DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui struktur jabatan.',
-                'errors'  => ['exception' => [$e->getMessage()]],
+                'message' => 'Gagal memperbarui data.',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -158,20 +130,15 @@ class StrukturJabatanController extends Controller
     public function destroy(StrukturJabatan $strukturJabatan): JsonResponse
     {
         try {
-            DB::transaction(fn () => $strukturJabatan->delete());
-
+            $strukturJabatan->delete();
             return response()->json([
-                'success'      => true,
-                'message'      => 'Data struktur jabatan berhasil dihapus',
-                'notification' => 'Berhasil dihapus',
+                'success' => true,
+                'message' => 'Data struktur jabatan berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to delete struktur jabatan', ['id' => (string)$strukturJabatan->id, 'error' => $e->getMessage()]);
-
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus struktur jabatan.',
-                'errors'  => ['exception' => [$e->getMessage()]],
+                'message' => 'Gagal menghapus data.',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

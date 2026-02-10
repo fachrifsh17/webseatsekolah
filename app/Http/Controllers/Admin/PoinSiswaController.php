@@ -22,18 +22,47 @@ class PoinSiswaController extends Controller
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
+    private function getPoinWithKumulatif($id)
+    {
+        return PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
+            ->select('poin_siswa.*')
+            ->addSelect([
+                'total_kumulatif_positif' => DB::table('poin_siswa as ps')
+                    ->whereColumn('ps.siswa_id', 'poin_siswa.siswa_id')
+                    ->selectRaw('SUM(poin_positif)'),
+                'total_kumulatif_negatif' => DB::table('poin_siswa as ps')
+                    ->whereColumn('ps.siswa_id', 'poin_siswa.siswa_id')
+                    ->selectRaw('SUM(poin_negatif)')
+            ])
+            ->findOrFail($id);
+    }
+
     public function index(Request $request): JsonResponse
     {
         try {
             $query = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
-                ->whereHas('siswa', fn($q) => $q->where('is_active', true));
-
-            if ($request->filled('siswa_id')) {
-                $query->where('siswa_id', $request->siswa_id);
-            }
+                ->select('poin_siswa.*')
+                ->addSelect([
+                    'total_kumulatif_positif' => DB::table('poin_siswa as ps')
+                        ->whereColumn('ps.siswa_id', 'poin_siswa.siswa_id')
+                        ->selectRaw('SUM(poin_positif)'),
+                    'total_kumulatif_negatif' => DB::table('poin_siswa as ps')
+                        ->whereColumn('ps.siswa_id', 'poin_siswa.siswa_id')
+                        ->selectRaw('SUM(poin_negatif)')
+                ])
+                ->whereHas('siswa', function($q) {
+                    $q->where('is_active', true)
+                      ->whereHas('kelas', fn($qk) => $qk->where('is_active', true));
+                });
 
             if ($request->filled('tahun_ajaran_id')) {
                 $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
+            } else {
+                $query->whereHas('tahunAjaran', fn($q) => $q->where('is_active', true));
+            }
+
+            if ($request->filled('siswa_id')) {
+                $query->where('siswa_id', $request->siswa_id);
             }
             
             if ($request->filled('bulan')) {
@@ -46,23 +75,13 @@ class PoinSiswaController extends Controller
                 $query->whereHas('siswa', fn($q) => $q->where('nama_lengkap', 'like', "%{$search}%")->orWhere('nisn', 'like', "%{$search}%"));
             }
 
-            $summary = null;
-            if ($request->filled('siswa_id')) {
-                $summary = DB::table('poin_siswa')
-                    ->where('siswa_id', $request->siswa_id)
-                    ->select(
-                        DB::raw('SUM(poin_positif) as total_plus'),
-                        DB::raw('SUM(poin_negatif) as total_minus'),
-                        DB::raw('SUM(poin_positif) - SUM(poin_negatif) as saldo_poin')
-                    )->first();
-            }
-
             $perPage = min((int) $request->get('per_page', 20), 100);
-            $data = $query->orderByDesc('tanggal')->orderByDesc('created_at')->paginate($perPage);
+            $data = $query->orderByDesc('total_kumulatif_negatif')
+                          ->orderByDesc('tanggal')
+                          ->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'summary_kumulatif' => $summary,
                 'data' => PoinSiswaResource::collection($data),
                 'meta' => [
                     'current_page' => $data->currentPage(),
@@ -82,7 +101,19 @@ class PoinSiswaController extends Controller
             $ta = TahunAjaran::where('is_active', true)->firstOrFail();
             $user = Auth::user();
 
-            $data = DB::transaction(function () use ($request, $ta, $user) {
+            $siswa = Siswa::where('id', $request->siswa_id)
+                ->where('is_active', true)
+                ->whereHas('kelas', fn($q) => $q->where('is_active', true))
+                ->first();
+
+            if (!$siswa) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal: Siswa tidak ditemukan atau kelas sudah tidak aktif.'
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $poin = DB::transaction(function () use ($request, $ta, $user) {
                 return PoinSiswa::create(array_merge($request->validated(), [
                     'tahun_ajaran_id' => $ta->id,
                     'guru_staf_id' => $request->guru_staf_id ?? $user->guru_staf_id
@@ -92,7 +123,7 @@ class PoinSiswaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Poin berhasil dicatat.',
-                'data' => new PoinSiswaResource($data->load(['siswa.kelas', 'guruStaf', 'tahunAjaran']))
+                'data' => new PoinSiswaResource($this->getPoinWithKumulatif($poin->id))
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             Log::error('Admin Poin Store Error: ' . $e->getMessage());
@@ -104,18 +135,31 @@ class PoinSiswaController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => new PoinSiswaResource($poinSiswa->load(['siswa.kelas', 'guruStaf', 'tahunAjaran']))
+            'data' => new PoinSiswaResource($this->getPoinWithKumulatif($poinSiswa->id))
         ], Response::HTTP_OK);
     }
 
     public function update(UpdatePoinSiswaRequest $request, PoinSiswa $poinSiswa): JsonResponse
     {
         try {
+            $siswa = Siswa::where('id', $poinSiswa->siswa_id)
+                ->where('is_active', true)
+                ->whereHas('kelas', fn($q) => $q->where('is_active', true))
+                ->first();
+
+            if (!$siswa) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal: Data tidak dapat diubah karena siswa atau kelas sudah tidak aktif.'
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             DB::transaction(fn() => $poinSiswa->update($request->validated()));
+            
             return response()->json([
                 'success' => true,
                 'message' => 'Poin diperbarui.',
-                'data' => new PoinSiswaResource($poinSiswa->fresh(['siswa.kelas', 'guruStaf', 'tahunAjaran']))
+                'data' => new PoinSiswaResource($this->getPoinWithKumulatif($poinSiswa->id))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Admin Poin Update Error: ' . $e->getMessage());
@@ -142,17 +186,14 @@ class PoinSiswaController extends Controller
         $namaKelas = $request->nama_kelas ?? 'Seluruh_Siswa';
         $namaKelasFile = str_replace([' ', '/', '\\'], '_', $namaKelas);
         
-        $labelWaktu = "Kumulatif";
-        $bulanFile = "Semua_Waktu";
-
-        if ($request->filled('bulan')) {
-            $time = strtotime($request->bulan);
-            $labelWaktu = date('F Y', $time);
-            $bulanFile = date('M_Y', $time);
-        }
+        $labelWaktu = $request->filled('bulan') ? date('F Y', strtotime($request->bulan)) : "Kumulatif";
+        $bulanFile = $request->filled('bulan') ? date('M_Y', strtotime($request->bulan)) : "Semua_Waktu";
 
         $query = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
-            ->whereHas('siswa', fn($q) => $q->where('is_active', true));
+            ->whereHas('siswa', function($q) {
+                $q->where('is_active', true)
+                  ->whereHas('kelas', fn($qk) => $qk->where('is_active', true));
+            });
 
         if ($request->filled('kelas_id')) {
             $query->whereHas('siswa', fn($q) => $q->where('kelas_id', $request->kelas_id));
@@ -160,6 +201,8 @@ class PoinSiswaController extends Controller
 
         if ($request->filled('tahun_ajaran_id')) {
             $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
+        } else {
+            $query->whereHas('tahunAjaran', fn($q) => $q->where('is_active', true));
         }
 
         $fileName = "Rekap_Poin_{$namaKelasFile}_{$bulanFile}_" . date('His') . ".xlsx";

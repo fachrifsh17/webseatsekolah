@@ -17,8 +17,7 @@ class PoinSiswaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(('store'));
-
+        $this->middleware('log.admin')->only('store');
     }
 
     public function index(Request $request): JsonResponse
@@ -34,7 +33,10 @@ class PoinSiswaController extends Controller
 
         $query = PoinSiswa::query()
             ->where('guru_staf_id', $guruStafId)
-            ->whereHas('siswa', fn($q) => $q->where('is_active', true));
+            ->whereHas('siswa', function($q) {
+                $q->where('is_active', true)
+                  ->whereHas('kelas', fn($qk) => $qk->where('is_active', true));
+            });
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -103,6 +105,18 @@ class PoinSiswaController extends Controller
 
             if (!$user->guruStaf) {
                 return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
+            }
+
+            $siswa = Siswa::where('id', $request->siswa_id)
+                ->where('is_active', true)
+                ->whereHas('kelas', fn($q) => $q->where('is_active', true))
+                ->first();
+
+            if (!$siswa) {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Gagal: Siswa tidak ditemukan atau berada di kelas yang sudah tidak aktif.'
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
             $poin = DB::transaction(function () use ($request, $user, $taActive) {

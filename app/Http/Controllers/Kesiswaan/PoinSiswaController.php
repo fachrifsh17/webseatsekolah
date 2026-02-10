@@ -27,7 +27,8 @@ class PoinSiswaController extends Controller
         try {
             $query = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
                 ->whereHas('siswa', function ($q) {
-                    $q->where('is_active', true);
+                    $q->where('is_active', true)
+                      ->whereHas('kelas', fn($qk) => $qk->where('is_active', true));
                 });
 
             if ($request->filled('siswa_id')) {
@@ -95,6 +96,18 @@ class PoinSiswaController extends Controller
                 return response()->json(['success' => false, 'message' => 'Tahun ajaran aktif tidak ditemukan.'], 422);
             }
 
+            $siswa = Siswa::where('id', $request->siswa_id)
+                ->where('is_active', true)
+                ->whereHas('kelas', fn($q) => $q->where('is_active', true))
+                ->first();
+
+            if (!$siswa) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal: Siswa tidak ditemukan atau berada di kelas yang sudah tidak aktif.'
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             $poin = DB::transaction(function () use ($request, $user, $taActive) {
                 return PoinSiswa::create(array_merge($request->validated(), [
                     'guru_staf_id' => $request->guru_staf_id ?? $user->guruStaf?->id,
@@ -124,6 +137,18 @@ class PoinSiswaController extends Controller
     public function update(UpdatePoinSiswaRequest $request, PoinSiswa $poinSiswa): JsonResponse
     {
         try {
+            $siswa = Siswa::where('id', $poinSiswa->siswa_id)
+                ->where('is_active', true)
+                ->whereHas('kelas', fn($q) => $q->where('is_active', true))
+                ->first();
+
+            if (!$siswa) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal: Data tidak dapat diubah karena siswa atau kelas sudah tidak aktif.'
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             DB::transaction(fn() => $poinSiswa->update($request->validated()));
 
             return response()->json([
@@ -152,7 +177,10 @@ class PoinSiswaController extends Controller
         $kontak = DB::table('data_kontak')->first();
 
         $query = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
-            ->whereHas('siswa', fn($q) => $q->where('is_active', true))
+            ->whereHas('siswa', function($q) {
+                $q->where('is_active', true)
+                  ->whereHas('kelas', fn($qk) => $qk->where('is_active', true));
+            })
             ->orderBy('tanggal', 'asc');
 
         if ($request->filled('kelas_id')) {

@@ -121,7 +121,6 @@ class TahunAjaranController extends Controller
             DB::transaction(function () use ($request, $tahunAjaran) {
                 $data = $request->validated();
 
-                // Logika otomatis kurikulum jika tidak diinput
                 if (empty($data['kurikulum_id'])) {
                     $activeKurikulum = Kurikulum::where('is_active', true)->first();
                     $data['kurikulum_id'] = $activeKurikulum?->id;
@@ -153,11 +152,21 @@ class TahunAjaranController extends Controller
 
     public function destroy(TahunAjaran $tahunAjaran): JsonResponse
     {
-        if ($tahunAjaran->kelas()->count() > 0) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tidak dapat menghapus tahun ajaran yang masih memiliki data kelas.'
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        $relations = [
+            'kelas' => 'Data Kelas',
+            'presensi' => 'Data Presensi',
+            'presensiGuruMapel' => 'Data Presensi Guru',
+            'poinSiswa' => 'Data Poin Siswa',
+            'jamSekolah' => 'Data Jam Sekolah'
+        ];
+
+        foreach ($relations as $method => $label) {
+            if ($tahunAjaran->$method()->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Tidak dapat menghapus tahun ajaran karena masih memiliki relasi dengan {$label}."
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
         }
 
         try {

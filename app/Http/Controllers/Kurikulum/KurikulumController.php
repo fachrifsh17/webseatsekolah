@@ -7,9 +7,7 @@ use App\Models\Kurikulum;
 use App\Http\Resources\KurikulumResource;
 use App\Http\Requests\StoreKurikulumRequest;
 use App\Http\Requests\UpdateKurikulumRequest;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\{Storage, DB, Log};
 use Illuminate\Http\JsonResponse;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
@@ -26,7 +24,9 @@ class KurikulumController extends Controller
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-            $data = Kurikulum::orderBy('is_active', 'desc')->paginate($perPage);
+            $data = Kurikulum::orderBy('is_active', 'desc')
+                             ->orderBy('created_at', 'desc')
+                             ->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -43,11 +43,10 @@ class KurikulumController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar kurikulum',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-    
+
     public function show(Kurikulum $kurikulum): JsonResponse
     {
         try {
@@ -56,14 +55,9 @@ class KurikulumController extends Controller
                 'data'    => new KurikulumResource($kurikulum),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch kurikulum detail', [
-                'kurikulum_id' => (string) $kurikulum->id,
-                'error'        => $e->getMessage()
-            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil detail kurikulum',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -72,34 +66,39 @@ class KurikulumController extends Controller
     {
         $validated = $request->validated();
 
+        if (Kurikulum::where('judul', $validated['judul'])->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menambahkan data. Kurikulum dengan judul "' . $validated['judul'] . '" sudah ada.',
+            ], Response::HTTP_CONFLICT);
+        }
+
         if ($request->hasFile('file_jadwal')) {
             $validated['file_jadwal_path'] = $request->file('file_jadwal')->store('uploads/kurikulum', 'public');
         }
 
         DB::beginTransaction();
         try {
-            if (!empty($validated['is_active']) && $validated['is_active'] == true) {
-                Kurikulum::where('is_active', true)->update(['is_active' => false]);
-            }
+            Kurikulum::query()->update(['is_active' => false]);
+            $validated['is_active'] = true;
 
             $kurikulum = Kurikulum::create($validated);
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Kurikulum berhasil ditambahkan.',
+                'message' => 'Kurikulum baru berhasil ditambahkan dan otomatis diaktifkan.',
                 'data'    => new KurikulumResource($kurikulum),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to create kurikulum', ['payload' => $validated, 'error' => $e->getMessage()]);
-            if (!empty($validated['file_jadwal_path'] ?? null)) {
+            if (!empty($validated['file_jadwal_path'])) {
                 Storage::disk('public')->delete($validated['file_jadwal_path']);
             }
+            Log::error('Failed to create kurikulum', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal membuat kurikulum',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -107,6 +106,15 @@ class KurikulumController extends Controller
     public function update(UpdateKurikulumRequest $request, Kurikulum $kurikulum): JsonResponse
     {
         $validated = $request->validated();
+
+        if (isset($validated['judul']) && $validated['judul'] !== $kurikulum->judul) {
+            if (Kurikulum::where('judul', $validated['judul'])->where('id', '!=', $kurikulum->id)->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Konflik: Judul tersebut sudah digunakan oleh kurikulum lain.',
+                ], Response::HTTP_CONFLICT);
+            }
+        }
 
         if ($request->hasFile('file_jadwal')) {
             $newPath = $request->file('file_jadwal')->store('uploads/kurikulum', 'public');
@@ -121,9 +129,7 @@ class KurikulumController extends Controller
         DB::beginTransaction();
         try {
             if (isset($validated['is_active']) && $validated['is_active'] == true) {
-                 Kurikulum::where('id', '!=', $kurikulum->id)
-                          ->where('is_active', true)
-                          ->update(['is_active' => false]);
+                Kurikulum::where('id', '!=', $kurikulum->id)->update(['is_active' => false]);
             }
 
             $kurikulum->update($validated);
@@ -136,49 +142,45 @@ class KurikulumController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to update kurikulum', [
-                'kurikulum_id' => (string) $kurikulum->id,
-                'payload'      => $validated,
-                'error'        => $e->getMessage()
-            ]);
-            if (!empty($validated['file_jadwal_path'] ?? null) && ($validated['file_jadwal_path'] !== $kurikulum->file_jadwal_path)) {
+            if (!empty($validated['file_jadwal_path']) && ($validated['file_jadwal_path'] !== $kurikulum->file_jadwal_path)) {
                 Storage::disk('public')->delete($validated['file_jadwal_path']);
             }
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui kurikulum',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function destroy(Kurikulum $kurikulum): JsonResponse
     {
+        if ($kurikulum->tahunAjaran()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tidak dapat menghapus kurikulum karena masih memiliki data Tahun Ajaran yang terkait.'
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $filePath = $kurikulum->file_jadwal_path;
         DB::beginTransaction();
         try {
-            if ($kurikulum->file_jadwal_path) {
-                Storage::disk('public')->delete($kurikulum->file_jadwal_path);
-            }
-
             $kurikulum->delete();
             DB::commit();
 
+            if ($filePath) {
+                Storage::disk('public')->delete($filePath);
+            }
+
             return response()->json([
-                'success'      => true,
-                'message'      => 'Data kurikulum berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
+                'success' => true,
+                'message' => 'Data kurikulum berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to delete kurikulum', [
-                'kurikulum_id' => (string) $kurikulum->id,
-                'error'        => $e->getMessage()
-            ]);
+            Log::error('Failed to delete kurikulum', ['error' => $e->getMessage()]);
             return response()->json([
-                'success'      => false,
-                'message'      => 'Gagal menghapus kurikulum',
-                'notification' => 'Gagal dihapus',
-                'errors'       => ['exception' => [$e->getMessage()]]
+                'success' => false,
+                'message' => 'Gagal menghapus kurikulum',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

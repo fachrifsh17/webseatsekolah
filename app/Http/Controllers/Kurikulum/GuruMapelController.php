@@ -129,14 +129,18 @@ class GuruMapelController extends Controller
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
         try {
-            DB::transaction(function () use ($request) {
-                Excel::import(new GuruMapelImport, $request->file('file'));
-            });
+            $import = new GuruMapelImport();
+            Excel::import($import, $request->file('file'));
+            $conflicts = $import->getMessages();
 
             return response()->json([
-                'success' => true,
-                'message' => 'Data penugasan guru berhasil diimport oleh tim Kurikulum.',
+                'success'   => true,
+                'message'   => count($conflicts) > 0 
+                               ? 'Import selesai dengan beberapa catatan' 
+                               : 'Data penugasan guru berhasil diimport oleh tim Kurikulum.',
+                'conflicts' => $conflicts
             ], Response::HTTP_OK);
+
         } catch (Throwable $e) {
             Log::error('Import Guru Mapel Error (Kurikulum)', ['error' => $e->getMessage()]);
             return response()->json([

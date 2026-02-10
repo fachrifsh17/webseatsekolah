@@ -25,7 +25,9 @@ class MapelImport implements ToModel, WithHeadingRow, WithValidation
         $jurusanId = null;
 
         if (!empty($jurusanNama) && strtoupper($jurusanNama) !== 'UMUM') {
-            $jurusan = Jurusan::where('nama_jurusan', 'LIKE', '%' . $jurusanNama . '%')->first();
+            $jurusan = Jurusan::where('nama_jurusan', 'LIKE', '%' . $jurusanNama . '%')
+                ->orWhere('id', $jurusanNama)
+                ->first();
             $jurusanId = $jurusan ? $jurusan->id : null;
         }
 
@@ -52,7 +54,7 @@ class MapelImport implements ToModel, WithHeadingRow, WithValidation
                 'jurusan_id'     => $jurusanId,
                 'tipe_mapel'     => strtolower($row['tipe_mapel'] ?? $row['tipe'] ?? 'umum'),
                 'kategori_mapel' => strtolower($row['kategori_mapel'] ?? $row['kategori'] ?? 'adaptif'),
-                'is_active'      => 1, // Menambahkan status aktif otomatis saat import
+                'is_active'      => 1,
             ]);
         });
     }
@@ -61,6 +63,7 @@ class MapelImport implements ToModel, WithHeadingRow, WithValidation
     {
         return [
             'nama_mata_pelajaran' => 'required|string',
+            'jurusan'             => 'nullable|string',
         ];
     }
 }

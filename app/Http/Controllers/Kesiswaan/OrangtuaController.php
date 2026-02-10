@@ -23,11 +23,16 @@ class OrangtuaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
+        // Hanya update yang dilog karena tidak ada import di sini
         $this->middleware('log.admin')->only(['update']);
     }
 
     private function applyFilters(Request $request, $query)
     {
+        $taId = $request->filled('tahun_ajaran_id') 
+                ? $request->tahun_ajaran_id 
+                : DB::table('tahun_ajaran')->where('is_active', 1)->value('id');
+
         if ($request->filled('q')) {
             $search = $request->q;
             $query->where(function ($q) use ($search) {
@@ -37,8 +42,9 @@ class OrangtuaController extends Controller
         }
 
         if ($request->filled('jurusan_id')) {
-            $query->whereHas('anak.kelas', function ($q) use ($request) {
-                $q->where('jurusan_id', $request->jurusan_id);
+            $query->whereHas('anak.kelas', function ($q) use ($request, $taId) {
+                $q->where('jurusan_id', $request->jurusan_id)
+                  ->where('tahun_ajaran_id', $taId);
             });
         }
 
@@ -57,9 +63,22 @@ class OrangtuaController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Orangtua::with(['user', 'anak.kelas.jurusan']);
-        $query = $this->applyFilters($request, $query);
+        $taId = $request->filled('tahun_ajaran_id') 
+                ? $request->tahun_ajaran_id 
+                : DB::table('tahun_ajaran')->where('is_active', 1)->value('id');
 
+        $query = Orangtua::with(['user', 'anak' => function($q) use ($taId, $request) {
+            if ($request->filled('kelas_id')) {
+                $q->where('kelas_id', $request->kelas_id);
+            } else {
+                $q->whereHas('kelas', function($k) use ($taId) {
+                    $k->where('tahun_ajaran_id', $taId);
+                });
+            }
+            $q->with('kelas.jurusan');
+        }]);
+
+        $query = $this->applyFilters($request, $query);
         $orangtua = $query->latest()->paginate($request->query('per_page', 20));
 
         return response()->json([
@@ -74,33 +93,25 @@ class OrangtuaController extends Controller
         ], Response::HTTP_OK);
     }
 
-    public function show(Orangtua $orangtua): JsonResponse
-    {
-        return response()->json([
-            'success' => true,
-            'data'    => new OrangtuaResource($orangtua->load(['user','anak.kelas.jurusan']))
-        ], Response::HTTP_OK);
-    }
-
     public function update(UpdateOrangtuaRequest $request, Orangtua $orangtua): JsonResponse
     {
         $validated = $request->validated();
 
         try {
             DB::transaction(function () use ($validated, $orangtua) {
-                $anak = $validated['anak'] ?? [];
+                $anak = $validated['anak'] ?? null;
                 unset($validated['anak']);
 
                 $orangtua->update($validated);
 
-                if (isset($anak)) {
-                     $syncData = [];
-                     foreach ($anak as $item) {
-                         $syncData[(string) $item['siswa_id']] = [
-                             'hubungan' => $item['hubungan'] ?? null
-                         ];
-                     }
-                     $orangtua->anak()->sync($syncData);
+                if ($anak !== null) {
+                    $syncData = [];
+                    foreach ($anak as $item) {
+                        $syncData[(string) $item['siswa_id']] = [
+                            'hubungan' => $item['hubungan'] ?? null
+                        ];
+                    }
+                    $orangtua->anak()->sync($syncData);
                 }
             });
 
@@ -121,11 +132,17 @@ class OrangtuaController extends Controller
 
     public function export(Request $request)
     {
-        $kelasId = $request->kelas_id;
+        $taId = $request->filled('tahun_ajaran_id') 
+                ? $request->tahun_ajaran_id 
+                : DB::table('tahun_ajaran')->where('is_active', 1)->value('id');
 
-        $query = Orangtua::query()->with(['anak' => function($q) use ($kelasId) {
-            if ($kelasId) {
-                $q->where('kelas_id', $kelasId);
+        $query = Orangtua::query()->with(['anak' => function($q) use ($taId, $request) {
+            if ($request->filled('kelas_id')) {
+                $q->where('kelas_id', $request->kelas_id);
+            } else {
+                $q->whereHas('kelas', function($k) use ($taId) {
+                    $k->where('tahun_ajaran_id', $taId);
+                });
             }
             $q->with('kelas');
         }]);

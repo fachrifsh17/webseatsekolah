@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\JamSekolah;
+use App\Models\TahunAjaran;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -13,16 +14,16 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 
 class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, WithEvents, WithCustomStartCell
 {
-    protected $profil, $kontak;
+    protected $profil, $kontak, $tahunAjaranId;
 
-    public function __construct($profil, $kontak)
+    public function __construct($profil, $kontak, $tahunAjaranId)
     {
         $this->profil = $profil;
         $this->kontak = $kontak;
+        $this->tahunAjaranId = $tahunAjaranId;
     }
 
     public function startCell(): string 
@@ -52,7 +53,7 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 $sheet->mergeCells("A2:{$lastCol}2"); 
                 $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); 
-                $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'SMKN 1 BANTARKALONG'));
+                $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
                 $sheet->mergeCells("A4:{$lastCol}4"); 
                 $sheet->setCellValue('A4', ($this->kontak->alamat_lengkap ?? '') . " | Telp: " . ($this->kontak->telepon ?? ''));
                 $sheet->mergeCells("A5:{$lastCol}5"); 
@@ -66,8 +67,8 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 $sheet->setCellValue('A7', 'PENYESUAIAN JAM PELAJARAN');
                 $sheet->mergeCells("A8:{$lastCol}8"); 
                 
-                $ta = DB::table('tahun_ajaran')->where('is_active', 1)->first();
-                $sheet->setCellValue('A8', 'TAHUN PELAJARAN ' . ($ta->nama ?? '2024/2025'));
+                $ta = TahunAjaran::find($this->tahunAjaranId);
+                $sheet->setCellValue('A8', 'TAHUN PELAJARAN ' . ($ta->nama ?? ''));
                 
                 $sheet->getStyle("A7:A8")->getFont()->setBold(true);
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -80,7 +81,11 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                     'Jumat' => ['t' => 'I', 'l' => 'J']
                 ];
 
-                $dataPerHari = JamSekolah::orderBy('waktu_mulai')->get()->groupBy('hari');
+                $dataPerHari = JamSekolah::where('tahun_ajaran_id', $this->tahunAjaranId)
+                    ->orderBy('waktu_mulai')
+                    ->get()
+                    ->groupBy('hari');
+
                 $rowStart = 12;
 
                 foreach ($hariMap as $namaHari => $cols) {
@@ -114,11 +119,13 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 }
 
                 $maxRow = $sheet->getHighestRow();
-                $sheet->getStyle("A11:J$maxRow")->applyFromArray([
-                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
-                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]
-                ]);
-                $sheet->getStyle("A11:J11")->getFont()->setBold(true);
+                if ($maxRow >= 11) {
+                    $sheet->getStyle("A11:J$maxRow")->applyFromArray([
+                        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+                        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]
+                    ]);
+                    $sheet->getStyle("A11:J11")->getFont()->setBold(true);
+                }
             },
         ];
     }

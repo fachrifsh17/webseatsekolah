@@ -27,20 +27,16 @@ class StorePresensiGuruMapelRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // guru_mapel_id tetap wajib karena ini kunci utama
             'guru_mapel_id'     => ['required', 'integer', 'exists:guru_mapel,id'],
-            
-            // Materi pembelajaran sebaiknya wajib agar jurnal kelas terisi
             'materi'            => ['required', 'string', 'min:5'],
 
-            // Field ini diubah menjadi nullable karena server akan mengisinya otomatis
             'kelas_id'          => ['nullable', 'string', 'exists:kelas,id'],
             'mata_pelajaran_id' => ['nullable', 'string', 'exists:mata_pelajaran,id'],
+            'tahun_ajaran_id'   => ['nullable', 'string', 'exists:tahun_ajaran,id'],
             'tanggal'           => ['nullable', 'date'],
             'jam_masuk'         => ['nullable', 'string'],
             'jam_keluar'        => ['nullable', 'string'],
 
-            // Validasi data kehadiran siswa
             'presensi'              => ['required', 'array', 'min:1'],
             'presensi.*.siswa_id'   => ['required', 'string', 'exists:siswa,id'],
             'presensi.*.status'     => ['required', 'in:hadir,sakit,izin,alpa,Hadir,Sakit,Izin,Alpa'],

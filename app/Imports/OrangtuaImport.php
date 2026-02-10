@@ -5,86 +5,118 @@ namespace App\Imports;
 use App\Models\Orangtua;
 use App\Models\User;
 use App\Models\Siswa;
-use Maatwebsite\Excel\Concerns\ToModel;
+use Illuminate\Support\Collection;
+use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 
-class OrangtuaImport implements ToModel, WithHeadingRow
+class OrangtuaImport implements ToCollection, WithHeadingRow
 {
-    public function model(array $row)
+    public $importMessages = [];
+
+    public function collection(Collection $rows)
     {
-        if (empty($row['nama_lengkap']) || empty($row['telepon'])) {
-            return null;
-        }
+        foreach ($rows as $index => $row) {
+            $line = $index + 2;
 
-        $existingOrangtua = Orangtua::where('telepon', $row['telepon'])->first();
-
-        if ($existingOrangtua) {
-            return null;
-        }
-
-        return DB::transaction(function () use ($row) {
-            // 1. Generate ID User (Uxxx)
-            $lastUser = User::where('id', 'like', 'U%')
-                ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
-                ->lockForUpdate()
-                ->first();
-                
-            $lastId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
-            $newUserId = 'U' . str_pad($lastId + 1, 3, '0', STR_PAD_LEFT);
-
-            User::create([
-                'id'        => $newUserId,
-                'username'  => $row['telepon'], 
-                'password'  => Hash::make($row['telepon']),
-                'is_active' => 1,
-            ]);
-
-            DB::table('user_roles')->insert([
-                'user_id'    => $newUserId,
-                'role_id'    => 'R004', 
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            // 2. Generate ID Orangtua (Oxxx)
-            $lastOrtua = Orangtua::where('id', 'like', 'O%')
-                ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
-                ->lockForUpdate()
-                ->first();
-
-            $lastOrtuaId = $lastOrtua ? (int) substr($lastOrtua->id, 2) : 0; // Mengambil angka setelah 'O'
-            $newOrtuaId = 'O' . str_pad($lastOrtuaId + 1, 3, '0', STR_PAD_LEFT);
-
-            $orangtua = Orangtua::create([
-                'id'           => $newOrtuaId,
-                'user_id'      => $newUserId,
-                'nama_lengkap' => $row['nama_lengkap'],
-                'telepon'      => $row['telepon'],
-                'is_active'    => 1,
-            ]);
-
-            // 3. Hubungkan ke Anak (Tabel Pivot orangtua_siswa)
-            if (!empty($row['nis_anak'])) {
-                // Mendukung input NIS lebih dari satu (dipisah koma)
-                $nisList = explode(',', $row['nis_anak']);
-                foreach ($nisList as $nis) {
-                    $siswa = Siswa::where('nis', trim($nis))->first();
-                    if ($siswa) {
-                        // Cek gambar: tabel pivot Anda menggunakan kolom 'orangtua_id' dan 'siswa_id'
-                        DB::table('orangtua_siswa')->insert([
-                            'orangtua_id' => $newOrtuaId,
-                            'siswa_id'    => $siswa->id, // Asumsi ID Siswa adalah Sxxx
-                            'hubungan'    => strtolower($row['hubungan'] ?? 'ayah'),
-                            'created_at'  => now(),
-                            'updated_at'  => now(),
-                        ]);
-                    }
-                }
+            // 1. Validasi Input Dasar
+            if (empty($row['nama_lengkap']) || empty($row['telepon'])) {
+                $this->importMessages[] = "Baris {$line}: Nama lengkap dan telepon wajib diisi.";
+                continue;
             }
 
-            return $orangtua;
-        });
+            // 2. Cek Conflict: Orang Tua Sudah Ada
+            $existingOrangtua = Orangtua::where('telepon', $row['telepon'])->first();
+            if ($existingOrangtua) {
+                $this->importMessages[] = "Baris {$line}: Orang tua dengan nomor {$row['telepon']} sudah terdaftar.";
+                continue;
+            }
+
+            // 3. Proses Database
+            try {
+                DB::transaction(function () use ($row, $line) {
+                    // --- GENERATE USER ID ---
+                    $lastUser = User::where('id', 'like', 'U%')
+                        ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
+                        ->lockForUpdate()->first();
+                    $lastId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
+                    $newUserId = 'U' . str_pad($lastId + 1, 3, '0', STR_PAD_LEFT);
+
+                    User::create([
+                        'id' => $newUserId,
+                        'username' => $row['telepon'],
+                        'password' => Hash::make($row['telepon']),
+                        'is_active' => 1,
+                    ]);
+
+                    DB::table('user_roles')->insert([
+                        'user_id' => $newUserId,
+                        'role_id' => 'R004',
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+
+                    // --- GENERATE ORANG TUA ID ---
+                    $lastOrtua = Orangtua::where('id', 'like', 'O%')
+                        ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
+                        ->lockForUpdate()->first();
+                    $lastOrtuaId = $lastOrtua ? (int) substr($lastOrtua->id, 1) : 0;
+                    $newOrtuaId = 'O' . str_pad($lastOrtuaId + 1, 3, '0', STR_PAD_LEFT);
+
+                    Orangtua::create([
+                        'id' => $newOrtuaId,
+                        'user_id' => $newUserId,
+                        'nama_lengkap' => $row['nama_lengkap'],
+                        'telepon' => $row['telepon'],
+                        'is_active' => 1,
+                    ]);
+
+                    // --- RELASI ANAK & CEK KONFLIK NIS ---
+                    if (!empty($row['nis_anak'])) {
+                        $nisList = explode(',', $row['nis_anak']);
+                        foreach ($nisList as $nis) {
+                            $nisClean = trim($nis);
+                            $siswa = Siswa::where('nis', $nisClean)
+                                ->where('is_active', 1)
+                                ->whereHas('kelas', function($q) {
+                                    $q->whereHas('tahunAjaran', function($ta) {
+                                        $ta->where('is_active', 1);
+                                    });
+                                })->first();
+
+                            if (!$siswa) {
+                                // Menggunakan throw agar transaksi rollback jika NIS tidak valid
+                                throw new \Exception("Siswa NIS {$nisClean} tidak ditemukan atau tidak aktif di Tahun Ajaran ini.");
+                            }
+
+                            $existsRelasi = DB::table('orangtua_siswa')
+                                ->where('siswa_id', $siswa->id)
+                                ->where('hubungan', strtolower($row['hubungan'] ?? 'ayah'))
+                                ->exists();
+
+                            if ($existsRelasi) {
+                                throw new \Exception("Siswa {$siswa->nama_lengkap} sudah memiliki relasi " . ($row['hubungan'] ?? 'ayah') . ".");
+                            }
+
+                            DB::table('orangtua_siswa')->insert([
+                                'orangtua_id' => $newOrtuaId,
+                                'siswa_id'    => $siswa->id,
+                                'hubungan'    => strtolower($row['hubungan'] ?? 'ayah'),
+                                'created_at'  => now(), 
+                                'updated_at'  => now(),
+                            ]);
+                        }
+                    }
+                });
+            } catch (\Exception $e) {
+                // Tangkap pesan error dari throw di atas dan masukkan ke importMessages
+                $this->importMessages[] = "Baris {$line}: " . $e->getMessage();
+            }
+        }
+    }
+
+    public function getMessages()
+    {
+        return $this->importMessages;
     }
 }

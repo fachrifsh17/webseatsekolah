@@ -24,6 +24,15 @@ class OrangtuaController extends Controller
 {
     private function applyFilters(Request $request, $query)
     {
+        $tahunAjaranAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+        $tahunAjaranId = $request->query('tahun_ajaran_id', $tahunAjaranAktif?->id);
+
+        $query->whereHas('anak.kelas', function ($q) use ($tahunAjaranId) {
+            if ($tahunAjaranId) {
+                $q->where('tahun_ajaran_id', $tahunAjaranId);
+            }
+        });
+
         if ($request->filled('q')) {
             $search = $request->q;
             $query->where(function ($q) use ($search) {
@@ -53,9 +62,16 @@ class OrangtuaController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Orangtua::with(['user', 'anak.kelas.jurusan']);
-        $query = $this->applyFilters($request, $query);
+        $tahunAjaranAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+        $tahunAjaranId = $request->query('tahun_ajaran_id', $tahunAjaranAktif?->id);
 
+        $query = Orangtua::with(['user', 'anak' => function($q) use ($tahunAjaranId) {
+            $q->whereHas('kelas', function($qk) use ($tahunAjaranId) {
+                $qk->where('tahun_ajaran_id', $tahunAjaranId);
+            })->with('kelas.jurusan');
+        }]);
+
+        $query = $this->applyFilters($request, $query);
         $orangtua = $query->latest()->paginate($request->query('per_page', 20));
 
         return response()->json([
@@ -197,34 +213,35 @@ class OrangtuaController extends Controller
 
     public function export(Request $request)
     {
-        $kelasId = $request->kelas_id;
-        
-        $query = Orangtua::query()->with(['anak' => function($q) use ($kelasId) {
-            if ($kelasId) {
-                $q->where('kelas_id', $kelasId);
-            }
-            $q->with('kelas');
-        }]);
-        
+        $query = Orangtua::query()->with(['anak.kelas.jurusan']);
         $query = $this->applyFilters($request, $query);
 
-        $filename = 'Data_Orangtua';
-        $kelasData = null;
-        
-        if ($request->filled('kelas_id')) {
-            $kelasData = Kelas::find($request->kelas_id);
-            if ($kelasData) {
-                $filename .= '_' . Str::slug($kelasData->nama_kelas);
+        $filterParts = [];
+
+        $taId = $request->query('tahun_ajaran_id');
+        if ($taId) {
+            $ta = DB::table('tahun_ajaran')->find($taId);
+            if ($ta) {
+                $filterParts[] = str_replace(['/', ' '], '-', $ta->nama);
             }
-        } elseif ($request->filled('jurusan_id')) {
-            $jurusan = Jurusan::find($request->jurusan_id);
-            if ($jurusan) {
-                $filename .= '_' . Str::slug($jurusan->nama_jurusan);
+        } else {
+            $taAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+            if ($taAktif) {
+                $filterParts[] = str_replace(['/', ' '], '-', $taAktif->nama) . '-Aktif';
             }
         }
 
-        $filename .= '_' . now()->format('Ymd_His') . '.xlsx';
+        $kelasData = null;
+        if ($request->filled('kelas_id')) {
+            $kelasData = Kelas::find($request->kelas_id);
+            if ($kelasData) {
+                $filterParts[] = str_replace(' ', '_', $kelasData->nama_kelas);
+            }
+        }
 
+        $nameString = !empty($filterParts) ? implode('_', $filterParts) : 'Semua';
+        $filename = 'Data_Orangtua_' . $nameString . '_' . now()->format('Ymd_His') . '.xlsx';
+        
         $profil = DB::table('profil_sekolah')->first();
         $kontak = DB::table('data_kontak')->first();
 
@@ -241,11 +258,23 @@ class OrangtuaController extends Controller
         ]);
 
         try {
-            Excel::import(new OrangtuaImport, $request->file('file'));
+            // Inisialisasi object Import
+            $import = new OrangtuaImport;
+            
+            // Jalankan import
+            Excel::import($import, $request->file('file'));
+            
+            // Ambil pesan conflict dari object import
+            $conflicts = $import->getMessages();
+
             return response()->json([
                 'success' => true, 
-                'message' => 'Data orang tua berhasil diimport.'
+                'message' => count($conflicts) > 0 
+                             ? 'Import selesai dengan beberapa catatan.' 
+                             : 'Data orang tua berhasil diimport.',
+                'conflicts' => $conflicts
             ], Response::HTTP_OK);
+            
         } catch (Throwable $e) {
             Log::error('Import Orangtua Error: ' . $e->getMessage());
             return response()->json([

@@ -10,45 +10,44 @@ class PresensiGuruMapelResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        // PENTING: Gunakan nama relasi sesuai yang ada di Model PresensiGuruMapel
+        $jamMulaiObj = $this->jamMasukDetail ?? $this->guruMapel?->jamMulai;
+        $jamSelesaiObj = $this->jamKeluarDetail ?? $this->guruMapel?->jamSelesai;
+        
+        // Mengecek jam_ke atau keterangan agar tidak null
+        $mulai = $jamMulaiObj?->jam_ke ?? $jamMulaiObj?->keterangan ?? '-';
+        $selesai = $jamSelesaiObj?->jam_ke ?? $jamSelesaiObj?->keterangan ?? '-';
+
+        // Logika tampilan: jika jam sama atau jam selesai tidak ada
+        $jamKe = ($mulai === $selesai || $selesai === '-') 
+            ? "Jam {$mulai}" 
+            : "Jam {$mulai} - {$selesai}";
+
         return [
             'id'      => $this->id,
-            'tanggal' => $this->tanggal,
-
-            'jadwal' => $this->whenLoaded('guruMapel', function() {
-                // Gunakan optional() agar jika relasi kosong tidak menyebabkan crash
-                $jamMulai = $this->guruMapel->jamMulai;
-                $jamSelesai = $this->guruMapel->jamSelesai;
-                
-                return [
-                    'id'      => $this->guruMapel->id,
-                    'guru'    => $this->guruMapel->guru?->nama,
-                    'kelas'   => $this->guruMapel->kelas?->nama_kelas,
-                    'mapel'   => $this->guruMapel->mapel?->nama_mapel,
-                    'jam_ke'  => ($jamMulai?->jam_ke && $jamSelesai?->jam_ke) 
-                                 ? "Jam {$jamMulai->jam_ke} - {$jamSelesai->jam_ke}" : '-',
-                ];
-            }),
-
+            'tanggal' => $this->tanggal ? Carbon::parse($this->tanggal)->format('Y-m-d') : null,
+            'tahun_ajaran' => [
+                'id'       => $this->tahun_ajaran_id,
+                'nama'     => $this->tahunAjaran?->nama,
+                'semester' => $this->tahunAjaran?->semester,
+            ],
+            'jadwal' => [
+                'id'    => $this->guru_mapel_id,
+                'guru'  => $this->guruMapel?->guru?->nama_selengkapnya ?? ($this->guruMapel?->guru?->nama ?? '-'),
+                'kelas' => $this->kelas?->nama_kelas ?? ($this->guruMapel?->kelas?->nama_kelas ?? '-'),
+                'mapel' => $this->guruMapel?->mapel?->nama_mapel ?? '-',
+                'jam_ke'=> $jamKe,
+            ],
             'materi' => $this->materi ?? '-',
-
-            'rincian_siswa' => collect($this->presensiSiswaDetail ?? [])->map(fn($item) => [
-                'id'         => $item->id,
-                'nama_siswa' => $item->siswa?->nama_lengkap ?? 'Siswa Tidak Ditemukan',
-                'status'     => $item->status,
-                'catatan'    => $item->catatan,
-            ])->values(),
-
+            'rincian_siswa' => $this->whenLoaded('presensiSiswaDetail', function() {
+                return collect($this->presensiSiswaDetail)->map(fn($item) => [
+                    'id'         => $item->id,
+                    'nama_siswa' => $item->siswa?->nama_lengkap ?? 'Siswa Tidak Ditemukan',
+                    'status'     => $item->status,
+                    'catatan'    => $item->catatan,
+                ])->values();
+            }),
             'updated_at' => $this->updated_at?->format('d-m-Y H:i'),
         ];
-    }
-
-    /**
-     * Fungsi pembantu untuk mengecek apakah string adalah waktu yang valid untuk diparse Carbon
-     */
-    private function isValidTime($time)
-    {
-        if (!$time) return false;
-        // Jika string mengandung "JM" (seperti JM002), berarti itu ID, jangan diparse Carbon
-        return !str_contains($time, 'JM');
     }
 }

@@ -3,12 +3,11 @@
 namespace App\Http\Controllers\Kesiswaan;
 
 use App\Http\Controllers\Controller;
-use App\Models\Siswa;
-use App\Models\Kelas;
+use App\Models\{Siswa, Kelas, TahunAjaran};
 use App\Http\Requests\KenaikanKelasRequest;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\{DB, Log};
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -19,69 +18,111 @@ class KenaikanKelasController extends Controller
         $this->middleware('auth.token');
         $this->middleware('log.admin')->only(['prosesMassal']);
     }
-
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $data = Kelas::with(['jurusan', 'tahunAjaran'])
-            ->where('is_active', true)
-            ->get();
+        try {
+            $perPage = $request->get('per_page', 10);
 
-        return response()->json([
-            'success' => true,
-            'data'    => $data
-        ], Response::HTTP_OK);
+            $data = Kelas::with(['jurusan', 'tahunAjaran'])
+                ->whereHas('tahunAjaran', function($q) {
+                    $q->where('is_active', true);
+                })
+                ->where('is_active', true)
+                ->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'data'    => $data->items(),
+                'meta'    => [
+                    'current_page' => $data->currentPage(),
+                    'last_page'    => $data->lastPage(),
+                    'per_page'     => $data->perPage(),
+                    'total'        => $data->total(),
+                ],
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil data kelas.',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
-
     public function prosesMassal(KenaikanKelasRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $tahunAktif = TahunAjaran::where('is_active', true)->first();
+
+        if (!$tahunAktif || strtolower($tahunAktif->semester) !== 'ganjil') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal: Proses kenaikan/kelulusan hanya bisa dilakukan setelah Tahun Ajaran Baru (Ganjil) diaktifkan.'
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
         $summary = [
             'berhasil_naik' => 0,
             'lulus'         => 0,
+            'tidak_naik'    => 0,
             'peringatan'    => []
         ];
 
         try {
-            DB::transaction(function () use ($validated, &$summary) {
+            DB::transaction(function () use ($validated, $tahunAktif, &$summary) {
                 foreach ($validated['mapping'] as $map) {
                     $kelasLama = Kelas::find($map['kelas_lama_id']);
-                    
-                    if (!$kelasLama) {
-                        $summary['peringatan'][] = "Kelas lama ID {$map['kelas_lama_id']} tidak ditemukan.";
+                    if (!$kelasLama) continue;
+                    if ($kelasLama->tahun_ajaran_id === $tahunAktif->id) {
+                        $summary['peringatan'][] = "Kelas {$kelasLama->nama_kelas} sudah berada di periode aktif.";
                         continue;
                     }
-
-                    $isKelulusan = empty($map['kelas_baru_id']);
                     $excludedIds = $map['excluded_siswa_ids'] ?? [];
-
-                    $querySiswa = Siswa::where('kelas_id', $kelasLama->id)
-                        ->where('is_active', true) 
-                        ->whereNotIn('id', $excludedIds);
-
-                    if ($isKelulusan) {
-                        $count = $querySiswa->update([
-                            'is_active' => false,
-                        ]);
+                    if (empty($map['kelas_baru_id'])) {
+                        $count = Siswa::where('kelas_id', $kelasLama->id)
+                            ->where('is_active', true)
+                            ->whereNotIn('id', $excludedIds)
+                            ->update([
+                                'is_active'  => false 
+                            ]);
                         $summary['lulus'] += $count;
-                    } else {
+                    } 
+                    else {
                         $kelasBaru = Kelas::find($map['kelas_baru_id']);
 
-                        if (!$kelasBaru || $kelasLama->id === $kelasBaru->id) {
-                            $summary['peringatan'][] = "Mapping tidak valid untuk kelas {$kelasLama->nama_kelas}.";
+                        if (!$kelasBaru || $kelasBaru->tahun_ajaran_id !== $tahunAktif->id) {
+                            $summary['peringatan'][] = "Kelas tujuan untuk {$kelasLama->nama_kelas} tidak valid.";
                             continue;
                         }
 
-                        $count = $querySiswa->update([
-                            'kelas_id' => $kelasBaru->id,
-                        ]);
+                        $count = Siswa::where('kelas_id', $kelasLama->id)
+                            ->where('is_active', true)
+                            ->whereNotIn('id', $excludedIds)
+                            ->update(['kelas_id' => $kelasBaru->id]);
+                        
                         $summary['berhasil_naik'] += $count;
+                    }
+                    if (!empty($excludedIds)) {
+                        $kelasTetap = Kelas::where('nama_kelas', $kelasLama->nama_kelas)
+                            ->where('tahun_ajaran_id', $tahunAktif->id)
+                            ->first();
+
+                        if ($kelasTetap) {
+                            $countTidakNaik = Siswa::whereIn('id', $excludedIds)
+                                ->where('kelas_id', $kelasLama->id)
+                                ->update([
+                                    'kelas_id' => $kelasTetap->id
+                                ]);
+                            $summary['tidak_naik'] += $countTidakNaik;
+                        } else {
+                            $summary['peringatan'][] = "Wadah kelas untuk siswa tinggal kelas di {$kelasLama->nama_kelas} belum dibuat di tahun ajaran baru.";
+                        }
                     }
                 }
             });
 
             return response()->json([
                 'success' => true,
-                'message' => 'Proses kenaikan/kelulusan kelas berhasil diselesaikan',
+                'message' => 'Proses kenaikan/kelulusan massal berhasil diselesaikan',
                 'detail'  => $summary
             ], Response::HTTP_OK);
 
@@ -89,7 +130,7 @@ class KenaikanKelasController extends Controller
             Log::error('Kenaikan Kelas Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memproses kenaikan kelas',
+                'message' => 'Gagal memproses perubahan data siswa',
                 'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }

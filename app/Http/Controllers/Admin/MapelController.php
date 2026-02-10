@@ -103,7 +103,7 @@ class MapelController extends Controller
 
     public function import(Request $request): JsonResponse
     {
-        $request->validate(['file' => 'required|mimes:xlsx,xls|max:2048']);
+        $request->validate(['file' => 'required|mimes:xlsx,xls,csv,txt|max:2048']);
 
         try {
             $access = [

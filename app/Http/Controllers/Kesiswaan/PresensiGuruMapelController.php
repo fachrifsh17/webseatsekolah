@@ -3,14 +3,13 @@
 namespace App\Http\Controllers\Kesiswaan;
 
 use App\Http\Controllers\Controller;
-use App\Models\PresensiGuruMapel;
-use App\Models\GuruMapel;
+use App\Models\{PresensiGuruMapel, GuruMapel, TahunAjaran, Kelas};
 use App\Http\Resources\PresensiGuruMapelResource;
 use App\Exports\PresensiGuruMapelExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\{DB, Log};
 use Symfony\Component\HttpFoundation\Response;
 use Carbon\Carbon;
 use Throwable;
@@ -23,14 +22,32 @@ class PresensiGuruMapelController extends Controller
         $this->middleware('log.admin')->only(['update']);
     }
 
+    private function determineYear($ta, $bulan)
+    {
+        $namaTA = str_replace([' Ganjil', ' Genap'], '', $ta->nama);
+        $parts = explode('/', $namaTA);
+        $tahunAwal = (int) $parts[0];
+        $tahunAkhir = isset($parts[1]) ? (int) $parts[1] : $tahunAwal;
+
+        if ($ta->semester === 'Ganjil') {
+            return ($bulan >= 1 && $bulan <= 6) ? $tahunAkhir : $tahunAwal;
+        } else {
+            return ($bulan >= 7 && $bulan <= 12) ? $tahunAwal : $tahunAkhir;
+        }
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = PresensiGuruMapel::with([
-            'presensiSiswaDetail.siswa', 
             'guruMapel.guru', 
-            'mataPelajaran', 
-            'kelas'
-        ])->whereHas('mataPelajaran', function ($q) {
+            'guruMapel.mapel', 
+            'guruMapel.jamMulai',
+            'guruMapel.jamSelesai',
+            'jamMasuk', // Memuat relasi jam agar tidak kosong
+            'jamKeluar', 
+            'kelas',
+            'tahunAjaran'
+        ])->whereHas('guruMapel.mapel', function ($q) {
             $q->where('is_active', 1);
         });
 
@@ -66,8 +83,13 @@ class PresensiGuruMapelController extends Controller
         $presensi = PresensiGuruMapel::with([
             'presensiSiswaDetail.siswa',
             'guruMapel.guru',
-            'mataPelajaran',
-            'kelas'
+            'guruMapel.mapel',
+            'guruMapel.jamMulai',
+            'guruMapel.jamSelesai',
+            'jamMasuk',
+            'jamKeluar',
+            'kelas',
+            'tahunAjaran'
         ])->findOrFail($id);
 
         return response()->json([
@@ -98,7 +120,17 @@ class PresensiGuruMapelController extends Controller
                     }
                 }
 
-                return $presensi->load(['presensiSiswaDetail.siswa', 'guruMapel.guru', 'mataPelajaran', 'kelas']);
+                return $presensi->fresh()->load([
+                    'presensiSiswaDetail.siswa', 
+                    'guruMapel.guru', 
+                    'guruMapel.mapel', 
+                    'guruMapel.jamMulai', 
+                    'guruMapel.jamSelesai',
+                    'jamMasuk',
+                    'jamKeluar',
+                    'kelas',
+                    'tahunAjaran'
+                ]);
             });
 
             return response()->json([
@@ -108,6 +140,7 @@ class PresensiGuruMapelController extends Controller
             ], Response::HTTP_OK);
 
         } catch (Throwable $e) {
+            Log::error('Kesiswaan Update Jurnal Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui data.'
@@ -131,6 +164,7 @@ class PresensiGuruMapelController extends Controller
             ->toArray();
 
         $data = $jadwal->map(function($j) use ($sudahAbsen) {
+            // Ambil dari jam_ke tabel JamPelajaran
             $mulai = $j->jamMulai?->jam_ke;
             $selesai = $j->jamSelesai?->jam_ke;
 
@@ -139,7 +173,7 @@ class PresensiGuruMapelController extends Controller
                 'nama_guru' => $j->guru?->nama,
                 'mata_pelajaran' => $j->mapel?->nama_mapel,
                 'kelas' => $j->kelas?->nama_kelas,
-                'jam' => ($mulai && $selesai) ? "Jam Ke $mulai - $selesai" : "-",
+                'jam' => ($mulai && $selesai) ? "Jam Ke $mulai - $selesai" : ($mulai ? "Jam Ke $mulai" : "-"),
                 'status' => in_array($j->id, $sudahAbsen) ? 'Sudah Absen' : 'Belum Absen'
             ];
         });
@@ -149,39 +183,35 @@ class PresensiGuruMapelController extends Controller
 
     public function export(Request $request)
     {
-        $bulan = $request->query('bulan', date('m'));
-        $tahun = $request->query('tahun', date('Y'));
-        $kelasId = $request->query('kelas_id');
-        $guruStafId = $request->query('guru_staf_id');
-
-        if (!$kelasId) {
+        if (!$request->filled('kelas_id')) {
             return response()->json(['success' => false, 'message' => 'Pilih kelas terlebih dahulu.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $query = PresensiGuruMapel::with([
-            'presensiSiswaDetail.siswa', 
-            'guruMapel.guru', 
-            'mataPelajaran', 
-            'kelas'
-        ])
-        ->whereHas('mataPelajaran', function ($q) {
+        $ta = $request->filled('tahun_ajaran_id') 
+            ? TahunAjaran::find($request->tahun_ajaran_id) 
+            : TahunAjaran::where('is_active', true)->first();
+
+        $bulan = (int) $request->get('bulan', date('m'));
+        $tahun = $ta ? $this->determineYear($ta, $bulan) : date('Y');
+
+        $query = PresensiGuruMapel::query()->whereHas('guruMapel.mapel', function ($q) {
             $q->where('is_active', 1);
         })
         ->whereMonth('tanggal', $bulan)
         ->whereYear('tanggal', $tahun)
-        ->where('kelas_id', $kelasId);
+        ->where('kelas_id', $request->kelas_id);
 
-        if ($guruStafId) {
-            $query->whereHas('guruMapel', fn($q) => $q->where('guru_staf_id', $guruStafId));
+        if ($request->filled('guru_staf_id')) {
+            $query->whereHas('guruMapel', fn($q) => $q->where('guru_staf_id', $request->guru_staf_id));
         }
 
-        $namaKelas = DB::table('kelas')->where('id', $kelasId)->value('nama_kelas') ?? $kelasId;
-        $taAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
-        $taData = DB::table('tahun_ajaran')->where('id', $request->query('tahun_ajaran_id') ?? $taAktif?->id)->first();
-        
+        $namaKelas = Kelas::where('id', $request->kelas_id)->value('nama_kelas') ?? 'Unknown';
         $profil = DB::table('profil_sekolah')->first();
         $kontak = DB::table('data_kontak')->first();
-        $guruTarget = $guruStafId ? DB::table('guru_staf')->where('id', $guruStafId)->first() : null;
+        $guruTarget = $request->filled('guru_staf_id') ? DB::table('guru_staf')->where('id', $request->guru_staf_id)->first() : null;
+
+        $taLabel = $ta ? ($ta->nama . " (" . $ta->semester . ")") : '-';
+        $filename = "Rekap_Kesiswaan_Kelas_{$namaKelas}_Bulan_{$bulan}_{$tahun}.xlsx";
 
         return Excel::download(
             new PresensiGuruMapelExport(
@@ -193,12 +223,12 @@ class PresensiGuruMapelController extends Controller
                     'nama' => $guruTarget->nama ?? 'Semua Guru', 
                     'nip' => $guruTarget->nip ?? '-'
                 ],
-                $taData ? $taData->nama . " (" . $taData->semester . ")" : '-',
+                $taLabel,
                 true, 
                 $bulan,
                 $tahun
             ),
-            "Rekap_Kesiswaan_Kelas_{$namaKelas}_Bulan_{$bulan}_{$tahun}.xlsx"
+            $filename
         );
     }
 }

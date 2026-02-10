@@ -24,24 +24,18 @@ class UpdateKurikulumRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'judul.required' => 'Judul kurikulum wajib diisi.',
-            'judul.string'   => 'Judul kurikulum harus berupa teks.',
-            'judul.max'      => 'Judul kurikulum tidak boleh lebih dari 255 karakter.',
-            'penjelasan_kurikulum.string' => 'Penjelasan kurikulum harus berupa teks.',
-            'file_jadwal.file'  => 'File jadwal harus berupa file.',
+            'judul.required'    => 'Judul kurikulum wajib diisi.',
             'file_jadwal.mimes' => 'Format file hanya boleh PDF, JPG, JPEG, PNG, atau WEBP.',
             'file_jadwal.max'   => 'Ukuran file maksimal 5MB.',
-            'is_active.boolean' => 'Status aktif harus bernilai true atau false.',
         ];
     }
 
-    public function attributes(): array
+    protected function prepareForValidation()
     {
-        return [
-            'judul'                => 'Judul kurikulum',
-            'penjelasan_kurikulum' => 'Penjelasan kurikulum',
-            'file_jadwal'          => 'File jadwal kurikulum',
-            'is_active'            => 'Status aktif',
-        ];
+        if ($this->has('is_active')) {
+            $this->merge([
+                'is_active' => filter_var($this->is_active, FILTER_VALIDATE_BOOLEAN),
+            ]);
+        }
     }
 }

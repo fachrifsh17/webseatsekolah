@@ -3,71 +3,82 @@
 namespace App\Imports;
 
 use App\Models\GuruMapel;
+use App\Models\GuruStaf;
+use App\Models\MataPelajaran;
+use App\Models\Kelas;
 use App\Models\TahunAjaran;
+use App\Models\JamSekolah;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
-use Maatwebsite\Excel\Concerns\WithValidation;
 use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
-use Illuminate\Validation\Rule; // Tambahkan ini untuk rule custom
 
-class GuruMapelImport implements ToModel, WithHeadingRow, WithValidation, SkipsEmptyRows
+class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
 {
+    public array $importMessages = [];
+    private int $rows = 0;
+
     public function model(array $row)
     {
-        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
-        $tahunAjaranId = $row['id_tahun_ajaran'] ?? ($tahunAktif ? $tahunAktif->id : null);
+        $this->rows++;
 
-        // Pengecekan duplikasi data sebelum insert
-        $exists = GuruMapel::where([
-            'guru_staf_id'      => $row['id_guru'],
-            'mata_pelajaran_id' => $row['id_mapel'],
-            'kelas_id'          => $row['id_kelas'],
-            'tahun_ajaran_id'   => $tahunAjaranId,
-            'hari'              => $row['hari'],
-            'jam_mulai_id'      => $row['id_jam_mulai'],
+        $guru = GuruStaf::where('nama', 'LIKE', '%' . $row['guru'] . '%')
+            ->orWhere('nip', $row['guru'])
+            ->first();
+
+        $mapel = MataPelajaran::where('nama_mapel', 'LIKE', '%' . $row['mapel'] . '%')->first();
+        $kelas = Kelas::where('nama_kelas', 'LIKE', '%' . $row['kelas'] . '%')->first();
+        $jamMulai = JamSekolah::where('jam_ke', $row['jam_ke_mulai'])->first();
+        $jamSelesai = JamSekolah::where('jam_ke', $row['jam_ke_selesai'])->first();
+        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
+
+        // 1. Validasi Keberadaan Data (Master Data)
+        if (!$tahunAktif) {
+            $this->importMessages[] = "Baris {$this->rows}: Tidak ada Tahun Ajaran yang aktif.";
+            return null;
+        }
+        if (!$guru) {
+            $this->importMessages[] = "Baris {$this->rows}: Guru '{$row['guru']}' tidak ditemukan.";
+            return null;
+        }
+        if (!$mapel) {
+            $this->importMessages[] = "Baris {$this->rows}: Mapel '{$row['mapel']}' tidak ditemukan.";
+            return null;
+        }
+        if (!$kelas) {
+            $this->importMessages[] = "Baris {$this->rows}: Kelas '{$row['kelas']}' tidak ditemukan.";
+            return null;
+        }
+        if (!$jamMulai || !$jamSelesai) {
+            $this->importMessages[] = "Baris {$this->rows}: Jam ke-{$row['jam_ke_mulai']} atau ke-{$row['jam_ke_selesai']} tidak ditemukan.";
+            return null;
+        }
+
+        // 2. Cek Bentrok Jadwal
+        $isBentrok = GuruMapel::where([
+            'guru_staf_id'    => $guru->id,
+            'tahun_ajaran_id' => $tahunAktif->id,
+            'hari'            => trim($row['hari']),
+            'jam_mulai_id'    => $jamMulai->id,
         ])->exists();
 
-        if ($exists) {
+        if ($isBentrok) {
+            $this->importMessages[] = "Baris {$this->rows}: Jadwal guru '{$guru->nama}' hari {$row['hari']} jam ke-{$row['jam_ke_mulai']} sudah terdaftar (Bentrok).";
             return null;
         }
 
         return new GuruMapel([
-            'guru_staf_id'      => $row['id_guru'],
-            'mata_pelajaran_id' => $row['id_mapel'],
-            'kelas_id'          => $row['id_kelas'],
-            'tahun_ajaran_id'   => $tahunAjaranId,
-            'hari'              => $row['hari'],
-            'jam_mulai_id'      => $row['id_jam_mulai'],
-            'jam_selesai_id'    => $row['id_jam_selesai'],
+            'guru_staf_id'      => $guru->id,
+            'mata_pelajaran_id' => $mapel->id,
+            'kelas_id'          => $kelas->id,
+            'tahun_ajaran_id'   => $tahunAktif->id,
+            'hari'              => trim($row['hari']),
+            'jam_mulai_id'      => $jamMulai->id,
+            'jam_selesai_id'    => $jamSelesai->id,
         ]);
     }
 
-    public function rules(): array
+    public function getMessages(): array
     {
-        return [
-            'id_guru'  => 'required|exists:guru_staf,id',
-            
-            'id_mapel' => [
-                'required',
-                Rule::exists('mata_pelajarans', 'id')->where(function ($query) {
-                    $query->where('is_active', 1);
-                }),
-            ],
-
-            'id_kelas'        => 'required|exists:kelas,id',
-            'hari'            => 'required|string',
-            'id_jam_mulai'    => 'required|exists:jam_sekolahs,id',
-            'id_jam_selesai'  => 'required|exists:jam_sekolahs,id',
-            'id_tahun_ajaran' => 'nullable|exists:tahun_ajarans,id',
-        ];
-    }
-
-    public function customValidationMessages()
-    {
-        return [
-            'id_mapel.exists' => 'Mata pelajaran tidak ditemukan atau sudah tidak aktif.',
-            '*.exists'        => 'Data ID (:attribute) tidak ditemukan di database.',
-            'required'        => 'Kolom :attribute wajib diisi.',
-        ];
+        return $this->importMessages;
     }
 }

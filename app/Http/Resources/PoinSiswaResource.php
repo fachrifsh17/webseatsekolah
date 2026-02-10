@@ -16,6 +16,7 @@ class PoinSiswaResource extends JsonResource
                 'id'   => $this->siswa_id,
                 'nama' => $this->siswa?->nama_lengkap ?? $this->siswa?->nama,
                 'nis'  => $this->siswa?->nis,
+                'kelas'=> $this->siswa?->kelas?->nama_kelas,
             ],
             'guru_pelapor' => [
                 'id'   => $this->guru_staf_id,
@@ -25,7 +26,13 @@ class PoinSiswaResource extends JsonResource
             'indikator'    => $this->indikator,
             'poin_positif' => (int) ($this->poin_positif ?? 0),
             'poin_negatif' => (int) ($this->poin_negatif ?? 0),
-            'total_poin'   => (int) (($this->poin_positif ?? 0) - ($this->poin_negatif ?? 0)),
+            
+            // Field baru untuk akumulasi dari kelas 10-12
+            'total_kumulatif_positif' => (int) ($this->total_kumulatif_positif ?? 0),
+            'total_kumulatif_negatif' => (int) ($this->total_kumulatif_negatif ?? 0),
+            
+            // Poin bersih pada baris transaksi ini
+            'total_poin_transaksi'   => (int) (($this->poin_positif ?? 0) - ($this->poin_negatif ?? 0)),
 
             'tanggal'      => $this->tanggal instanceof Carbon
                 ? $this->tanggal->format('d-m-Y')

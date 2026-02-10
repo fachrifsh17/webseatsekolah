@@ -10,6 +10,17 @@ class PresensiGuruMapelPolicy
 {
     use HandlesAuthorization;
 
+    /**
+     * Jalankan sebelum pengecekan lainnya.
+     * Memberikan akses penuh kepada Admin secara otomatis.
+     */
+    public function before(User $user, $ability)
+    {
+        if ($this->isAdmin($user)) {
+            return true;
+        }
+    }
+
     private function getGuruId(User $user)
     {
         return $user->guru?->id ?? $user->guruStaf?->id;
@@ -17,81 +28,65 @@ class PresensiGuruMapelPolicy
 
     private function isAdmin(User $user): bool
     {
-        return method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('Admin') || $user->hasRole('ADMIN'));
+        // Pengecekan multi-case untuk fleksibilitas role name
+        return method_exists($user, 'hasRole') && 
+               ($user->hasRole('Admin') || $user->hasRole('admin') || $user->hasRole('ADMIN'));
     }
 
-    private function isWakaKesiswaan(User $user): bool
+    private function isManagement(User $user): bool
     {
         $jabatanUser = $user->guruStaf?->strukturJabatan ?? collect();
         return $jabatanUser->contains(function ($sj) {
-            $namaJabatan = strtolower($sj->jabatan?->nama_jabatan ?? '');
-            return $namaJabatan === 'waka kesiswaan' || $namaJabatan === 'kesiswaan';
-        });
-    }
-
-    private function isKepalaSekolah(User $user): bool
-    {
-        $jabatanUser = $user->guruStaf?->strukturJabatan ?? collect();
-        return $jabatanUser->contains(function ($sj) {
-            return strtolower($sj->jabatan?->nama_jabatan ?? '') === 'kepala sekolah';
+            $nama = strtolower($sj->jabatan?->nama_jabatan ?? '');
+            return in_array($nama, ['waka kesiswaan', 'kesiswaan', 'kepala sekolah']);
         });
     }
 
     public function viewAny(User $user): bool
     {
+        // Semua user terautentikasi bisa melihat daftar (index)
         return true;
     }
 
     public function view(User $user, PresensiGuruMapel $presensi): bool
     {
-        // Admin, Kesiswaan, dan Kepsek bisa melihat semua data presensi
-        if ($this->isAdmin($user) || $this->isWakaKesiswaan($user) || $this->isKepalaSekolah($user)) {
+        // Management (Kepsek/Waka) bisa melihat detail semua presensi
+        if ($this->isManagement($user)) {
             return true;
         }
 
+        // Guru hanya bisa melihat presensi yang dia buat sendiri
         $guruId = $this->getGuruId($user);
         return $presensi->guruMapel?->guru_staf_id === $guruId;
     }
 
     public function create(User $user): bool
     {
-        // Kesiswaan dan Kepsek TIDAK BISA input (create)
-        if ($this->isWakaKesiswaan($user) || $this->isKepalaSekolah($user)) {
+        // Management tidak boleh input presensi (hanya Guru & Admin)
+        if ($this->isManagement($user)) {
             return false;
         }
 
-        // Admin bisa input
-        if ($this->isAdmin($user)) {
-            return true;
-        }
-
-        // Guru bisa input jika memiliki ID Guru
+        // Izinkan jika user terhubung ke data Guru/Staf
         return !is_null($this->getGuruId($user));
     }
 
     public function update(User $user, PresensiGuruMapel $presensi): bool
     {
-        if ($this->isAdmin($user)) {
-            return true;
-        }
-
-        // Kesiswaan hanya boleh memantau, jika ingin diizinkan update ganti ke true
-        if ($this->isWakaKesiswaan($user)) {
+        // Management tidak boleh edit
+        if ($this->isManagement($user)) {
             return false; 
         }
 
-        if ($this->isKepalaSekolah($user)) {
-            return false;
-        }
-
+        // Guru hanya boleh edit miliknya sendiri
         $guruId = $this->getGuruId($user);
         return $presensi->guruMapel?->guru_staf_id === $guruId;
     }
 
     public function delete(User $user, PresensiGuruMapel $presensi): bool
     {
-        // Hanya Admin yang bisa menghapus
-        // Kesiswaan, Kepsek, dan Guru tidak bisa hapus
-        return $this->isAdmin($user);
+        // Secara eksplisit mengembalikan false untuk non-admin
+        // Admin tetap bisa menghapus karena sudah ditangani oleh fungsi before()
+        return false;
     }
 }

@@ -20,13 +20,13 @@ class TahunAjaran extends Model
         'id',
         'nama',
         'semester',
-        'kurikulum_id', // Tambahkan ini
+        'kurikulum_id',
         'is_active'
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
-        'kurikulum_id' => 'integer', // Pastikan dicast ke integer
+        'kurikulum_id' => 'integer',
     ];
 
     protected static function boot()
@@ -42,7 +42,6 @@ class TahunAjaran extends Model
         });
     }
 
-    // --- Tambahkan Relasi ke Kurikulum ---
     public function kurikulum(): BelongsTo
     {
         return $this->belongsTo(Kurikulum::class, 'kurikulum_id');
@@ -56,6 +55,11 @@ class TahunAjaran extends Model
     public function presensi(): HasMany
     {
         return $this->hasMany(Presensi::class, 'tahun_ajaran_id');
+    }
+
+    public function presensiGuruMapel(): HasMany
+    {
+        return $this->hasMany(PresensiGuruMapel::class, 'tahun_ajaran_id');
     }
 
     public function poinSiswa(): HasMany

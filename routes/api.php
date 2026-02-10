@@ -111,7 +111,8 @@ use App\Http\Controllers\Guru\{
     PresensiController as GuruPresensi,
     DashboardController as GuruDashboard,
     PresensiGuruMapelController as GuruPresensiMapel,
-    PoinSiswaController as GuruPoin
+    PoinSiswaController as GuruPoin,
+    JamSekolahController as GuruJamSekolah
 };
 
 // --- Siswa ---
@@ -234,6 +235,7 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::apiResource('jadwal-produktif', JadwalProduktifController::class);
     
     Route::get('presensi/export', [AdminPresensi::class, 'export']); 
+    Route::get('list-kelas', [AdminPresensi::class, 'listKelas']);
     Route::apiResource('presensi', AdminPresensi::class); 
     
     Route::get('presensi-guru-mapel/export', [PresensiGuruMapelController::class, 'export']); 
@@ -271,6 +273,8 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
     Route::get('dashboard', [GuruDashboard::class, 'index']);
     Route::get('poin-siswa', [GuruPoin::class, 'index']); 
     Route::post('poin-siswa', [GuruPoin::class, 'store']); 
+    Route::get('jam-sekolah', [GuruJamSekolah::class, 'index']);
+    Route::get('jam-sekolah/export', [GuruJamSekolah::class, 'export']);
 
     // --- Jabatan: Waka Kurikulum ---
     Route::middleware(['jabatan:Waka Kurikulum'])->prefix('kurikulum')->group(function () {
@@ -313,6 +317,7 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
 
         // Presensi Harian Siswa
         Route::get('presensi/export', [KesiswaanPresensi::class, 'export']); 
+        Route::get('presensi/list-kelas', [KesiswaanPresensi::class, 'getKelas']);
         Route::get('presensi', [KesiswaanPresensi::class, 'index']);
         Route::get('presensi/{id}', [KesiswaanPresensi::class, 'show']);
         Route::put('presensi/{id}', [KesiswaanPresensi::class, 'update']); 

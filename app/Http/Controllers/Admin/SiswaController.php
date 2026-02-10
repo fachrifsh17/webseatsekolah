@@ -42,8 +42,10 @@ class SiswaController extends Controller
             $query->where('kelas_id', $request->kelas_id);
         }
 
-        if ($request->filled('is_active')) {
+        if ($request->has('is_active')) {
             $query->where('is_active', $request->is_active);
+        } else {
+            $query->where('is_active', 1);
         }
 
         if ($request->filled('search')) {
@@ -66,7 +68,7 @@ class SiswaController extends Controller
         $query = Siswa::with(['user', 'kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
 
-        $perPage = $request->filled('search') ? 10 : 20;
+        $perPage = $request->get('per_page', $request->filled('search') ? 10 : 20);
         $data = $query->latest()->paginate($perPage);
 
         return response()->json([
@@ -101,9 +103,8 @@ class SiswaController extends Controller
             }
         }
 
-        if ($request->filled('is_active')) {
-            $filename .= $request->is_active ? '_aktif' : '_tidak_aktif';
-        }
+        $is_active = $request->has('is_active') ? $request->is_active : 1;
+        $filename .= $is_active ? '_aktif' : '_tidak_aktif';
 
         $filename .= '_' . now()->format('Ymd_His') . '.xlsx';
 
@@ -123,17 +124,23 @@ class SiswaController extends Controller
         ]);
 
         try {
-            Excel::import(new SiswaImport, $request->file('file'));
+            $import = new SiswaImport;
+            Excel::import($import, $request->file('file'));
+            $conflicts = $import->getMessages();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data siswa berhasil diimport'
+                'message' => count($conflicts) > 0 
+                            ? 'Import selesai dengan beberapa catatan' 
+                            : 'Data siswa berhasil diimport',
+                'conflicts' => $conflicts
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error("Import Siswa Error: " . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal mengimport data: ' . $e->getMessage()
+                'message' => 'Gagal mengimport data',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

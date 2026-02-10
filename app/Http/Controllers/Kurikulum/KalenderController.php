@@ -18,6 +18,8 @@ class KalenderController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
+        // Sesuaikan role jika diperlukan, misal: Kurikulum juga bisa akses
+        $this->middleware('role:Admin,Kurikulum');
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
@@ -25,7 +27,8 @@ class KalenderController extends Controller
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-            $data = KalenderAkademik::orderBy('tanggal_mulai')->paginate($perPage);
+            // Mengurutkan dari yang terbaru berdasarkan tanggal mulai
+            $data = KalenderAkademik::orderBy('tanggal_mulai', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -38,7 +41,7 @@ class KalenderController extends Controller
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch kalender akademik list', ['error' => $e->getMessage()]);
+            Log::error('Kurikulum Kalender Index Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar kalender akademik',
@@ -55,10 +58,7 @@ class KalenderController extends Controller
                 'data'    => new KalenderAkademikResource($kalender),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch kalender akademik detail', [
-                'kalender_id' => (string) $kalender->id,
-                'error'       => $e->getMessage()
-            ]);
+            Log::error('Kurikulum Kalender Show Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil detail kalender akademik',
@@ -71,6 +71,19 @@ class KalenderController extends Controller
     {
         $validated = $request->validated();
 
+        // Cek apakah kegiatan yang sama sudah terdaftar di tanggal mulai yang sama
+        $isDuplicate = KalenderAkademik::where('kegiatan', $validated['kegiatan'])
+            ->where('tanggal_mulai', $validated['tanggal_mulai'])
+            ->exists();
+
+        if ($isDuplicate) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kegiatan serupa sudah terdaftar pada tanggal tersebut.',
+                'errors'  => ['conflict' => ['Data duplikat terdeteksi.']]
+            ], Response::HTTP_CONFLICT);
+        }
+
         DB::beginTransaction();
         try {
             $item = KalenderAkademik::create($validated);
@@ -78,12 +91,12 @@ class KalenderController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Kalender akademik berhasil ditambahkan.',
+                'message' => 'Kalender akademik berhasil ditambahkan oleh Kurikulum.',
                 'data'    => new KalenderAkademikResource($item),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to create kalender akademik', ['payload' => $validated, 'error' => $e->getMessage()]);
+            Log::error('Kurikulum Kalender Store Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menambahkan kalender akademik',
@@ -95,6 +108,24 @@ class KalenderController extends Controller
     public function update(UpdateKalenderAkademikRequest $request, KalenderAkademik $kalender): JsonResponse
     {
         $validated = $request->validated();
+
+        // Ambil nilai lama jika tidak ada di input update
+        $kegiatan = $validated['kegiatan'] ?? $kalender->kegiatan;
+        $tanggalMulai = $validated['tanggal_mulai'] ?? $kalender->tanggal_mulai;
+
+        // Cek duplikasi kecuali untuk ID yang sedang diupdate
+        $isDuplicate = KalenderAkademik::where('id', '!=', $kalender->id)
+            ->where('kegiatan', $kegiatan)
+            ->where('tanggal_mulai', $tanggalMulai)
+            ->exists();
+
+        if ($isDuplicate) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Perubahan gagal: Nama kegiatan sudah ada di tanggal tersebut.',
+                'errors'  => ['conflict' => ['Data duplikat terdeteksi.']]
+            ], Response::HTTP_CONFLICT);
+        }
 
         DB::beginTransaction();
         try {
@@ -108,11 +139,7 @@ class KalenderController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to update kalender akademik', [
-                'kalender_id' => (string) $kalender->id,
-                'payload'     => $validated,
-                'error'       => $e->getMessage()
-            ]);
+            Log::error('Kurikulum Kalender Update Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui kalender akademik',
@@ -129,21 +156,16 @@ class KalenderController extends Controller
             DB::commit();
 
             return response()->json([
-                'success'      => true,
-                'message'      => 'Kalender akademik berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
+                'success' => true,
+                'message' => 'Kalender akademik berhasil dihapus'
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to delete kalender akademik', [
-                'kalender_id' => (string) $kalender->id,
-                'error'       => $e->getMessage()
-            ]);
+            Log::error('Kurikulum Kalender Delete Error: ' . $e->getMessage());
             return response()->json([
-                'success'      => false,
-                'message'      => 'Gagal menghapus kalender akademik',
-                'notification' => 'Gagal dihapus',
-                'errors'       => ['exception' => [$e->getMessage()]]
+                'success' => false,
+                'message' => 'Gagal menghapus kalender akademik',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

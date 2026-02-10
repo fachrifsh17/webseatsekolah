@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateKalenderAkademikRequest extends FormRequest
 {
@@ -13,8 +14,18 @@ class UpdateKalenderAkademikRequest extends FormRequest
 
     public function rules(): array
     {
+        $kalenderId = $this->route('kalender')->id;
+
         return [
-            'kegiatan'        => ['required', 'string', 'max:255'],
+            'kegiatan' => [
+                'required', 
+                'string', 
+                'max:255',
+             
+                Rule::unique('kalender_akademik')->where(function ($query) {
+                    return $query->where('tanggal_mulai', $this->tanggal_mulai);
+                })->ignore($kalenderId)
+            ],
             'tanggal_mulai'   => ['required', 'date'],
             'tanggal_selesai' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
             'kategori'        => ['required', 'in:Ujian,Libur,Hari Efektif,Akademik'],
@@ -25,17 +36,12 @@ class UpdateKalenderAkademikRequest extends FormRequest
     {
         return [
             'kegiatan.required'        => 'Nama kegiatan wajib diisi.',
-            'kegiatan.string'          => 'Nama kegiatan harus berupa teks.',
-            'kegiatan.max'             => 'Nama kegiatan tidak boleh lebih dari 255 karakter.',
-
+            'kegiatan.unique'          => 'Kegiatan dengan nama yang sama sudah ada di tanggal mulai tersebut.',
+            'kegiatan.max'             => 'Nama kegiatan maksimal 255 karakter.',
             'tanggal_mulai.required'   => 'Tanggal mulai wajib diisi.',
-            'tanggal_mulai.date'       => 'Tanggal mulai harus berupa tanggal yang valid.',
-
-            'tanggal_selesai.date'     => 'Tanggal selesai harus berupa tanggal yang valid.',
-            'tanggal_selesai.after_or_equal' => 'Tanggal selesai harus sama atau setelah tanggal mulai.',
-
+            'tanggal_selesai.after_or_equal' => 'Tanggal selesai tidak boleh sebelum tanggal mulai.',
             'kategori.required'        => 'Kategori kegiatan wajib dipilih.',
-            'kategori.in'              => 'Kategori harus salah satu dari: Ujian, Libur, Hari Efektif, Akademik.',
+            'kategori.in'              => 'Kategori tidak valid.',
         ];
     }
 

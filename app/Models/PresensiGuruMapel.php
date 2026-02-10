@@ -14,10 +14,16 @@ class PresensiGuruMapel extends Model
         'guru_mapel_id',
         'kelas_id',
         'mata_pelajaran_id',
+        'tahun_ajaran_id',
         'tanggal',
         'jam_masuk',
         'jam_keluar',
         'materi',
+    ];
+
+    protected $casts = [
+        'tahun_ajaran_id' => 'string',
+        'tanggal' => 'date',
     ];
 
     public function guruMapel(): BelongsTo
@@ -33,6 +39,11 @@ class PresensiGuruMapel extends Model
     public function mataPelajaran(): BelongsTo
     {
         return $this->belongsTo(MataPelajaran::class, 'mata_pelajaran_id', 'id');
+    }
+
+    public function tahunAjaran(): BelongsTo
+    {
+        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id', 'id');
     }
 
     public function jamMasukDetail(): BelongsTo

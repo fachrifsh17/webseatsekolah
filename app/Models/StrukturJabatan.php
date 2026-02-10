@@ -24,14 +24,19 @@ class StrukturJabatan extends Model
         'periode_mulai' => 'date',
     ];
 
-    public function guruStaf(): BelongsTo
+    public function guru(): BelongsTo // Mengubah nama method agar sinkron dengan Controller (->with('guru'))
     {
-        return $this->belongsTo(GuruStaf::class, 'guru_staf_id');
+        return $this->belongsTo(GuruStaf::class, 'guru_staf_id', 'id');
     }
 
     public function jabatan(): BelongsTo
     {
-        return $this->belongsTo(Jabatan::class, 'jabatan_id');
+        return $this->belongsTo(Jabatan::class, 'jabatan_id', 'id');
+    }
+
+    public function guruStaf(): BelongsTo
+    {
+        return $this->guru();
     }
 
     protected function serializeDate(\DateTimeInterface $date)

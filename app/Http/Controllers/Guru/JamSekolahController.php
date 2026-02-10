@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Siswa;
+namespace App\Http\Controllers\Guru;
 
 use App\Http\Controllers\Controller;
 use App\Models\JamSekolah;
@@ -19,7 +19,7 @@ class JamSekolahController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Siswa');
+        $this->middleware('role:Guru');
     }
 
     public function index(): JsonResponse

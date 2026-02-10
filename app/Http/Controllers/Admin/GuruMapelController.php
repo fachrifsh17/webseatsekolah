@@ -38,8 +38,6 @@ class GuruMapelController extends Controller
     {
         $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran']);
 
-        // --- FILTER STATUS AKTIF MAPEL ---
-        // Menggunakan is_active sesuai standar controller lain
         if (!$request->has('show_all')) {
             $query->whereHas('mapel', function ($q) {
                 $q->where('is_active', 1);
@@ -132,19 +130,23 @@ class GuruMapelController extends Controller
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
         try {
-            DB::transaction(function () use ($request) {
-                Excel::import(new GuruMapelImport, $request->file('file'));
-            });
+            $import = new GuruMapelImport();
+            Excel::import($import, $request->file('file'));
+            $conflicts = $import->getMessages();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data penugasan guru berhasil diimport.',
+                'message' => count($conflicts) > 0 
+                            ? 'Import selesai dengan beberapa catatan' 
+                            : 'Data penugasan guru berhasil diimport.',
+                'conflicts' => $conflicts
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Import Guru Mapel Error', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal import: ' . $e->getMessage()
+                'message' => 'Gagal import data',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -169,8 +171,6 @@ class GuruMapelController extends Controller
     {
         $validated = $request->validated();
         
-        // --- VALIDASI TAMBAHAN ---
-        // Diperbarui menggunakan is_active
         $mapel = MataPelajaran::find($validated['mata_pelajaran_id']);
         if (!$mapel || $mapel->is_active == 0) {
             return response()->json([

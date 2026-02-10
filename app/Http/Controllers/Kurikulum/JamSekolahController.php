@@ -13,7 +13,6 @@ use App\Http\Requests\UpdateJamSekolahRequest;
 use App\Exports\JamSekolahExport;
 use App\Imports\JamSekolahImport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
@@ -26,65 +25,96 @@ class JamSekolahController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'import', 'destroy']);
+        $this->middleware('role:Kurikulum');
+        $this->middleware('log.admin')->only(['update', 'store', 'import', 'destroy']);
     }
 
-    public function index(): JsonResponse
+    private function resolveTahunAjaranId(Request $request)
+    {
+        if ($request->has('tahun_ajaran_id') && !empty($request->tahun_ajaran_id)) {
+            return $request->tahun_ajaran_id;
+        }
+
+        $aktif = TahunAjaran::where('is_active', true)->first();
+        return $aktif ? $aktif->id : null;
+    }
+
+    public function index(Request $request): JsonResponse
     {
         try {
-            $data = JamSekolah::with('tahunAjaran')->orderBy('hari')->orderBy('waktu_mulai')->get();
+            $tahunAjaranId = $this->resolveTahunAjaranId($request);
+            $query = JamSekolah::with('tahunAjaran');
+
+            if ($tahunAjaranId) {
+                $query->where('tahun_ajaran_id', $tahunAjaranId);
+            }
+
+            $data = $query->orderBy('hari')
+                          ->orderBy('waktu_mulai')
+                          ->get();
+
             return response()->json([
                 'success' => true,
-                'data'    => JamSekolahResource::collection($data)
+                'data'    => JamSekolahResource::collection($data),
+                'meta'    => [
+                    'filter_tahun_ajaran_id' => $tahunAjaranId,
+                    'is_auto_selected' => !$request->has('tahun_ajaran_id')
+                ]
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil data jam sekolah.',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-    public function export()
+    public function export(Request $request)
     {
         try {
+            $tahunAjaranId = $this->resolveTahunAjaranId($request);
+            
+            if (!$tahunAjaranId) {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Tahun ajaran tidak ditentukan.'
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            $ta = TahunAjaran::find($tahunAjaranId);
+            $namaTA = $ta ? str_replace(['/', '\\', ' '], '-', $ta->nama) : date('Ymd_His');
+
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
-            $fileName = 'data_jam_sekolah_' . date('Ymd_His') . '.xlsx';
+            $fileName = 'jam_sekolah_' . $namaTA . '.xlsx';
 
-            return Excel::download(new JamSekolahExport($profil, $kontak), $fileName);
+            return Excel::download(new JamSekolahExport($profil, $kontak, $tahunAjaranId), $fileName);
         } catch (Throwable $e) {
-            Log::error('Export Jam Sekolah Error', ['error' => $e->getMessage()]);
+            Log::error('Export Error: ' . $e->getMessage());
             return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengekspor data jam sekolah.',
-                'errors'  => ['exception' => [$e->getMessage()]]
+                'success' => false, 
+                'message' => 'Gagal ekspor.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function import(Request $request): JsonResponse
     {
-        $request->validate([
-            'file' => 'required|mimes:xlsx,xls,csv|max:2048'
-        ]);
+        $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
-        DB::beginTransaction();
         try {
-            Excel::import(new JamSekolahImport, $request->file('file'));
-            DB::commit();
+            $import = new JamSekolahImport();
+            DB::transaction(fn() => Excel::import($import, $request->file('file')));
 
             return response()->json([
-                'success' => true,
-                'message' => 'Data jam sekolah berhasil diimpor.'
+                'success'   => true,
+                'message'   => 'Impor selesai.',
+                'conflicts' => $import->getMessages()
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('JamSekolah import error', ['error' => $e->getMessage()]);
             return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengimpor data: ' . $e->getMessage()
+                'success' => false, 
+                'message' => 'Gagal impor: ' . $e->getMessage()
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -92,52 +122,41 @@ class JamSekolahController extends Controller
     public function store(StoreJamSekolahRequest $request): JsonResponse
     {
         $validated = $request->validated();
-        $tahunAktif = TahunAjaran::where('is_active', true)->first();
-
-        if (!$tahunAktif) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal: Tidak ada Tahun Ajaran yang aktif.'
-            ], Response::HTTP_BAD_REQUEST);
+        
+        if (!isset($validated['tahun_ajaran_id'])) {
+            $tahunAktif = TahunAjaran::where('is_active', true)->first();
+            if (!$tahunAktif) {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Tidak ada tahun ajaran aktif.'
+                ], Response::HTTP_BAD_REQUEST);
+            }
+            $validated['tahun_ajaran_id'] = $tahunAktif->id;
         }
 
-        $validated['tahun_ajaran_id'] = $tahunAktif->id;
-
-        $exists = JamSekolah::where('tahun_ajaran_id', $tahunAktif->id)
+        $exists = JamSekolah::where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
             ->where('hari', $validated['hari'])
-            ->where('waktu_mulai', $validated['waktu_mulai'])
+            ->where('jam_ke', $validated['jam_ke'])
+            ->whereNotNull('jam_ke')
             ->exists();
 
         if ($exists) {
             return response()->json([
-                'success' => false,
-                'message' => "Gagal: Jadwal hari {$validated['hari']} pukul {$validated['waktu_mulai']} sudah ada."
+                'success' => false, 
+                'message' => 'Jadwal jam tersebut sudah ada.'
             ], Response::HTTP_CONFLICT);
         }
 
-        if ($request->hasFile('file')) {
-            $validated['file_path'] = $request->file('file')->store('jam_sekolah', 'public');
-        }
-
-        DB::beginTransaction();
         try {
-            $jamSekolah = JamSekolah::create($validated);
-            DB::commit();
-
+            $jamSekolah = DB::transaction(fn() => JamSekolah::create($validated));
             return response()->json([
-                'success' => true,
-                'message' => 'Jadwal jam sekolah berhasil dibuat.',
-                'data'    => new JamSekolahResource($jamSekolah->load('tahunAjaran'))
+                'success' => true, 
+                'data' => new JamSekolahResource($jamSekolah->load('tahunAjaran'))
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            DB::rollBack();
-            if (!empty($validated['file_path'])) {
-                Storage::disk('public')->delete($validated['file_path']);
-            }
             return response()->json([
-                'success' => false,
-                'message' => 'Gagal membuat jadwal jam sekolah.',
-                'errors'  => ['exception' => [$e->getMessage()]]
+                'success' => false, 
+                'message' => 'Gagal simpan.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -153,83 +172,48 @@ class JamSekolahController extends Controller
     public function update(UpdateJamSekolahRequest $request, JamSekolah $jamSekolah): JsonResponse
     {
         $validated = $request->validated();
-        $tahunAktif = TahunAjaran::where('is_active', true)->first();
+        $tahunId = $validated['tahun_ajaran_id'] ?? $jamSekolah->tahun_ajaran_id;
 
-        if (!$tahunAktif) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal: Tidak ada Tahun Ajaran yang aktif.'
-            ], Response::HTTP_BAD_REQUEST);
-        }
-
-        $exists = JamSekolah::where('tahun_ajaran_id', $tahunAktif->id)
+        $exists = JamSekolah::where('tahun_ajaran_id', $tahunId)
             ->where('hari', $validated['hari'] ?? $jamSekolah->hari)
-            ->where('waktu_mulai', $validated['waktu_mulai'] ?? $jamSekolah->waktu_mulai)
+            ->where('jam_ke', $validated['jam_ke'] ?? $jamSekolah->jam_ke)
+            ->whereNotNull('jam_ke')
             ->where('id', '!=', $jamSekolah->id)
             ->exists();
 
         if ($exists) {
             return response()->json([
-                'success' => false,
-                'message' => "Gagal: Jadwal di hari dan waktu tersebut sudah terdaftar."
+                'success' => false, 
+                'message' => 'Konflik jadwal terdeteksi.'
             ], Response::HTTP_CONFLICT);
         }
 
-        if ($request->hasFile('file')) {
-            $validated['file_path'] = $request->file('file')->store('jam_sekolah', 'public');
-        }
-
-        DB::beginTransaction();
         try {
-            $oldPath = $jamSekolah->file_path;
-            $jamSekolah->update($validated);
-            DB::commit();
-
-            if (!empty($validated['file_path']) && $oldPath && $validated['file_path'] !== $oldPath) {
-                Storage::disk('public')->delete($oldPath);
-            }
-
+            DB::transaction(fn() => $jamSekolah->update($validated));
             return response()->json([
-                'success' => true,
-                'message' => 'Jadwal jam sekolah berhasil diperbarui.',
-                'data'    => new JamSekolahResource($jamSekolah->load('tahunAjaran'))
+                'success' => true, 
+                'data' => new JamSekolahResource($jamSekolah->load('tahunAjaran'))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            DB::rollBack();
-            if (!empty($validated['file_path']) && $jamSekolah->file_path !== $validated['file_path']) {
-                Storage::disk('public')->delete($validated['file_path']);
-            }
-            Log::error('JamSekolah update error', ['id' => $jamSekolah->id, 'error' => $e->getMessage()]);
             return response()->json([
-                'success' => false,
-                'message' => 'Gagal memperbarui jadwal jam sekolah.',
-                'errors'  => ['exception' => [$e->getMessage()]]
+                'success' => false, 
+                'message' => 'Gagal update.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function destroy(JamSekolah $jamSekolah): JsonResponse
     {
-        DB::beginTransaction();
         try {
-            $oldPath = $jamSekolah->file_path;
-            $jamSekolah->delete();
-            DB::commit();
-
-            if ($oldPath) {
-                Storage::disk('public')->delete($oldPath);
-            }
-
+            DB::transaction(fn() => $jamSekolah->delete());
             return response()->json([
-                'success' => true,
-                'message' => 'Jadwal jam sekolah berhasil dihapus.'
+                'success' => true, 
+                'message' => 'Berhasil dihapus.'
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            DB::rollBack();
             return response()->json([
-                'success' => false,
-                'message' => 'Gagal menghapus jadwal jam sekolah.',
-                'errors'  => ['exception' => [$e->getMessage()]]
+                'success' => false, 
+                'message' => 'Gagal hapus.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

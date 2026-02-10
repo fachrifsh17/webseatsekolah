@@ -19,33 +19,39 @@ use App\Models\TahunAjaran;
 
 class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings
 {
-    protected $namaKelas, $labelWaktu, $profil, $kontak, $dataKelas, $daysInMonth, $year, $month, $role, $tahunAjaran, $hariLiburNasional, $taActive;
+    protected $namaKelas, $labelWaktu, $profil, $kontak, $dataKelas, $daysInMonth, $year, $month, $role, $tahunAjaran, $hariLiburNasional, $selectedTa;
     private $rowNumber = 0;
 
-    public function __construct($query, $namaKelas, $labelWaktu, $profil, $kontak, $dataKelas, $role = 'walikelas', $tahunAjaran = '-')
+    public function __construct($query, $namaKelas, $labelWaktu, $profil, $kontak, $dataKelas, $role = 'walikelas', $tahunAjaranNama = '-')
     {
-        $this->taActive = TahunAjaran::where('is_active', true)->first();
         $this->namaKelas = $namaKelas;
         $this->labelWaktu = $labelWaktu;
         $this->profil = $profil;
         $this->kontak = $kontak;
         $this->dataKelas = $dataKelas;
         $this->role = $role;
-        $this->tahunAjaran = $tahunAjaran;
+        $this->tahunAjaran = $tahunAjaranNama;
+
+        $this->selectedTa = TahunAjaran::where('nama', $tahunAjaranNama)->first();
 
         if (str_contains($this->labelWaktu, 'Bulan-')) {
             $parts = explode('-', $this->labelWaktu);
             $this->month = (int)$parts[1];
-            $this->year = (int)$parts[2];
+            $this->year = isset($parts[3]) ? (int)$parts[3] : (int)date('Y');
+
             $this->daysInMonth = Carbon::create($this->year, $this->month)->daysInMonth;
 
             $this->hariLiburNasional = DB::table('kalender_akademik')
                 ->where('kategori', 'Libur')
                 ->where(function($q) {
-                    $q->whereMonth('tanggal_mulai', $this->month)
-                      ->orWhereMonth('tanggal_selesai', $this->month);
+                    $q->where(function($sq) {
+                        $sq->whereMonth('tanggal_mulai', $this->month)
+                           ->whereYear('tanggal_mulai', $this->year);
+                    })->orWhere(function($sq) {
+                        $sq->whereMonth('tanggal_selesai', $this->month)
+                           ->whereYear('tanggal_selesai', $this->year);
+                    });
                 })
-                ->whereYear('tanggal_mulai', $this->year)
                 ->get();
         } else {
             $this->daysInMonth = 0;
@@ -61,9 +67,12 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
             ->where('kelas_id', $this->dataKelas->id)
             ->where('is_active', true)
             ->with(['presensi' => function($q) {
-                $q->where('tahun_ajaran_id', $this->taActive?->id);
+                if ($this->selectedTa) {
+                    $q->where('tahun_ajaran_id', $this->selectedTa->id);
+                }
                 if ($this->daysInMonth > 0) {
-                    $q->whereMonth('tanggal', $this->month)->whereYear('tanggal', $this->year);
+                    $q->whereMonth('tanggal', $this->month)
+                      ->whereYear('tanggal', $this->year);
                 }
             }])
             ->orderBy('nama_lengkap', 'asc');
@@ -127,9 +136,10 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
         
         if ($this->daysInMonth > 0) {
             $sheet->getColumnDimension('B')->setAutoSize(true);
-            for ($i = 3; $i <= ($this->daysInMonth + 6); $i++) {
+            $totalCols = $this->daysInMonth + 6;
+            for ($i = 3; $i <= $totalCols; $i++) {
                 $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
-                $sheet->getColumnDimension($col)->setWidth(3);
+                $sheet->getColumnDimension($col)->setWidth(3.5);
                 $sheet->getStyle("{$col}11:{$col}{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             }
         }
@@ -146,8 +156,13 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
-                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', ($this->kontak->alamat_lengkap ?? '') . " | Telp: " . ($this->kontak->telepon ?? ''));
-                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "Email: " . ($this->kontak->email_resmi ?? '') . " | NPSN: " . ($this->profil->npsn ?? '-'));
+                
+                $alamat = $this->kontak->alamat ?? $this->kontak->alamat_lengkap ?? '';
+                $telepon = $this->kontak->telepon ?? $this->kontak->no_telp ?? '';
+                $email = $this->kontak->email ?? $this->kontak->email_resmi ?? '';
+
+                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', $alamat . " | Telp: " . $telepon);
+                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "Email: " . $email . " | NPSN: " . ($this->profil->npsn ?? '-'));
                 $sheet->getStyle("A5:{$lastCol}5")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
                 $sheet->getStyle("A1:{$lastCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -159,16 +174,23 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
 
                 $sheet->setCellValue('A8', "Kelas: {$this->namaKelas}");
                 $sheet->setCellValue('A9', "Tahun Ajaran: {$this->tahunAjaran}"); 
-                $sheet->setCellValue($lastCol . "9", "Periode: " . $this->labelWaktu);
+                $sheet->setCellValue($lastCol . "9", "Periode: " . str_replace('-', ' ', $this->labelWaktu));
                 $sheet->getStyle($lastCol . "9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
                 $jabatanLabel = ($this->role === 'admin' || $this->role === 'kesiswaan') ? "Waka Kesiswaan," : "Wali Kelas,";
-                $namaTtd = ($this->role === 'admin' || $this->role === 'kesiswaan') ? 
-                            (DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->where('struktur_jabatan.jabatan_id', 3)->value('guru_staf.nama') ?? 'Nama Kesiswaan') :
-                            ($this->dataKelas->waliKelas->nama ?? 'Nama Wali Kelas');
-                $nipTtd = ($this->role === 'admin' || $this->role === 'kesiswaan') ? 
-                            (DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->where('struktur_jabatan.jabatan_id', 3)->value('guru_staf.nip') ?? '-') :
-                            ($this->dataKelas->waliKelas->nip ?? '-');
+                
+                if ($this->role === 'admin' || $this->role === 'kesiswaan') {
+                    $ttd = DB::table('struktur_jabatan')
+                        ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
+                        ->where('struktur_jabatan.jabatan_id', 3)
+                        ->select('guru_staf.nama', 'guru_staf.nip')
+                        ->first();
+                    $namaTtd = $ttd->nama ?? 'Nama Kesiswaan';
+                    $nipTtd = $ttd->nip ?? '-';
+                } else {
+                    $namaTtd = $this->dataKelas->waliKelas->nama ?? 'Nama Wali Kelas';
+                    $nipTtd = $this->dataKelas->waliKelas->nip ?? '-';
+                }
 
                 $ttdRow = $lastRow + 3;
                 $sheet->setCellValue($lastCol . $ttdRow, "Tasikmalaya, " . Carbon::now()->translatedFormat('d F Y'));

@@ -38,8 +38,11 @@ class SiswaController extends Controller
             $query->where('kelas_id', $request->kelas_id);
         }
 
-        if ($request->filled('is_active')) {
+        // Default Filter: Hanya menampilkan siswa aktif (1) jika parameter is_active tidak dikirim
+        if ($request->has('is_active')) {
             $query->where('is_active', $request->is_active);
+        } else {
+            $query->where('is_active', 1);
         }
 
         if ($request->filled('search')) {
@@ -62,7 +65,7 @@ class SiswaController extends Controller
         $query = Siswa::with(['user', 'kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
 
-        $perPage = $request->filled('search') ? 10 : 20;
+        $perPage = $request->get('per_page', $request->filled('search') ? 10 : 20);
         $data = $query->latest()->paginate($perPage);
 
         return response()->json([
@@ -96,6 +99,10 @@ class SiswaController extends Controller
                 $filename .= '_' . Str::slug($jurusan->nama_jurusan);
             }
         }
+
+        // Penamaan file export sesuai status aktif/tidak
+        $is_active = $request->has('is_active') ? $request->is_active : 1;
+        $filename .= $is_active ? '_aktif' : '_tidak_aktif';
 
         $filename .= '_' . now()->format('Ymd_His') . '.xlsx';
 

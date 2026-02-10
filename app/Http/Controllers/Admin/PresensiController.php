@@ -3,20 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Presensi;
-use App\Models\Siswa;
-use App\Models\Kelas;
-use App\Models\TahunAjaran;
-use App\Http\Requests\StorePresensiRequest;
-use App\Http\Requests\UpdatePresensiRequest;
+use App\Models\{Presensi, Siswa, Kelas, TahunAjaran};
+use App\Http\Requests\{StorePresensiRequest, UpdatePresensiRequest};
 use App\Http\Resources\PresensiResource;
 use App\Exports\PresensiExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\{DB, Log, Auth};
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -28,15 +22,29 @@ class PresensiController extends Controller
         $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
     }
 
+    private function validateSemesterMonth(Request $request)
+    {
+        if ($request->filled('semester') && $request->filled('bulan')) {
+            $semester = $request->semester;
+            $bulan = (int) $request->bulan;
+
+            if ($semester === 'Ganjil' && ($bulan < 7 || $bulan > 12)) {
+                return "Untuk Semester Ganjil, pilih bulan antara 7 sampai 12 (Juli - Desember).";
+            }
+
+            if ($semester === 'Genap' && ($bulan < 1 || $bulan > 6)) {
+                return "Untuk Semester Genap, pilih bulan antara 1 sampai 6 (Januari - Juni).";
+            }
+        }
+        return null;
+    }
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Presensi::class);
 
-        if (!$request->filled(['kelas_id', 'bulan', 'tahun']) && !$request->filled('tanggal')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Silakan pilih kelas dan filter waktu (bulan/tahun atau tanggal) terlebih dahulu.'
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        if ($error = $this->validateSemesterMonth($request)) {
+            return response()->json(['success' => false, 'message' => $error], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         $query = Presensi::query();
@@ -51,33 +59,103 @@ class PresensiController extends Controller
             'meta'    => [
                 'current_page' => $data->currentPage(),
                 'last_page'    => $data->lastPage(),
-                'per_page'     => $data->perPage(),
                 'total'        => $data->total(),
             ],
         ], Response::HTTP_OK);
     }
 
-    public function siswaWali(Request $request): JsonResponse
+    public function export(Request $request)
+    {
+        try {
+            if (!$request->filled('kelas_id')) {
+                return response()->json(['success' => false, 'message' => 'ID Kelas wajib dipilih.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            if ($error = $this->validateSemesterMonth($request)) {
+                return response()->json(['success' => false, 'message' => $error], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $kelas = Kelas::with(['waliKelas', 'tahunAjaran'])->findOrFail($request->kelas_id);
+            
+            $ta = $request->filled('tahun_ajaran_id') 
+                ? TahunAjaran::find($request->tahun_ajaran_id) 
+                : TahunAjaran::where('is_active', true)->first();
+
+            if (!$ta) {
+                return response()->json(['success' => false, 'message' => 'Tahun Ajaran tidak ditemukan.'], Response::HTTP_NOT_FOUND);
+            }
+
+            if ($request->filled('semester')) {
+                $taMatched = TahunAjaran::where('nama', $ta->nama)
+                    ->where('semester', $request->semester)
+                    ->first();
+                if ($taMatched) $ta = $taMatched;
+            }
+
+            $bulan = (int) $request->get('bulan', date('m'));
+            $parts = explode('/', str_replace([' Ganjil', ' Genap'], '', $ta->nama));
+            $tahunAwal = (int) $parts[0];
+            $tahunAkhir = isset($parts[1]) ? (int) $parts[1] : $tahunAwal;
+
+            $tahun = ($ta->semester === 'Ganjil') 
+                ? (($bulan >= 1 && $bulan <= 6) ? $tahunAkhir : $tahunAwal)
+                : (($bulan >= 7 && $bulan <= 12) ? $tahunAwal : $tahunAkhir);
+
+            $profil = DB::table('profil_sekolah')->first();
+            $kontak = DB::table('data_kontak')->first();
+            $taClean = str_replace(['/', ' '], '-', $ta->nama);
+            $labelWaktu = "Bulan-{$bulan}-Tahun-{$tahun}-Sem-{$ta->semester}";
+            $fileName = "Presensi_{$kelas->nama_kelas}_{$labelWaktu}_TA_{$taClean}.xlsx";
+
+            return Excel::download(
+                new PresensiExport(null, $kelas->nama_kelas, $labelWaktu, $profil, $kontak, $kelas, 'admin', $ta->nama), 
+                $fileName
+            );
+        } catch (Throwable $e) {
+            Log::error('Admin Export Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal mengunduh file.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function listKelas(Request $request): JsonResponse
+    {
+        try {
+            $taId = $request->get('tahun_ajaran_id') ?? TahunAjaran::where('is_active', true)->first()?->id;
+            if (!$taId) return response()->json(['success' => false, 'message' => 'Tahun Ajaran tidak ditemukan.'], Response::HTTP_NOT_FOUND);
+
+            $kelas = Kelas::where('tahun_ajaran_id', $taId)
+                ->select('id', 'nama_kelas', 'tahun_ajaran_id')
+                ->withCount(['siswa' => fn($q) => $q->where('is_active', true)])
+                ->orderBy('nama_kelas', 'asc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data'    => $kelas
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal memuat daftar kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function listSiswaPresensi(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Siswa::class);
 
         if (!$request->filled('kelas_id')) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Silakan pilih kelas terlebih dahulu.'
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return response()->json(['success' => false, 'message' => 'ID Kelas wajib.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $kelasId = (string) $request->kelas_id;
         $tanggal = $request->get('tanggal', date('Y-m-d'));
-        $tahunAjaranId = $request->tahun_ajaran_id ?? TahunAjaran::where('is_active', true)->first()?->id;
+        $ta = $request->filled('tahun_ajaran_id') 
+            ? TahunAjaran::find($request->tahun_ajaran_id) 
+            : TahunAjaran::where('is_active', true)->first();
 
-        $siswa = Siswa::where('kelas_id', $kelasId)
+        if (!$ta) return response()->json(['success' => false, 'message' => 'TA tidak ditemukan.'], Response::HTTP_NOT_FOUND);
+
+        $siswa = Siswa::where('kelas_id', $request->kelas_id)
             ->where('is_active', true)
-            ->with(['kelas', 'presensi' => function ($q) use ($tanggal, $tahunAjaranId) {
-                $q->whereDate('tanggal', $tanggal);
-                if ($tahunAjaranId) $q->where('tahun_ajaran_id', $tahunAjaranId);
-            }])
+            ->with(['kelas', 'presensi' => fn($q) => $q->whereDate('tanggal', $tanggal)->where('tahun_ajaran_id', $ta->id)])
             ->orderBy('nama_lengkap', 'asc')
             ->get();
 
@@ -96,68 +174,54 @@ class PresensiController extends Controller
 
     public function store(StorePresensiRequest $request): JsonResponse
     {
-        $user = Auth::user();
-        $tanggalInput = $request->filled('tanggal') ? date('Y-m-d', strtotime($request->tanggal)) : date('Y-m-d');
+        $tanggalInput = $request->get('tanggal', date('Y-m-d'));
 
         if ($this->isDayOff($tanggalInput)) {
-            return response()->json(['success' => false, 'message' => 'Tidak dapat input presensi di hari libur/akhir pekan.'], Response::HTTP_BAD_REQUEST);
+            return response()->json(['success' => false, 'message' => 'Input ditolak pada hari libur.'], Response::HTTP_BAD_REQUEST);
         }
 
         try {
-            $tahunAjaran = TahunAjaran::where('is_active', true)->firstOrFail();
+            $taActive = TahunAjaran::where('is_active', true)->firstOrFail();
             $dataInput = $request->has('data_presensi') ? $request->input('data_presensi') : [$request->all()];
 
-            $results = DB::transaction(function () use ($dataInput, $tanggalInput, $user, $tahunAjaran) {
+            $results = DB::transaction(function () use ($dataInput, $tanggalInput, $taActive) {
                 $savedData = [];
                 foreach ($dataInput as $item) {
-                    if (!isset($item['siswa_id']) || !isset($item['status'])) continue;
+                    if (!isset($item['siswa_id'], $item['status'])) continue;
+                    $siswa = Siswa::with('kelas')->where('id', $item['siswa_id'])->where('is_active', true)->first();
+                    if (!$siswa) continue;
 
-                    $siswa = Siswa::findOrFail($item['siswa_id']);
-                    
-                    $presensi = Presensi::updateOrCreate(
-                        [
-                            'siswa_id' => (string) $item['siswa_id'], 
-                            'tanggal' => $tanggalInput, 
-                            'tahun_ajaran_id' => (string) $tahunAjaran->id
-                        ],
+                    $savedData[] = Presensi::updateOrCreate(
+                        ['siswa_id' => (string) $item['siswa_id'], 'tanggal' => $tanggalInput, 'tahun_ajaran_id' => (string) $taActive->id],
                         [
                             'status' => $item['status'],
-                            'keterangan' => $item['keterangan'] ?? 'Diinput oleh Admin: ' . $user->username,
-                            'guru_staf_id' => (string) ($siswa->kelas->wali_kelas_id ?? $user->guru_staf_id),
+                            'keterangan' => $item['keterangan'] ?? 'Diinput oleh Admin: ' . Auth::user()->username,
+                            'guru_staf_id' => (string) ($siswa->kelas->wali_kelas_id ?? Auth::user()->guru_staf_id),
                         ]
                     );
-                    $savedData[] = $presensi;
                 }
                 return $savedData;
             });
 
-            return response()->json([
-                'success' => true, 
-                'message' => 'Presensi berhasil disimpan oleh Admin.',
-                'count' => count($results)
-            ], Response::HTTP_CREATED);
-
+            return response()->json(['success' => true, 'message' => 'Berhasil memproses ' . count($results) . ' data.'], Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            Log::error('Admin Store Presensi Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal menyimpan data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            Log::error('Admin Store Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal memproses data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function show(Presensi $presensi): JsonResponse
     {
         $this->authorize('view', $presensi);
-        return response()->json([
-            'success' => true, 
-            'data' => new PresensiResource($presensi->load(['siswa.kelas', 'guruStaf', 'tahunAjaran']))
-        ], Response::HTTP_OK);
+        return response()->json(['success' => true, 'data' => new PresensiResource($presensi->load(['siswa.kelas', 'guruStaf', 'tahunAjaran']))], Response::HTTP_OK);
     }
 
     public function update(UpdatePresensiRequest $request, Presensi $presensi): JsonResponse
     {
         $this->authorize('update', $presensi);
         try {
-            DB::transaction(fn() => $presensi->update($request->validated()));
-            return response()->json(['success' => true, 'data' => new PresensiResource($presensi->load(['siswa.kelas', 'guruStaf', 'tahunAjaran']))], Response::HTTP_OK);
+            $presensi->update($request->validated());
+            return response()->json(['success' => true, 'data' => new PresensiResource($presensi)], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json(['success' => false, 'message' => 'Gagal update.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
@@ -166,64 +230,51 @@ class PresensiController extends Controller
     public function destroy(Presensi $presensi): JsonResponse
     {
         $this->authorize('delete', $presensi);
-        $presensi->delete();
-        return response()->json(['success' => true, 'message' => 'Data presensi dihapus.'], Response::HTTP_OK);
-    }
-
-    public function export(Request $request)
-    {
-        $this->authorize('viewAny', Presensi::class);
-
-        if (!$request->filled(['kelas_id', 'bulan', 'tahun'])) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Silakan pilih kelas, bulan, dan tahun untuk mengekspor data.'
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        try {
+            $presensi->delete();
+            return response()->json(['success' => true, 'message' => 'Data dihapus.'], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal hapus.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        $profil = DB::table('profil_sekolah')->first();
-        $kontak = DB::table('data_kontak')->first();
-        
-        $month = $request->get('bulan');
-        $year = $request->get('tahun');
-        
-        $query = Presensi::query();
-        $filteredQuery = $this->applyPresensiFilters($request, $query);
-
-        $taId = $request->get('tahun_ajaran_id') ?? TahunAjaran::where('is_active', true)->first()?->id;
-        $taData = DB::table('tahun_ajaran')->where('id', $taId)->first();
-        $taLabel = $taData ? $taData->nama . " (" . $taData->semester . ")" : '-';
-
-        $dataKelas = Kelas::with('waliKelas')->find($request->kelas_id);
-        $namaKelas = $dataKelas ? $dataKelas->nama_kelas : "Semua_Kelas";
-
-        return Excel::download(
-            new PresensiExport($filteredQuery, $namaKelas, "Bulan-$month-$year", $profil, $kontak, $dataKelas, 'kesiswaan', $taLabel), 
-            "Rekap_Presensi_Kelas_{$namaKelas}_Bulan_{$month}_{$year}.xlsx"
-        );
     }
 
     private function applyPresensiFilters(Request $request, $query)
     {
-        $taId = $request->tahun_ajaran_id ?? TahunAjaran::where('is_active', true)->first()?->id;
-        if ($taId) $query->where('tahun_ajaran_id', $taId);
-
-        if ($request->filled('kelas_id')) {
-            $query->whereHas('siswa', fn($q) => $q->where('kelas_id', (string) $request->get('kelas_id')));
+        if (!$request->filled('kelas_id')) {
+            return $query->whereRaw('1 = 0');
         }
+
+        $ta = $request->filled('tahun_ajaran_id') 
+            ? TahunAjaran::find($request->tahun_ajaran_id) 
+            : TahunAjaran::where('is_active', true)->first();
+
+        if ($ta) {
+            if ($request->filled('semester')) {
+                $taMatched = TahunAjaran::where('nama', $ta->nama)->where('semester', $request->semester)->first();
+                if ($taMatched) $ta = $taMatched;
+            }
+
+            $query->where('tahun_ajaran_id', $ta->id);
+            $bulan = (int) $request->get('bulan', date('m'));
+            $parts = explode('/', str_replace([' Ganjil', ' Genap'], '', $ta->nama));
+            $tahunAwal = (int) $parts[0];
+            $tahunAkhir = isset($parts[1]) ? (int) $parts[1] : $tahunAwal;
+
+            $tahun = ($ta->semester === 'Ganjil') 
+                ? (($bulan >= 1 && $bulan <= 6) ? $tahunAkhir : $tahunAwal)
+                : (($bulan >= 7 && $bulan <= 12) ? $tahunAwal : $tahunAkhir);
+
+            if ($request->filled('tanggal')) {
+                $query->whereDate('tanggal', $request->tanggal);
+            } else {
+                $query->whereMonth('tanggal', $bulan)->whereYear('tanggal', $tahun);
+            }
+        }
+
+        $query->whereHas('siswa', fn($q) => $q->where('is_active', true)->where('kelas_id', $request->kelas_id));
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->whereHas('siswa', fn($qs) => $qs->where('nama_lengkap', 'like', "%{$search}%"))
-                  ->orWhere('keterangan', 'like', "%{$search}%");
-            });
-        }
-
-        if ($request->filled('bulan') && $request->filled('tahun')) {
-            $query->whereMonth('tanggal', $request->bulan)->whereYear('tanggal', $request->tahun);
-        } elseif ($request->filled('tanggal')) {
-            $query->whereDate('tanggal', $request->tanggal);
+            $query->whereHas('siswa', fn($qs) => $qs->where('nama_lengkap', 'like', "%{$request->search}%"));
         }
 
         return $query->with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])->orderBy('tanggal', 'desc');
@@ -233,7 +284,7 @@ class PresensiController extends Controller
     {
         $libur = DB::table('kalender_akademik')->where('kategori', 'Libur')
             ->whereDate('tanggal_mulai', '<=', $date)
-            ->whereDate('tanggal_selesai', '>=', $date)->first();
+            ->whereDate('tanggal_selesai', '>=', $date)->exists();
         return $libur || date('N', strtotime($date)) >= 6;
     }
 }
