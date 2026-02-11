@@ -3,30 +3,29 @@
 namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
-use App\Models\JamSekolah;
-use App\Models\TahunAjaran;
-use App\Models\ProfilSekolah;
-use App\Models\DataKontak;
+use App\Models\{JamSekolah, TahunAjaran, ProfilSekolah, DataKontak};
 use App\Http\Resources\JamSekolahResource;
-use App\Http\Requests\StoreJamSekolahRequest;
-use App\Http\Requests\UpdateJamSekolahRequest;
+use App\Http\Requests\{StoreJamSekolahRequest, UpdateJamSekolahRequest};
 use App\Exports\JamSekolahExport;
 use App\Imports\JamSekolahImport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\{DB, Log};
+use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class JamSekolahController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Kurikulum');
-        $this->middleware('log.admin')->only(['update', 'store', 'import', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['update', 'store', 'import', 'destroy']);
+
+        $this->authorizeResource(JamSekolah::class, 'jam_sekolah');
     }
 
     private function resolveTahunAjaranId(Request $request)
@@ -72,6 +71,8 @@ class JamSekolahController extends Controller
     public function export(Request $request)
     {
         try {
+            $this->authorize('viewAny', JamSekolah::class);
+
             $tahunAjaranId = $this->resolveTahunAjaranId($request);
             
             if (!$tahunAjaranId) {
@@ -100,6 +101,8 @@ class JamSekolahController extends Controller
 
     public function import(Request $request): JsonResponse
     {
+        $this->authorize('create', JamSekolah::class);
+
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
         try {

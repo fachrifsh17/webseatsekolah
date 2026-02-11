@@ -23,6 +23,16 @@ use Symfony\Component\HttpFoundation\Response;
 
 class MapelController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+        
+        // Injeksi Policy otomatis
+        $this->authorizeResource(MataPelajaran::class, 'mapel');
+    }
+
     public function index(Request $request): JsonResponse
     {
         try {
@@ -48,7 +58,8 @@ class MapelController extends Controller
                 $query->where('nama_mapel', 'like', "%{$request->search}%");
             }
 
-            $data = $query->latest()->paginate(12);
+            $perPage = $request->get('per_page', 12);
+            $data = $query->latest()->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -72,6 +83,9 @@ class MapelController extends Controller
 
     public function export(Request $request)
     {
+        // Otorisasi Manual untuk method custom
+        $this->authorize('viewAny', MataPelajaran::class);
+
         try {
             $filters = $request->only(['search', 'jurusan_id', 'tipe_mapel', 'kategori_mapel']);
             
@@ -103,6 +117,8 @@ class MapelController extends Controller
 
     public function import(Request $request): JsonResponse
     {
+        $this->authorize('create', MataPelajaran::class);
+
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv,txt|max:2048']);
 
         try {
@@ -161,19 +177,10 @@ class MapelController extends Controller
 
     public function show(MataPelajaran $mapel): JsonResponse
     {
-        try {
-            return response()->json([
-                'success' => true,
-                'data'    => new MapelResource($mapel->load('jurusan'))
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to fetch mata pelajaran detail', ['mapel_id' => $mapel->id, 'error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail mata pelajaran',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        return response()->json([
+            'success' => true,
+            'data'    => new MapelResource($mapel->load('jurusan'))
+        ], Response::HTTP_OK);
     }
 
     public function update(UpdateMapelRequest $request, MataPelajaran $mapel): JsonResponse
@@ -215,6 +222,7 @@ class MapelController extends Controller
     public function destroy(MataPelajaran $mapel): JsonResponse
     {
         try {
+            // Menggunakan logic update is_active sesuai kodingan awalmu
             DB::transaction(fn() => $mapel->update(['is_active' => 0]));
 
             return response()->json([

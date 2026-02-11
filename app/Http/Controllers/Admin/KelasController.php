@@ -20,13 +20,16 @@ class KelasController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only([
+        $this->middleware('log.aktivitas')->only([
             'store', 
             'update', 
             'destroy', 
             'import', 
             'generateFromPreviousYear'
         ]);
+        
+        // Injeksi Policy untuk CRUD standar
+        $this->authorizeResource(Kelas::class, 'kelas');
     }
 
     public function index(Request $request): JsonResponse
@@ -85,6 +88,9 @@ class KelasController extends Controller
 
     public function export(Request $request)
     {
+        // Otorisasi Manual untuk custom method
+        $this->authorize('viewAny', Kelas::class);
+
         try {
             $filters = $request->only(['search', 'jurusan_id', 'wali_kelas_id', 'tahun_ajaran_id']);
             $filters['is_active'] = true;
@@ -131,6 +137,8 @@ class KelasController extends Controller
 
     public function import(Request $request): JsonResponse
     {
+        $this->authorize('create', Kelas::class);
+
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
         try {
@@ -142,7 +150,7 @@ class KelasController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Proses impor selesai.',
-                'info'    => $skippedMessages, // Menampilkan baris yang kena skip/conflict
+                'info'    => $skippedMessages, 
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Import Kelas Error', ['error' => $e->getMessage()]);
@@ -156,6 +164,8 @@ class KelasController extends Controller
 
     public function generateFromPreviousYear(): JsonResponse
     {
+        $this->authorize('create', Kelas::class);
+
         set_time_limit(300);
 
         try {

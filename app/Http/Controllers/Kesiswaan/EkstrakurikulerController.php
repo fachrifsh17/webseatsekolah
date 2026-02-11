@@ -5,23 +5,22 @@ namespace App\Http\Controllers\Kesiswaan;
 use App\Http\Controllers\Controller;
 use App\Models\Ekstrakurikuler;
 use App\Http\Resources\EkstrakurikulerResource;
-use App\Http\Requests\StoreEkstrakurikulerRequest;
-use App\Http\Requests\UpdateEkstrakurikulerRequest;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use App\Http\Requests\{StoreEkstrakurikulerRequest, UpdateEkstrakurikulerRequest};
+use Illuminate\Support\Facades\{Storage, DB, Log};
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class EkstrakurikulerController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        // Pastikan middleware role sesuai untuk akses Kesiswaan
-        $this->middleware('role:Admin,Kesiswaan');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        $this->authorizeResource(Ekstrakurikuler::class, 'ekstrakurikuler');
     }
 
     public function index(): JsonResponse
@@ -42,62 +41,28 @@ class EkstrakurikulerController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Kesiswaan Ekskul Index Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil daftar ekstrakurikuler',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->errorResponse('Gagal mengambil daftar ekstrakurikuler');
         }
     }
 
     public function show(Ekstrakurikuler $ekstrakurikuler): JsonResponse
     {
-        try {
-            $ekstrakurikuler->load('pembina');
-            return response()->json([
-                'success' => true,
-                'data'    => new EkstrakurikulerResource($ekstrakurikuler)
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail ekstrakurikuler',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        return response()->json([
+            'success' => true,
+            'data'    => new EkstrakurikulerResource($ekstrakurikuler->load('pembina'))
+        ], Response::HTTP_OK);
     }
 
     public function store(StoreEkstrakurikulerRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        // 1. Cek Bentrok Nama
-        if (Ekstrakurikuler::where('nama_ekskul', $validated['nama_ekskul'])->exists()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Nama ekstrakurikuler sudah terdaftar.',
-                'errors'  => ['nama_ekskul' => ['Gunakan nama lain untuk menghindari duplikasi.']]
-            ], Response::HTTP_CONFLICT);
+        if ($this->isNameTaken($validated['nama_ekskul'])) {
+            return $this->errorResponse('Nama ekstrakurikuler sudah terdaftar.', Response::HTTP_CONFLICT);
         }
 
-        // 2. Cek Bentrok Jadwal Pembina
-        $isConflict = Ekstrakurikuler::where('pembina_id', $validated['pembina_id'])
-            ->where('hari', $validated['hari'])
-            ->where(function ($query) use ($validated) {
-                $query->whereBetween('jam_mulai', [$validated['jam_mulai'], $validated['jam_selesai']])
-                    ->orWhereBetween('jam_selesai', [$validated['jam_mulai'], $validated['jam_selesai']])
-                    ->orWhere(function ($q) use ($validated) {
-                        $q->where('jam_mulai', '<=', $validated['jam_mulai'])
-                          ->where('jam_selesai', '>=', $validated['jam_selesai']);
-                    });
-            })->exists();
-
-        if ($isConflict) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Jadwal pembina bentrok dengan ekstrakurikuler lain.',
-                'errors'  => ['conflict' => ['Pembina sudah memiliki jadwal di jam tersebut.']]
-            ], Response::HTTP_CONFLICT);
+        if ($this->isScheduleConflict($validated)) {
+            return $this->errorResponse('Jadwal pembina bentrok.', Response::HTTP_CONFLICT);
         }
 
         if ($request->hasFile('foto')) {
@@ -106,20 +71,15 @@ class EkstrakurikulerController extends Controller
 
         try {
             $ekskul = DB::transaction(fn() => Ekstrakurikuler::create($validated));
-
             return response()->json([
                 'success' => true,
-                'message' => 'Ekstrakurikuler berhasil ditambahkan oleh Kesiswaan',
+                'message' => 'Ekstrakurikuler berhasil ditambahkan',
                 'data'    => new EkstrakurikulerResource($ekskul->load('pembina'))
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             if (!empty($validated['foto'])) Storage::disk('public')->delete($validated['foto']);
-            Log::error('Kesiswaan Store Ekskul Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal menambahkan ekstrakurikuler',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            Log::error('Store Error: ' . $e->getMessage());
+            return $this->errorResponse('Gagal menambahkan data.');
         }
     }
 
@@ -128,44 +88,12 @@ class EkstrakurikulerController extends Controller
         $validated = $request->validated();
         $oldFoto   = $ekstrakurikuler->foto;
 
-        // 1. Cek Bentrok Nama (Kecuali data ini sendiri)
-        if (isset($validated['nama_ekskul'])) {
-            $nameExists = Ekstrakurikuler::where('nama_ekskul', $validated['nama_ekskul'])
-                ->where('id', '!=', $ekstrakurikuler->id)
-                ->exists();
-            if ($nameExists) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Nama ekstrakurikuler sudah digunakan oleh data lain.',
-                    'errors'  => ['nama_ekskul' => ['Nama ini sudah ada di database.']]
-                ], Response::HTTP_CONFLICT);
-            }
+        if (isset($validated['nama_ekskul']) && $this->isNameTaken($validated['nama_ekskul'], $ekstrakurikuler->id)) {
+            return $this->errorResponse('Nama sudah digunakan.', Response::HTTP_CONFLICT);
         }
 
-        // 2. Cek Bentrok Jadwal
-        $pembinaId = $validated['pembina_id'] ?? $ekstrakurikuler->pembina_id;
-        $hari = $validated['hari'] ?? $ekstrakurikuler->hari;
-        $jamMulai = $validated['jam_mulai'] ?? $ekstrakurikuler->jam_mulai;
-        $jamSelesai = $validated['jam_selesai'] ?? $ekstrakurikuler->jam_selesai;
-
-        $isConflict = Ekstrakurikuler::where('id', '!=', $ekstrakurikuler->id)
-            ->where('pembina_id', $pembinaId)
-            ->where('hari', $hari)
-            ->where(function ($query) use ($jamMulai, $jamSelesai) {
-                $query->whereBetween('jam_mulai', [$jamMulai, $jamSelesai])
-                    ->orWhereBetween('jam_selesai', [$jamMulai, $jamSelesai])
-                    ->orWhere(function ($q) use ($jamMulai, $jamSelesai) {
-                        $q->where('jam_mulai', '<=', $jamMulai)
-                          ->where('jam_selesai', '>=', $jamSelesai);
-                    });
-            })->exists();
-
-        if ($isConflict) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Jadwal pembina bentrok dengan ekstrakurikuler lain.',
-                'errors'  => ['conflict' => ['Pembina sudah memiliki jadwal di jam tersebut.']]
-            ], Response::HTTP_CONFLICT);
+        if ($this->isScheduleConflict($validated, $ekstrakurikuler)) {
+            return $this->errorResponse('Jadwal pembina bentrok.', Response::HTTP_CONFLICT);
         }
 
         if ($request->hasFile('foto')) {
@@ -179,27 +107,18 @@ class EkstrakurikulerController extends Controller
 
         try {
             DB::transaction(fn() => $ekstrakurikuler->update($validated));
-            $ekstrakurikuler->refresh();
-
-            if (!empty($validated['foto']) && $oldFoto && $validated['foto'] !== $oldFoto) {
+            if (isset($validated['foto']) && $oldFoto && $validated['foto'] !== $oldFoto) {
                 Storage::disk('public')->delete($oldFoto);
             }
-
+            
             return response()->json([
                 'success' => true,
-                'message' => 'Ekstrakurikuler berhasil diperbarui',
-                'data'    => new EkstrakurikulerResource($ekstrakurikuler->load('pembina'))
+                'message' => 'Berhasil diperbarui',
+                'data'    => new EkstrakurikulerResource($ekstrakurikuler->fresh('pembina'))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            if (!empty($validated['foto']) && $validated['foto'] !== $oldFoto) {
-                Storage::disk('public')->delete($validated['foto']);
-            }
-            Log::error('Kesiswaan Update Ekskul Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal memperbarui ekstrakurikuler',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            Log::error('Update Error: ' . $e->getMessage());
+            return $this->errorResponse('Gagal memperbarui data.');
         }
     }
 
@@ -209,18 +128,41 @@ class EkstrakurikulerController extends Controller
         try {
             DB::transaction(fn() => $ekstrakurikuler->delete());
             if ($oldFoto) Storage::disk('public')->delete($oldFoto);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Ekstrakurikuler berhasil dihapus',
-            ], Response::HTTP_OK);
+            return response()->json(['success' => true, 'message' => 'Berhasil dihapus']);
         } catch (Throwable $e) {
-            Log::error('Kesiswaan Delete Ekskul Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal menghapus ekstrakurikuler',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            Log::error('Delete Error: ' . $e->getMessage());
+            return $this->errorResponse('Gagal menghapus data.');
         }
+    }
+
+    private function isNameTaken($name, $ignoreId = null) 
+    {
+        return Ekstrakurikuler::where('nama_ekskul', $name)
+            ->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))
+            ->exists();
+    }
+
+    private function isScheduleConflict($data, $ekskul = null) 
+    {
+        $pembinaId = $data['pembina_id'] ?? ($ekskul ? $ekskul->pembina_id : null);
+        $hari      = $data['hari']        ?? ($ekskul ? $ekskul->hari : null);
+        $start     = $data['jam_mulai']   ?? ($ekskul ? $ekskul->jam_mulai : null);
+        $end       = $data['jam_selesai'] ?? ($ekskul ? $ekskul->jam_selesai : null);
+
+        if (!$pembinaId || !$hari || !$start || !$end) return false;
+
+        return Ekstrakurikuler::where('pembina_id', $pembinaId)
+            ->where('hari', $hari)
+            ->when($ekskul, fn($q) => $q->where('id', '!=', $ekskul->id))
+            ->where(fn($q) => 
+                $q->whereBetween('jam_mulai', [$start, $end])
+                  ->orWhereBetween('jam_selesai', [$start, $end])
+                  ->orWhere(fn($sq) => $sq->where('jam_mulai', '<=', $start)->where('jam_selesai', '>=', $end))
+            )->exists();
+    }
+
+    private function errorResponse($message, $code = 500) 
+    {
+        return response()->json(['success' => false, 'message' => $message], $code);
     }
 }

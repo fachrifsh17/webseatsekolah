@@ -4,51 +4,56 @@ namespace App\Policies;
 
 use App\Models\Pengumuman;
 use App\Models\User;
-use Illuminate\Auth\Access\HandlesAuthorization;
 
 class PengumumanPolicy
 {
-    use HandlesAuthorization;
-
-    public function before(User $user, $capability)
-    {
-        if ($user->hasRole('Admin')) {
-            return true;
-        }
-    }
-
     public function viewAny(User $user): bool
     {
-        return $user->hasRole('guru');
+        return $this->authorize($user, ['Admin', 'Guru', 'Siswa', 'Orangtua'], ['Waka Humas']);
     }
 
     public function view(User $user, Pengumuman $pengumuman): bool
     {
-        return $user->hasRole('guru');
+        return $this->authorize($user, ['Admin', 'Guru', 'Siswa', 'Orangtua'], ['Waka Humas']);
     }
 
     public function create(User $user): bool
     {
-        return $user->jabatan === 'Waka Humas';
+        return $this->authorize($user, ['Admin'], ['Waka Humas']);
     }
 
     public function update(User $user, Pengumuman $pengumuman): bool
     {
-        return $user->jabatan === 'Waka Humas';
+        return $this->authorize($user, ['Admin'], ['Waka Humas']);
     }
 
     public function delete(User $user, Pengumuman $pengumuman): bool
     {
-        return $user->jabatan === 'Waka Humas';
+        return $this->authorize($user, ['Admin'], ['Waka Humas']);
     }
 
     public function restore(User $user, Pengumuman $pengumuman): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin'], ['Waka Humas']);
     }
 
     public function forceDelete(User $user, Pengumuman $pengumuman): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin'], ['Waka Humas']);
+    }
+
+    protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
+    {
+        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+
+        $hasJabatan = $user->guruStaf
+            ? $user->guruStaf->strukturJabatan
+                ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
+                ->filter()
+                ->intersect($allowedJabatans)
+                ->isNotEmpty()
+            : false;
+
+        return $hasRole || $hasJabatan;
     }
 }

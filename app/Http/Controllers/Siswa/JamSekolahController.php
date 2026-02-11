@@ -3,10 +3,7 @@
 namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
-use App\Models\JamSekolah;
-use App\Models\TahunAjaran;
-use App\Models\ProfilSekolah;
-use App\Models\DataKontak;
+use App\Models\{JamSekolah, TahunAjaran, ProfilSekolah, DataKontak};
 use App\Http\Resources\JamSekolahResource;
 use App\Exports\JamSekolahExport;
 use Maatwebsite\Excel\Facades\Excel;
@@ -51,6 +48,7 @@ class JamSekolahController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil data jam sekolah.',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -70,7 +68,6 @@ class JamSekolahController extends Controller
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
             
-            // Nama file mengikuti nama Tahun Ajaran Aktif
             $namaTA = str_replace(['/', '\\', ' '], '-', $tahunAktif->nama);
             $fileName = 'jam_sekolah_' . $namaTA . '.xlsx';
 
@@ -79,6 +76,7 @@ class JamSekolahController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengekspor jadwal.',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -88,7 +86,6 @@ class JamSekolahController extends Controller
         try {
             $tahunAktif = TahunAjaran::where('is_active', true)->first();
 
-            // Siswa hanya bisa melihat detail jam sekolah jika termasuk dalam tahun ajaran aktif
             $jamSekolah = JamSekolah::with('tahunAjaran')
                 ->where('tahun_ajaran_id', $tahunAktif->id ?? 0)
                 ->findOrFail($id);
@@ -101,6 +98,7 @@ class JamSekolahController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Data jam sekolah tidak ditemukan atau tidak aktif.',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_NOT_FOUND);
         }
     }

@@ -11,16 +11,20 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class JadwalProduktifController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        
+        $this->authorizeResource(JadwalProduktif::class, 'jadwal_produktif');
     }
 
     public function index(): JsonResponse
@@ -49,17 +53,8 @@ class JadwalProduktifController extends Controller
         ], Response::HTTP_OK);
     }
 
-    public function show($id): JsonResponse
+    public function show(JadwalProduktif $jadwalProduktif): JsonResponse
     {
-        $jadwalProduktif = JadwalProduktif::with(['jurusan', 'guruStaf'])->find($id);
-
-        if (!$jadwalProduktif) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data tidak ditemukan.'
-            ], Response::HTTP_NOT_FOUND);
-        }
-
         $user = Auth::user();
 
         if ($user && !$user->roles()->where('role_name', 'admin')->exists()) {
@@ -73,7 +68,7 @@ class JadwalProduktifController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => new JadwalProduktifResource($jadwalProduktif)
+            'data'    => new JadwalProduktifResource($jadwalProduktif->load(['jurusan', 'guruStaf']))
         ], Response::HTTP_OK);
     }
 
@@ -134,16 +129,8 @@ class JadwalProduktifController extends Controller
         }
     }
 
-    public function update(UpdateJadwalProduktifRequest $request, $id): JsonResponse
+    public function update(UpdateJadwalProduktifRequest $request, JadwalProduktif $jadwalProduktif): JsonResponse
     {
-        $jadwalProduktif = JadwalProduktif::find($id);
-        if (!$jadwalProduktif) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Data tidak ditemukan.'
-            ], Response::HTTP_NOT_FOUND);
-        }
-
         $validated = $request->validated();
         $user = Auth::user();
         $isAdmin = $user && $user->roles()->where('role_name', 'admin')->exists();
@@ -184,16 +171,8 @@ class JadwalProduktifController extends Controller
         }
     }
 
-    public function destroy($id): JsonResponse
+    public function destroy(JadwalProduktif $jadwalProduktif): JsonResponse
     {
-        $jadwalProduktif = JadwalProduktif::find($id);
-        if (!$jadwalProduktif) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Data tidak ditemukan.'
-            ], Response::HTTP_NOT_FOUND);
-        }
-
         $user = Auth::user();
 
         if ($user && !$user->roles()->where('role_name', 'admin')->exists()) {

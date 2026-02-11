@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\{Presensi, TahunAjaran};
 use App\Http\Resources\PresensiResource;
 use Illuminate\Http\{JsonResponse, Request};
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\{Auth, Log};
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class PresensiController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
@@ -34,12 +37,10 @@ class PresensiController extends Controller
             $query = Presensi::where('siswa_id', $siswaId)
                 ->with(['siswa.kelas', 'guruStaf', 'tahunAjaran']);
 
-            // Filter Tahun Ajaran
             if ($request->filled('tahun_ajaran_id')) {
                 $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
             }
 
-            // Filter Search
             if ($request->filled('search')) {
                 $search = $request->search;
                 $query->where(function($q) use ($search) {
@@ -49,7 +50,6 @@ class PresensiController extends Controller
                 });
             }
 
-            // Filter Tanggal
             if ($request->filled('tanggal')) {
                 $query->whereDate('tanggal', $request->tanggal);
             }
@@ -60,7 +60,6 @@ class PresensiController extends Controller
                           ->orderBy('created_at', 'desc')
                           ->paginate($perPage);
 
-            // Perbaikan struktur return agar tidak double "data"
             return PresensiResource::collection($data)
                 ->additional([
                     'success' => true,
@@ -70,9 +69,11 @@ class PresensiController extends Controller
                 ->setStatusCode(Response::HTTP_OK);
 
         } catch (Throwable $e) {
+            Log::error('Gagal mengambil daftar presensi: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => 'Gagal mengambil data presensi.',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -90,7 +91,7 @@ class PresensiController extends Controller
             if (!$presensi) {
                 return response()->json([
                     'success' => false, 
-                    'message' => 'Data tidak ditemukan.'
+                    'message' => 'Data tidak ditemukan atau akses dilarang.'
                 ], Response::HTTP_FORBIDDEN);
             }
 
@@ -103,9 +104,11 @@ class PresensiController extends Controller
                 ->setStatusCode(Response::HTTP_OK);
 
         } catch (Throwable $e) {
+            Log::error('Gagal mengambil detail presensi: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => 'Gagal mengambil detail presensi.',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

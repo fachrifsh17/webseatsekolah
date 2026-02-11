@@ -16,11 +16,11 @@ class DataKontakController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin'); // konsisten kapitalisasi
-        $this->middleware('log.admin')->only(['update']);
+        $this->middleware('role:Admin');
+        $this->middleware('log.aktivitas')->only(['update']);
+        $this->authorizeResource(DataKontak::class, 'data_kontak');
     }
 
-    // GET /api/admin/data-kontak
     public function index(): JsonResponse
     {
         try {
@@ -48,7 +48,6 @@ class DataKontakController extends Controller
         }
     }
 
-    // PUT /api/admin/data-kontak
     public function update(UpdateDataKontakRequest $request): JsonResponse
     {
         try {
@@ -61,6 +60,8 @@ class DataKontakController extends Controller
                     'peta_embed_code'=> null,
                 ]
             );
+
+            $this->authorize('update', $dataKontak);
 
             $dataKontak->update($request->validated());
 

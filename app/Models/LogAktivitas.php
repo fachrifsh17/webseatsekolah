@@ -5,12 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class LogAdmin extends Model
+class LogAktivitas extends Model
 {
     use HasFactory;
 
     // Pastikan sesuai dengan nama tabel di database
-    protected $table = 'log_admin';
+    protected $table = 'log_aktivitas';
 
     // Jika tabel punya kolom created_at & updated_at biarkan true, kalau tidak ada set false
     public $timestamps = true;

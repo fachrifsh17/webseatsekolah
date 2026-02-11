@@ -11,11 +11,14 @@ use App\Http\Resources\JamSekolahResource;
 use App\Exports\JamSekolahExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class JamSekolahController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
@@ -70,7 +73,6 @@ class JamSekolahController extends Controller
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
             
-            // Nama file mengikuti nama Tahun Ajaran Aktif
             $namaTA = str_replace(['/', '\\', ' '], '-', $tahunAktif->nama);
             $fileName = 'jam_sekolah_' . $namaTA . '.xlsx';
 
@@ -88,7 +90,6 @@ class JamSekolahController extends Controller
         try {
             $tahunAktif = TahunAjaran::where('is_active', true)->first();
 
-            // Siswa hanya bisa melihat detail jam sekolah jika termasuk dalam tahun ajaran aktif
             $jamSekolah = JamSekolah::with('tahunAjaran')
                 ->where('tahun_ajaran_id', $tahunAktif->id ?? 0)
                 ->findOrFail($id);

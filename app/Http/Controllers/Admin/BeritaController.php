@@ -19,7 +19,8 @@ class BeritaController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        $this->authorizeResource(Berita::class, 'berita');
     }
 
     public function index(): JsonResponse
@@ -116,7 +117,7 @@ class BeritaController extends Controller
                 $data['foto'] = $request->file('foto')->store('uploads/berita', 'public');
             }
 
-            unset($data['id']); // pastikan id tidak ikut diupdate
+            unset($data['id']);
 
             foreach ($data as $key => $value) {
                 if ($value === null || $value === '') {

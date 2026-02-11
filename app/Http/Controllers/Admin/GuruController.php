@@ -26,7 +26,8 @@ class GuruController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+        $this->authorizeResource(GuruStaf::class, 'guru');
     }
 
     public function index(Request $request): JsonResponse
@@ -66,6 +67,8 @@ class GuruController extends Controller
 
     public function export(Request $request)
     {
+        $this->authorize('viewAny', GuruStaf::class);
+
         try {
             $filters = $request->only(['q', 'jabatan_fungsional', 'status_kepegawaian', 'jurusan_id', 'is_active']);
             
@@ -111,6 +114,8 @@ class GuruController extends Controller
 
     public function import(Request $request): JsonResponse
     {
+        $this->authorize('create', GuruStaf::class);
+
         $request->validate([
             'file' => 'required|mimes:xlsx,xls,csv|max:2048'
         ]);
@@ -139,6 +144,8 @@ class GuruController extends Controller
 
     public function search(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', GuruStaf::class);
+
         $search = $request->get('q');
 
         $gurus = GuruStaf::query()

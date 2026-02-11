@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\{
-    Berita, Pengumuman, Siswa, GuruStaf, Pesan, LogAdmin, Orangtua,
+    Berita, Pengumuman, Siswa, GuruStaf, Pesan, LogAktivitas, Orangtua,
     Kelas, Jurusan, TahunAjaran, Ekstrakurikuler, Fasilitas
 };
 use App\Http\Resources\{
-    BeritaResource, LogAdminResource
+    BeritaResource, LogAktivitasResource
 };
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -35,17 +35,17 @@ class DashboardController extends Controller
                     'role' => 'Admin',
                 ],
                 'statistics' => [
-                    'total_berita'        => Berita::count(),
-                    'total_pengumuman'    => Pengumuman::count(),
-                    'guru_aktif'          => GuruStaf::where('is_active', 1)->count(),
-                    'siswa_aktif'         => Siswa::where('is_active', 1)->count(),
-                    'orangtua_aktif'      => Orangtua::where('is_active', 1)->count(),
-                    'total_kelas'         => Kelas::count(),
-                    'total_jurusan'       => Jurusan::count(),
-                    'tahun_ajaran_aktif'  => TahunAjaran::where('is_active', 1)->count(),
+                    'total_berita'         => Berita::count(),
+                    'total_pengumuman'     => Pengumuman::count(),
+                    'guru_aktif'           => GuruStaf::where('is_active', 1)->count(),
+                    'siswa_aktif'          => Siswa::where('is_active', 1)->count(),
+                    'orangtua_aktif'       => Orangtua::where('is_active', 1)->count(),
+                    'total_kelas'          => Kelas::count(),
+                    'total_jurusan'        => Jurusan::count(),
+                    'tahun_ajaran_aktif'   => TahunAjaran::where('is_active', 1)->count(),
                     'total_ekstrakurikuler'=> Ekstrakurikuler::count(),
-                    'total_fasilitas'     => Fasilitas::count(),
-                    'pesan_baru'          => Pesan::where('status', 'belum_dibaca')->count(),
+                    'total_fasilitas'      => Fasilitas::count(),
+                    'pesan_baru'           => Pesan::where('status', 'belum_dibaca')->count(),
                 ],
                 'common' => [
                     'recent_pengumuman' => Pengumuman::latest()->take(5)->get(),
@@ -53,8 +53,8 @@ class DashboardController extends Controller
                         Berita::latest()->take(5)->get()
                     ),
                 ],
-                'recent_logs' => LogAdminResource::collection(
-                    LogAdmin::with('user')->latest()->take(5)->get()
+                'recent_logs' => LogAktivitasResource::collection(
+                    LogAktivitas::with('user')->latest()->take(5)->get()
                 ),
             ];
 

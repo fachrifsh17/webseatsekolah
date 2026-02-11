@@ -17,7 +17,7 @@ class StoreEkstrakurikulerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama_ekskul' => ['required', 'string', 'max:100', 'unique:ekstrakurikulers,nama_ekskul'],
+            'nama_ekskul' => ['required', 'string', 'max:100', 'unique:ekstrakurikuler,nama_ekskul'],
             'deskripsi'   => ['nullable', 'string'],
             'hari'        => ['required', 'string', 'max:50'],
             'jam_mulai'   => ['required', 'date_format:H:i'],

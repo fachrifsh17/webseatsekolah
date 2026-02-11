@@ -9,15 +9,19 @@ use App\Http\Resources\PoinSiswaResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB, Log};
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class PoinSiswaController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only('store');
+        // Menggunakan middleware log khusus untuk pencatatan poin
+        $this->middleware('log.aktivitas')->only('store');
     }
 
     public function index(Request $request): JsonResponse
@@ -28,7 +32,10 @@ class PoinSiswaController extends Controller
         $guruStafId = $user->guruStaf?->id;
 
         if (!$guruStafId) {
-            return response()->json(['success' => false, 'message' => 'Profil guru tidak ditemukan.'], Response::HTTP_FORBIDDEN);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Profil guru tidak ditemukan.'
+            ], Response::HTTP_FORBIDDEN);
         }
 
         $query = PoinSiswa::query()
@@ -52,12 +59,14 @@ class PoinSiswaController extends Controller
             $query->where('siswa_id', $request->siswa_id);
         }
 
+        // Statistik poin yang diberikan oleh guru yang sedang login
         $summaryPersonal = (clone $query)->select(
             DB::raw('SUM(poin_positif) as total_positif'),
             DB::raw('SUM(poin_negatif) as total_negatif'),
             DB::raw('COUNT(*) as total_catatan')
         )->first();
 
+        // Statistik kumulatif siswa (semua poin dari semua guru) jika filter siswa_id aktif
         $summaryKumulatif = null;
         if ($request->filled('siswa_id')) {
             $summaryKumulatif = DB::table('poin_siswa')
@@ -142,8 +151,12 @@ class PoinSiswaController extends Controller
     {
         $this->authorize('view', $poinSiswa);
 
+        // Proteksi agar Guru hanya bisa melihat detail poin yang ia buat sendiri
         if ($poinSiswa->guru_staf_id !== Auth::user()->guruStaf?->id) {
-            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki akses ke data ini.'], Response::HTTP_FORBIDDEN);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Anda tidak memiliki akses ke data ini.'
+            ], Response::HTTP_FORBIDDEN);
         }
 
         return response()->json([

@@ -5,19 +5,23 @@ namespace App\Http\Controllers\Kurikulum;
 use App\Http\Controllers\Controller;
 use App\Models\Kurikulum;
 use App\Http\Resources\KurikulumResource;
-use App\Http\Requests\StoreKurikulumRequest;
-use App\Http\Requests\UpdateKurikulumRequest;
+use App\Http\Requests\{StoreKurikulumRequest, UpdateKurikulumRequest};
 use Illuminate\Support\Facades\{Storage, DB, Log};
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class KurikulumController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+
+        $this->authorizeResource(Kurikulum::class, 'kurikulum');
     }
 
     public function index(): JsonResponse

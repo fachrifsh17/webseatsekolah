@@ -11,16 +11,22 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class PrestasiController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        
+        // Mengotomatisasi pengecekan Policy untuk index, show, store, update, destroy
+        $this->authorizeResource(Prestasi::class, 'prestasi');
     }
 
     public function index(): JsonResponse

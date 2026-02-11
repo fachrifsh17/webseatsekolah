@@ -20,7 +20,10 @@ class KurikulumController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        
+        // Proteksi Policy
+        $this->authorizeResource(Kurikulum::class, 'kurikulum');
     }
 
     public function index(): JsonResponse
@@ -64,6 +67,7 @@ class KurikulumController extends Controller
 
         DB::beginTransaction();
         try {
+            // Logika meng-nonaktifkan kurikulum lain saat yang baru dibuat
             Kurikulum::query()->update(['is_active' => 0]);
             $validated['is_active'] = 1;
 
@@ -83,6 +87,14 @@ class KurikulumController extends Controller
             Log::error('Kurikulum Store Error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Gagal menambahkan kurikulum'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    public function show(Kurikulum $kurikulum): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data'    => new KurikulumResource($kurikulum),
+        ], Response::HTTP_OK);
     }
 
     public function update(UpdateKurikulumRequest $request, Kurikulum $kurikulum): JsonResponse

@@ -26,7 +26,8 @@ class JamSekolahController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['update', 'store', 'import', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['update', 'store', 'import', 'destroy']);
+        $this->authorizeResource(JamSekolah::class, 'jamSekolah');
     }
 
     private function resolveTahunAjaranId(Request $request)
@@ -71,6 +72,8 @@ class JamSekolahController extends Controller
 
     public function export(Request $request)
     {
+        $this->authorize('viewAny', JamSekolah::class);
+
         try {
             $tahunAjaranId = $this->resolveTahunAjaranId($request);
             
@@ -100,6 +103,8 @@ class JamSekolahController extends Controller
 
     public function import(Request $request): JsonResponse
     {
+        $this->authorize('create', JamSekolah::class);
+
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
         try {

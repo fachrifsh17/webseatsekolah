@@ -17,37 +17,37 @@ class StorePresensiRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'siswa_id'   => ['required', 'string', 'exists:siswa,id'],
-            'tanggal'    => ['sometimes', 'date'], 
-            'status'     => ['required', 'in:Hadir,Izin,Sakit,Alpa'],
-            'keterangan' => ['nullable', 'string', 'max:255'],
+            'tanggal' => ['required', 'date'],
+            'data_presensi' => ['required', 'array', 'min:1'],
+            'data_presensi.*.siswa_id' => ['required', 'string', 'exists:siswa,id'],
+            'data_presensi.*.status' => ['required', 'in:Hadir,Izin,Sakit,Alpa'],
+            'data_presensi.*.keterangan' => ['nullable', 'string', 'max:255'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'siswa_id.required' => 'Siswa harus dipilih.',
-            'siswa_id.string'   => 'ID siswa harus berupa ID string.',
-            'siswa_id.exists'   => 'Data siswa tidak ditemukan.',
-
-            'tanggal.date'      => 'Format tanggal absensi tidak valid.',
-
-            'status.required'   => 'Status kehadiran harus diisi.',
-            'status.in'         => 'Status harus berupa Hadir, Izin, Sakit, atau Alpa.',
-
-            'keterangan.string' => 'Keterangan harus berupa teks.',
-            'keterangan.max'    => 'Keterangan tidak boleh lebih dari 255 karakter.',
+            'tanggal.required' => 'Tanggal absensi wajib diisi.',
+            'tanggal.date' => 'Format tanggal tidak valid.',
+            'data_presensi.required' => 'Data presensi tidak boleh kosong.',
+            'data_presensi.array' => 'Format data harus berupa array.',
+            
+            'data_presensi.*.siswa_id.required' => 'Siswa harus dipilih.',
+            'data_presensi.*.siswa_id.exists' => 'Data siswa tidak ditemukan.',
+            'data_presensi.*.status.required' => 'Status kehadiran harus diisi.',
+            'data_presensi.*.status.in' => 'Status harus berupa Hadir, Izin, Sakit, atau Alpa.',
         ];
     }
 
     public function attributes(): array
     {
         return [
-            'siswa_id'   => 'Siswa',
-            'tanggal'    => 'Tanggal absensi',
-            'status'     => 'Status kehadiran',
-            'keterangan' => 'Keterangan',
+            'tanggal' => 'Tanggal absensi',
+            'data_presensi' => 'Daftar Presensi',
+            'data_presensi.*.siswa_id' => 'Siswa',
+            'data_presensi.*.status' => 'Status kehadiran',
+            'data_presensi.*.keterangan' => 'Keterangan',
         ];
     }
 

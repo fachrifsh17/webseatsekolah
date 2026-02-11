@@ -19,13 +19,13 @@ class JabatanController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        $this->authorizeResource(Jabatan::class, 'jabatan');
     }
 
     public function index(): JsonResponse
     {
         try {
-            // Mengambil semua jabatan dengan hitungan berapa banyak guru yang menjabat
             $data = Jabatan::withCount('strukturJabatan')->get();
 
             return response()->json([
@@ -108,7 +108,6 @@ class JabatanController extends Controller
     public function destroy(Jabatan $jabatan): JsonResponse
     {
         try {
-            // Proteksi: Jangan hapus jika masih ada guru yang menggunakan jabatan ini
             if ($jabatan->strukturJabatan()->exists()) {
                 return response()->json([
                     'success' => false,

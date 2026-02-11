@@ -10,15 +10,21 @@ use App\Http\Requests\UpdatePengumumanRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class PengumumanController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        
+        // Menerapkan Policy secara otomatis ke method index, show, store, update, destroy
+        $this->authorizeResource(Pengumuman::class, 'pengumuman');
     }
 
     public function index(): JsonResponse

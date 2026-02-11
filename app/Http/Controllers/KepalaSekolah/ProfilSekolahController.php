@@ -9,19 +9,26 @@ use App\Http\Requests\UpdateProfilSekolahRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests; // Tambahkan ini
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class ProfilSekolahController extends Controller
 {
+    use AuthorizesRequests; // Tambahkan ini
+
     public function __construct()
     {
         $this->middleware('auth.token');
-         $this->middleware('Log.admin')->only(('updateGeneral'));
+        // Middleware log admin tetap dipertahankan untuk audit trail
+        $this->middleware('Log.aktivitas')->only('update'); 
     }
 
     public function index(): JsonResponse
     {
+        // Otorisasi: Kepsek boleh melihat profil sekolah
+        $this->authorize('viewAny', ProfilSekolah::class);
+
         try {
             $profil = ProfilSekolah::with(['guruStaf'])->first();
 
@@ -46,8 +53,12 @@ class ProfilSekolahController extends Controller
 
     public function update(UpdateProfilSekolahRequest $request): JsonResponse
     {
+        // Otorisasi: Cek apakah Kepsek boleh memperbarui profil
+        $this->authorize('update', ProfilSekolah::class);
+
         $validated = $request->validated();
 
+        // Logika otomatis mengambil ID Guru yang menjabat Kepala Sekolah
         $kepsekOtomatis = DB::table('struktur_jabatan')
             ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
             ->where('jabatans.slug', 'kepala-sekolah')
@@ -66,6 +77,7 @@ class ProfilSekolahController extends Controller
                     'misi'            => $validated['misi'] ?? null,
                     'sejarah'         => $validated['sejarah'] ?? null,
                     'sambutan_kepsek' => $validated['sambutan_kepsek'] ?? null,
+                    // Prioritaskan kepsek dari struktur_jabatan, jika tidak ada baru dari input
                     'guru_staf_id'    => $kepsekOtomatis->guru_staf_id ?? ($validated['guru_staf_id'] ?? null),
                 ]
             );

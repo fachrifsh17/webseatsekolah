@@ -28,6 +28,11 @@ class UserResource extends JsonResource
                     'nip'     => $this->guruStaf->nip,
                     'nama'    => $this->guruStaf->nama,
                     'jabatan' => $this->guruStaf->jabatan_fungsional,
+                    'jabatan_struktural' => $this->guruStaf->strukturJabatan
+                        ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
+                        ->filter()
+                        ->values(),
+                    'kelas_wali' => $this->guruStaf->kelas?->nama_kelas,
                 ];
             }),
 

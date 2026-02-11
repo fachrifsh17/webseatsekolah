@@ -19,17 +19,22 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Arr;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Str;
 
 class SiswaController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+
+        $this->authorizeResource(Siswa::class, 'siswa');
     }
 
     private function applyFilters(Request $request, $query)
@@ -85,6 +90,8 @@ class SiswaController extends Controller
 
     public function export(Request $request)
     {
+        $this->authorize('viewAny', Siswa::class);
+
         $query = Siswa::query()->with(['kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
 
@@ -105,7 +112,6 @@ class SiswaController extends Controller
 
         $is_active = $request->has('is_active') ? $request->is_active : 1;
         $filename .= $is_active ? '_aktif' : '_tidak_aktif';
-
         $filename .= '_' . now()->format('Ymd_His') . '.xlsx';
 
         $profil = DB::table('profil_sekolah')->first();
@@ -119,6 +125,8 @@ class SiswaController extends Controller
 
     public function import(Request $request): JsonResponse
     {
+        $this->authorize('create', Siswa::class);
+
         $request->validate([
             'file' => 'required|mimes:xlsx,xls,csv'
         ]);

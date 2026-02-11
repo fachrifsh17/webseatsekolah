@@ -17,7 +17,10 @@ class PesanController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['updateStatus', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['updateStatus', 'destroy']);
+
+        // Menambahkan proteksi Policy (Opsional tapi disarankan)
+        $this->authorizeResource(Pesan::class, 'pesan');
     }
 
     public function index(): JsonResponse
@@ -41,29 +44,16 @@ class PesanController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar pesan',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function show(Pesan $pesan): JsonResponse
     {
-        try {
-            return response()->json([
-                'success' => true,
-                'data'    => new PesanResource($pesan),
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to fetch pesan detail', [
-                'pesan_id' => (string) $pesan->id,
-                'error'    => $e->getMessage()
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail pesan',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        return response()->json([
+            'success' => true,
+            'data'    => new PesanResource($pesan),
+        ], Response::HTTP_OK);
     }
 
     public function updateStatus(Pesan $pesan): JsonResponse
@@ -81,13 +71,12 @@ class PesanController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Failed to update pesan status', [
-                'pesan_id' => (string) $pesan->id,
+                'pesan_id' => $pesan->id,
                 'error'    => $e->getMessage()
             ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui status pesan',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -100,21 +89,18 @@ class PesanController extends Controller
             DB::commit();
 
             return response()->json([
-                'success'      => true,
-                'message'      => 'Pesan berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
+                'success' => true,
+                'message' => 'Pesan berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Failed to delete pesan', [
-                'pesan_id' => (string) $pesan->id,
+                'pesan_id' => $pesan->id,
                 'error'    => $e->getMessage()
             ]);
             return response()->json([
-                'success'      => false,
-                'message'      => 'Gagal menghapus pesan',
-                'notification' => 'Gagal dihapus',
-                'errors'       => ['exception' => [$e->getMessage()]]
+                'success' => false,
+                'message' => 'Gagal menghapus pesan',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

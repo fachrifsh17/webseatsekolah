@@ -19,7 +19,8 @@ class FasilitasController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        $this->authorizeResource(Fasilitas::class, 'fasilitas');
     }
 
     public function index(): JsonResponse

@@ -6,20 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Models\Media;
 use App\Http\Resources\MediaResource;
 use App\Http\Requests\StoreMediaRequest;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Http\JsonResponse;
+use Illuminate\Http\{Request, JsonResponse};
+use Illuminate\Support\Facades\{Storage, DB, Log};
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class MediaController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        
+        $this->authorizeResource(Media::class, 'media');
     }
 
     public function index(Request $request): JsonResponse
@@ -29,6 +31,7 @@ class MediaController extends Controller
             $perPage = min((int) $request->get('per_page', 20), 100);
 
             $query = Media::with('album');
+            
             if ($albumId) {
                 $query->where('album_id', $albumId);
             }
@@ -41,7 +44,7 @@ class MediaController extends Controller
                 'meta'    => [
                     'current_page' => $data->currentPage(),
                     'last_page'    => $data->lastPage(),
-                    'per_page'     => $data->perPage(),
+                    'per_page'     => (int) $data->perPage(),
                     'total'        => $data->total(),
                 ],
             ], Response::HTTP_OK);
@@ -74,38 +77,27 @@ class MediaController extends Controller
     public function store(StoreMediaRequest $request): JsonResponse
     {
         $validated = $request->validated();
-        $jenis = strtolower($validated['jenis_media']);
+        $jenis = ucfirst(strtolower($validated['jenis_media']));
 
         DB::beginTransaction();
         try {
             $mediaCollection = [];
+            $files = $request->hasFile('media') 
+                ? (is_array($request->file('media')) ? $request->file('media') : [$request->file('media')])
+                : [null];
 
-            if ($jenis === 'foto' && $request->hasFile('media')) {
-                $files = is_array($request->file('media')) ? $request->file('media') : [$request->file('media')];
-                foreach ($files as $file) {
-                    if ($file->isValid()) {
-                        $path = $file->store('uploads/media', 'public');
-                        $media = Media::create([
-                            'album_id'    => $validated['album_id'],
-                            'media_path'  => $path,
-                            'jenis_media' => 'Foto',
-                            'keterangan'  => $validated['keterangan'] ?? null,
-                        ]);
-                        $mediaCollection[] = new MediaResource($media->load('album'));
-                    }
-                }
-            } else {
-                $path = $validated['media_path'] ?? null;
-                if ($request->hasFile('media') && $request->file('media')->isValid()) {
-                    $path = $request->file('media')->store('uploads/media', 'public');
-                }
+            foreach ($files as $file) {
+                $path = ($file && $file->isValid()) 
+                    ? $file->store('uploads/media', 'public') 
+                    : ($validated['media_path'] ?? null);
 
                 $media = Media::create([
                     'album_id'    => $validated['album_id'],
                     'media_path'  => $path,
-                    'jenis_media' => ucfirst($jenis),
+                    'jenis_media' => $jenis,
                     'keterangan'  => $validated['keterangan'] ?? null,
                 ]);
+
                 $mediaCollection[] = new MediaResource($media->load('album'));
             }
 
@@ -118,7 +110,10 @@ class MediaController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Failed to store media', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal menyimpan media'], 500);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal menyimpan media'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -157,7 +152,10 @@ class MediaController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Failed to update media', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal memperbarui media'], 500);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal memperbarui media'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -165,11 +163,13 @@ class MediaController extends Controller
     {
         DB::beginTransaction();
         try {
-            if ($media->media_path && !str_starts_with($media->media_path, 'http')) {
-                Storage::disk('public')->delete($media->media_path);
-            }
+            $path = $media->media_path;
             $media->delete();
             DB::commit();
+
+            if ($path && !str_starts_with($path, 'http')) {
+                Storage::disk('public')->delete($path);
+            }
 
             return response()->json([
                 'success'      => true,
@@ -179,7 +179,10 @@ class MediaController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Failed to delete media', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal menghapus media'], 500);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal menghapus media'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

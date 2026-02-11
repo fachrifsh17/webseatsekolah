@@ -4,21 +4,24 @@ namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
 use App\Models\JadwalProduktif;
-use App\Http\Requests\StoreJadwalProduktifRequest;
-use App\Http\Requests\UpdateJadwalProduktifRequest;
+use App\Http\Requests\{StoreJadwalProduktifRequest, UpdateJadwalProduktifRequest};
 use App\Http\Resources\JadwalProduktifResource;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\{Storage, Log};
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class JadwalProduktifController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+
+        $this->authorizeResource(JadwalProduktif::class, 'jadwal_produktif');
     }
 
     public function index(): JsonResponse
@@ -53,7 +56,6 @@ class JadwalProduktifController extends Controller
     {
         $validated = $request->validated();
 
-        // Cek duplikasi jadwal untuk jurusan yang dipilih
         if (JadwalProduktif::where('jurusan_id', $validated['jurusan_id'])->exists()) {
             return response()->json([
                 'success' => false,
@@ -91,7 +93,6 @@ class JadwalProduktifController extends Controller
     {
         $validated = $request->validated();
 
-        // Jika mengubah jurusan, pastikan jurusan baru belum punya jadwal
         if (isset($validated['jurusan_id']) && $validated['jurusan_id'] != $jadwalProduktif->jurusan_id) {
             if (JadwalProduktif::where('jurusan_id', $validated['jurusan_id'])->where('id', '!=', $jadwalProduktif->id)->exists()) {
                 return response()->json([

@@ -4,36 +4,29 @@ namespace App\Policies;
 
 use App\Models\Orangtua;
 use App\Models\User;
-use Illuminate\Auth\Access\HandlesAuthorization;
 
 class OrangtuaPolicy
 {
-    use HandlesAuthorization;
-
-    public function before(User $user, $capability)
-    {
-        if ($user->hasRole('Admin')) {
-            return true;
-        }
-    }
-
     public function viewAny(User $user): bool
     {
-        return in_array($user->jabatan, ['Waka Kesiswaan', 'Wali Kelas']) || $user->hasRole('guru');
+        return $this->authorize($user, ['Admin', 'Guru'], ['Waka Kesiswaan', 'Wali Kelas']);
     }
 
     public function view(User $user, Orangtua $orangtua): bool
     {
-        if ($user->jabatan === 'Waka Kesiswaan') {
+        // Admin & Waka Kesiswaan bisa lihat semua
+        if ($this->authorize($user, ['Admin'], ['Waka Kesiswaan'])) {
             return true;
         }
 
-        if ($user->jabatan === 'Wali Kelas') {
+        // Wali Kelas hanya bisa lihat orangtua dari siswa di kelasnya
+        if ($this->authorize($user, [], ['Wali Kelas'])) {
             $idKelasWali = $user->guruStaf?->kelas_id;
             return $orangtua->anak()->where('kelas_id', $idKelasWali)->exists();
         }
 
-        if ($user->hasRole('orangtua')) {
+        // Orangtua hanya bisa lihat dirinya sendiri
+        if ($user->hasRole('Orangtua')) {
             return $user->orangtua_id === $orangtua->id;
         }
 
@@ -42,26 +35,51 @@ class OrangtuaPolicy
 
     public function create(User $user): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function update(User $user, Orangtua $orangtua): bool
     {
-        return $user->jabatan === 'Waka Kesiswaan';
+        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan']);
     }
 
     public function delete(User $user, Orangtua $orangtua): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function restore(User $user, Orangtua $orangtua): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function forceDelete(User $user, Orangtua $orangtua): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
+    }
+
+    public function export(User $user): bool
+    {
+        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Wali Kelas']);
+    }
+
+    public function import(User $user): bool
+    {
+        return $this->authorize($user, ['Admin']);
+    }
+
+    protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
+    {
+        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+
+        $hasJabatan = $user->guruStaf
+            ? $user->guruStaf->strukturJabatan
+                ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
+                ->filter()
+                ->intersect($allowedJabatans)
+                ->isNotEmpty()
+            : false;
+
+        return $hasRole || $hasJabatan;
     }
 }

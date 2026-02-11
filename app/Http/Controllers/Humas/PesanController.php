@@ -8,15 +8,21 @@ use App\Http\Resources\PesanResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class PesanController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['updateStatus', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['updateStatus', 'destroy']);
+
+        // Mengotomatisasi pengecekan Policy untuk index, show, dan destroy
+        $this->authorizeResource(Pesan::class, 'pesan');
     }
 
     public function index(): JsonResponse
@@ -48,6 +54,7 @@ class PesanController extends Controller
     public function show(Pesan $pesan): JsonResponse
     {
         try {
+            // Otomatis tandai sebagai terbaca saat detail dibuka
             if (!$pesan->is_read) {
                 $pesan->update(['is_read' => true]);
             }
@@ -69,8 +76,14 @@ class PesanController extends Controller
         }
     }
 
+    /**
+     * Update status pesan secara manual
+     */
     public function updateStatus(Pesan $pesan): JsonResponse
     {
+        // Karena updateStatus bukan method standar, panggil authorize manual
+        $this->authorize('update', $pesan);
+
         DB::beginTransaction();
         try {
             $pesan->update(['is_read' => true]);

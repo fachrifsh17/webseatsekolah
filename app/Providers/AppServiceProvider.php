@@ -29,6 +29,8 @@ class AppServiceProvider extends ServiceProvider
             // --- Akademik & Jadwal ---
             \App\Models\JamSekolah::class        => \App\Policies\JamSekolahPolicy::class,
             \App\Models\JadwalProduktif::class   => \App\Policies\JadwalProduktifPolicy::class,
+            \App\Models\KalenderAkademik::class  => \App\Policies\KalenderAkademikPolicy::class,
+            \App\Models\Kurikulum::class         => \App\Policies\KurikulumPolicy::class,
 
             // --- Konten & Informasi ---
             \App\Models\Berita::class            => \App\Policies\BeritaPolicy::class,
@@ -36,6 +38,13 @@ class AppServiceProvider extends ServiceProvider
             \App\Models\Prestasi::class          => \App\Policies\PrestasiPolicy::class,
             \App\Models\Ekstrakurikuler::class   => \App\Policies\EkstrakurikulerPolicy::class,
             \App\Models\Fasilitas::class         => \App\Policies\FasilitasPolicy::class,
+            \App\Models\Album::class             => \App\Policies\AlbumPolicy::class,
+            \App\Models\Banner::class            => \App\Policies\BannerPolicy::class,
+            \App\Models\DataKontak::class        => \App\Policies\DataKontakPolicy::class,
+            \App\Models\Media::class             => \App\Policies\MediaPolicy::class,
+            \App\Models\Pesan::class             => \App\Policies\PesanPolicy::class,
+            \App\Models\PortalSosmed::class      => \App\Policies\PortalSosmedPolicy::class,
+            \App\Models\PpdbLink::class          => \App\Policies\PpdbLinkPolicy::class,
 
             // --- Presensi & Poin ---
             \App\Models\PoinSiswa::class         => \App\Policies\PoinSiswaPolicy::class,
@@ -44,6 +53,11 @@ class AppServiceProvider extends ServiceProvider
 
             // --- Pengaturan & Sistem ---
             \App\Models\ProfilSekolah::class     => \App\Policies\ProfilSekolahPolicy::class,
+            \App\Models\SekolahSetting::class    => \App\Policies\SekolahSettingPolicy::class,
+            \App\Models\StrukturJabatan::class   => \App\Policies\StrukturJabatanPolicy::class,
+            \App\Models\Jabatan::class           => \App\Policies\JabatanPolicy::class,
+            \App\Models\LogAktivitas::class      => \App\Policies\LogAktivitasPolicy::class,
+            \App\Models\GuruStaf::class          => \App\Policies\GuruPolicy::class,
             \App\Models\SekolahSetting::class    => \App\Policies\SekolahSettingPolicy::class,
         ];
 

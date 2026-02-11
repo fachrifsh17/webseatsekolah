@@ -3,28 +3,30 @@
 namespace App\Http\Controllers\KepalaSekolah;
 
 use App\Http\Controllers\Controller;
-use App\Models\LogAdmin;
-use App\Http\Resources\LogAdminResource;
+use App\Models\LogAktivitas; 
+use App\Http\Resources\LogAktivitasResource; 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
-class LogAdminController extends Controller
+class LogAktivitasController extends Controller
 {
     public function __construct()
     {
         $this->middleware('auth.token');
+        $this->middleware('role:Kepala Sekolah');
+        $this->authorizeResource(LogAktivitas::class, 'log');
     }
 
     public function index(): JsonResponse
     {
         try {
-            $data = LogAdmin::with('user')->orderByDesc('created_at')->paginate(20);
+            $data = LogAktivitas::with('user')->orderByDesc('created_at')->paginate(20);
 
             return response()->json([
                 'success' => true,
-                'data'    => LogAdminResource::collection($data),
+                'data'    => LogAktivitasResource::collection($data),
                 'meta'    => [
                     'current_page' => $data->currentPage(),
                     'last_page'    => $data->lastPage(),
@@ -41,14 +43,14 @@ class LogAdminController extends Controller
         }
     }
 
-    public function show($id): JsonResponse
+    public function show(LogAktivitas $log): JsonResponse
     {
         try {
-            $log = LogAdmin::with('user')->findOrFail($id);
+            $log->load('user');
 
             return response()->json([
                 'success' => true,
-                'data'    => new LogAdminResource($log),
+                'data'    => new LogAktivitasResource($log),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json([

@@ -10,15 +10,21 @@ use App\Http\Requests\UpdateBannerRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class BannerController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        
+        // Otomatis mengaitkan Policy dengan method di controller ini
+        $this->authorizeResource(Banner::class, 'banner');
     }
 
     public function index(): JsonResponse

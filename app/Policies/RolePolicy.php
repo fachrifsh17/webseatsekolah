@@ -4,51 +4,46 @@ namespace App\Policies;
 
 use App\Models\Role;
 use App\Models\User;
-use Illuminate\Auth\Access\HandlesAuthorization;
 
 class RolePolicy
 {
-    use HandlesAuthorization;
-
-    public function before(User $user, $capability)
-    {
-        if ($user->hasRole('Admin')) {
-            return true;
-        }
-    }
-
     public function viewAny(User $user): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function view(User $user, Role $role): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function create(User $user): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function update(User $user, Role $role): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function delete(User $user, Role $role): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function restore(User $user, Role $role): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function forceDelete(User $user, Role $role): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
+    }
+
+    protected function authorize(User $user, array $allowedRoles = []): bool
+    {
+        return $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
     }
 }

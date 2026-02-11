@@ -4,7 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class LogAdminResource extends JsonResource
+class LogAktivitasResource extends JsonResource
 {
     public function toArray($request)
     {

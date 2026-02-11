@@ -21,8 +21,7 @@ class JadwalProduktifController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $user = Auth::user();
-            $siswa = $user->siswa()->with('kelas')->first();
+            $siswa = Auth::user()->siswa()->with('kelas')->first();
 
             if (!$siswa || !$siswa->kelas) {
                 return response()->json([
@@ -31,25 +30,30 @@ class JadwalProduktifController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            $jurusanId = $siswa->kelas->jurusan_id;
             $perPage = min((int) request()->get('per_page', 20), 100);
 
-            $jadwal = JadwalProduktif::where('jurusan_id', $jurusanId)
+            $jadwal = JadwalProduktif::where('jurusan_id', $siswa->kelas->jurusan_id)
                 ->with(['jurusan', 'guruStaf'])
                 ->latest()
                 ->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Daftar jadwal produktif jurusan Anda berhasil diambil.',
-                'data'    => JadwalProduktifResource::collection($jadwal)->response()->getData(true)
+                'message' => 'Daftar jadwal produktif berhasil diambil.',
+                'data'    => JadwalProduktifResource::collection($jadwal),
+                'meta'    => [
+                    'current_page' => $jadwal->currentPage(),
+                    'last_page'    => $jadwal->lastPage(),
+                    'per_page'     => (int) $jadwal->perPage(),
+                    'total'        => $jadwal->total(),
+                ],
             ], Response::HTTP_OK);
 
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil data jadwal produktif.',
-                'error'   => $e->getMessage()
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -57,28 +61,27 @@ class JadwalProduktifController extends Controller
     public function show($id): JsonResponse
     {
         try {
-            $user = Auth::user();
-            $siswa = $user->siswa()->with('kelas')->first();
-            $jadwal = JadwalProduktif::findOrFail($id);
+            $siswa = Auth::user()->siswa()->with('kelas')->first();
+            $jadwal = JadwalProduktif::with(['jurusan', 'guruStaf'])->findOrFail($id);
 
-            if ((string)$jadwal->jurusan_id !== (string)$siswa->kelas->jurusan_id) {
+            if ($jadwal->jurusan_id !== $siswa->kelas->jurusan_id) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Akses dilarang. Anda hanya diperbolehkan melihat jadwal jurusan sendiri.'
+                    'message' => 'Akses dilarang. Anda hanya dapat melihat jadwal jurusan sendiri.'
                 ], Response::HTTP_FORBIDDEN);
             }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Detail jadwal produktif berhasil diambil.',
-                'data'    => new JadwalProduktifResource($jadwal->load(['jurusan', 'guruStaf']))
+                'data'    => new JadwalProduktifResource($jadwal)
             ], Response::HTTP_OK);
             
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Jadwal produktif tidak ditemukan atau akses ditolak.',
-                'error'   => $e->getMessage()
+                'message' => 'Jadwal produktif tidak ditemukan.',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_NOT_FOUND);
         }
     }

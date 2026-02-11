@@ -15,14 +15,18 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class SiswaController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
+        $this->authorizeResource(Siswa::class, 'siswa');
     }
 
     private function getJurusanKetua()
@@ -85,8 +89,26 @@ class SiswaController extends Controller
         ], Response::HTTP_OK);
     }
 
+    public function show(Siswa $siswa): JsonResponse
+    {
+        $jurusan = $this->getJurusanKetua();
+
+        if (!$jurusan || $siswa->kelas->jurusan_id !== $jurusan->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak. Siswa ini bukan dari jurusan Anda.'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => new SiswaResource($siswa->load(['user', 'kelas.jurusan', 'orangtua']))
+        ], Response::HTTP_OK);
+    }
+
     public function export(Request $request)
     {
+        $this->authorize('viewAny', Siswa::class);
         $jurusan = $this->getJurusanKetua();
 
         if (!$jurusan) {

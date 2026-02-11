@@ -26,7 +26,13 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'data' => new UserResource(
-                $user->load(['roles', 'guruStaf', 'siswa', 'orangtua'])
+                $user->load([
+                    'roles',
+                    'guruStaf.strukturJabatan.jabatan',
+                    'guruStaf.kelas',
+                    'siswa',
+                    'orangtua'
+                ])
             )
         ], Response::HTTP_OK);
     }

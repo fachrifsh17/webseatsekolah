@@ -11,16 +11,21 @@ use App\Http\Resources\TahunAjaranResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class TahunAjaranController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+
+        $this->authorizeResource(TahunAjaran::class, 'tahun_ajaran');
     }
 
     public function index(): JsonResponse
@@ -88,19 +93,10 @@ class TahunAjaranController extends Controller
 
     public function show(TahunAjaran $tahunAjaran): JsonResponse
     {
-        try {
-            return response()->json([
-                'success' => true,
-                'data'    => new TahunAjaranResource($tahunAjaran->load('kurikulum')),
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to fetch tahun ajaran detail', ['tahun_ajaran_id' => (string) $tahunAjaran->id, 'error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail tahun ajaran',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        return response()->json([
+            'success' => true,
+            'data'    => new TahunAjaranResource($tahunAjaran->load('kurikulum')),
+        ], Response::HTTP_OK);
     }
 
     public function update(UpdateTahunAjaranRequest $request, TahunAjaran $tahunAjaran): JsonResponse
@@ -141,7 +137,7 @@ class TahunAjaranController extends Controller
                 'data'    => new TahunAjaranResource($tahunAjaran->refresh()->load('kurikulum'))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to update tahun ajaran', ['tahun_ajaran_id' => (string) $tahunAjaran->id, 'payload' => $request->validated(), 'error' => $e->getMessage()]);
+            Log::error('Failed to update tahun ajaran', ['tahun_ajaran_id' => (string) $tahunAjaran->id, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui tahun ajaran',

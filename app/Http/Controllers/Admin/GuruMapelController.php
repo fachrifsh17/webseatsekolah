@@ -31,7 +31,8 @@ class GuruMapelController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+        $this->authorizeResource(GuruMapel::class, 'guruMapel');
     }
 
     private function applyFilters(Request $request)
@@ -86,6 +87,8 @@ class GuruMapelController extends Controller
 
     public function export(Request $request)
     {
+        $this->authorize('viewAny', GuruMapel::class);
+
         try {
             $query = $this->applyFilters($request);
             
@@ -127,6 +130,8 @@ class GuruMapelController extends Controller
 
     public function import(Request $request): JsonResponse
     {
+        $this->authorize('create', GuruMapel::class);
+
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
         try {
@@ -161,6 +166,8 @@ class GuruMapelController extends Controller
 
     public function getJamByHari(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', GuruMapel::class);
+
         $hari = $request->query('hari');
         $jam = JamSekolah::where('hari', $hari)->orderBy('waktu_mulai')->get();
 

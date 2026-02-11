@@ -20,7 +20,8 @@ class AlbumController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store','update','destroy']);
+        $this->middleware('log.aktivitas')->only(['store','update','destroy']);
+        $this->authorizeResource(Album::class, 'album');
     }
 
     public function index(): JsonResponse
@@ -167,12 +168,10 @@ class AlbumController extends Controller
     {
         DB::beginTransaction();
         try {
-            // hapus cover album
             if (!empty($album->cover_path) && Storage::disk('public')->exists($album->cover_path)) {
                 Storage::disk('public')->delete($album->cover_path);
             }
 
-            // hapus semua media terkait
             foreach ($album->media as $media) {
                 if (!empty($media->media_path) && Storage::disk('public')->exists($media->media_path)) {
                     Storage::disk('public')->delete($media->media_path);

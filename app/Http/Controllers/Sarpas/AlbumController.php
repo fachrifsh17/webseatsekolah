@@ -5,21 +5,23 @@ namespace App\Http\Controllers\Sarpas;
 use App\Http\Controllers\Controller;
 use App\Models\Album;
 use App\Http\Resources\AlbumResource;
-use App\Http\Requests\StoreAlbumRequest;
-use App\Http\Requests\UpdateAlbumRequest;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use App\Http\Requests\{StoreAlbumRequest, UpdateAlbumRequest};
+use Illuminate\Support\Facades\{Storage, DB, Log};
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class AlbumController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+
+        $this->authorizeResource(Album::class, 'album');
     }
 
     public function index(): JsonResponse
@@ -90,7 +92,7 @@ class AlbumController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
 
-            if (!empty($validated['cover_path']) && Storage::disk('public')->exists($validated['cover_path'])) {
+            if (!empty($validated['cover_path'])) {
                 Storage::disk('public')->delete($validated['cover_path']);
             }
 
@@ -112,10 +114,6 @@ class AlbumController extends Controller
             $validated['tanggal_kegiatan'] = $request->input('tanggal_kegiatan') === '' ? null : $request->input('tanggal_kegiatan');
         }
 
-        if (empty($validated)) {
-            $validated = $request->only(['nama_album', 'tanggal_kegiatan']);
-        }
-
         DB::beginTransaction();
         $newCoverPath   = null;
         $originalCover  = $album->getOriginal('cover_path');
@@ -126,10 +124,9 @@ class AlbumController extends Controller
                 $validated['cover_path'] = $newCoverPath;
             }
 
-            $album->fill($validated);
-            $album->save();
+            $album->update($validated);
 
-            if ($newCoverPath && $originalCover && Storage::disk('public')->exists($originalCover)) {
+            if ($newCoverPath && $originalCover) {
                 Storage::disk('public')->delete($originalCover);
             }
 
@@ -143,13 +140,12 @@ class AlbumController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
 
-            if ($newCoverPath && Storage::disk('public')->exists($newCoverPath)) {
+            if ($newCoverPath) {
                 Storage::disk('public')->delete($newCoverPath);
             }
 
             Log::error('Failed to update album', [
                 'album_id' => (string) $album->id,
-                'payload'  => $validated,
                 'error'    => $e->getMessage()
             ]);
 
@@ -165,19 +161,23 @@ class AlbumController extends Controller
     {
         DB::beginTransaction();
         try {
-            if (!empty($album->cover_path) && Storage::disk('public')->exists($album->cover_path)) {
-                Storage::disk('public')->delete($album->cover_path);
-            }
+            $coverPath = $album->cover_path;
+            $mediaFiles = $album->media->pluck('media_path')->toArray();
 
             foreach ($album->media as $media) {
-                if (!empty($media->media_path) && Storage::disk('public')->exists($media->media_path)) {
-                    Storage::disk('public')->delete($media->media_path);
-                }
                 $media->delete();
             }
 
             $album->delete();
             DB::commit();
+
+            if ($coverPath) {
+                Storage::disk('public')->delete($coverPath);
+            }
+
+            foreach ($mediaFiles as $path) {
+                if ($path) Storage::disk('public')->delete($path);
+            }
 
             return response()->json([
                 'success'      => true,

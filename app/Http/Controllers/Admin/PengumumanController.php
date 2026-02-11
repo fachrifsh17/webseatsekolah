@@ -18,8 +18,11 @@ class PengumumanController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('role:Admin');
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+
+        // Mengaktifkan Policy otomatis
+        $this->authorizeResource(Pengumuman::class, 'pengumuman');
     }
 
     public function index(): JsonResponse
@@ -50,22 +53,10 @@ class PengumumanController extends Controller
     
     public function show(Pengumuman $pengumuman): JsonResponse
     {
-        try {
-            return response()->json([
-                'success' => true,
-                'data'    => new PengumumanResource($pengumuman),
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to fetch pengumuman detail', [
-                'pengumuman_id' => (string) $pengumuman->id,
-                'error'         => $e->getMessage()
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail pengumuman',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        return response()->json([
+            'success' => true,
+            'data'    => new PengumumanResource($pengumuman),
+        ], Response::HTTP_OK);
     }
 
     public function store(StorePengumumanRequest $request): JsonResponse
@@ -88,7 +79,6 @@ class PengumumanController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menambahkan pengumuman',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -110,14 +100,12 @@ class PengumumanController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Failed to update pengumuman', [
-                'pengumuman_id' => (string) $pengumuman->id,
-                'payload'       => $validated,
+                'pengumuman_id' => $pengumuman->id,
                 'error'         => $e->getMessage()
             ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui pengumuman',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -130,21 +118,18 @@ class PengumumanController extends Controller
             DB::commit();
 
             return response()->json([
-                'success'      => true,
-                'message'      => 'Pengumuman berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
+                'success' => true,
+                'message' => 'Pengumuman berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Failed to delete pengumuman', [
-                'pengumuman_id' => (string) $pengumuman->id,
+                'pengumuman_id' => $pengumuman->id,
                 'error'         => $e->getMessage()
             ]);
             return response()->json([
-                'success'      => false,
-                'message'      => 'Gagal menghapus pengumuman',
-                'notification' => 'Gagal dihapus',
-                'errors'       => ['exception' => [$e->getMessage()]]
+                'success' => false,
+                'message' => 'Gagal menghapus pengumuman',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

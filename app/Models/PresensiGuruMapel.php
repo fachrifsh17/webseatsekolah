@@ -36,7 +36,8 @@ class PresensiGuruMapel extends Model
         return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
     }
 
-    public function mataPelajaran(): BelongsTo
+    // DIUBAH: Dari mataPelajaran menjadi mapel
+    public function mapel(): BelongsTo
     {
         return $this->belongsTo(MataPelajaran::class, 'mata_pelajaran_id', 'id');
     }
@@ -56,7 +57,8 @@ class PresensiGuruMapel extends Model
         return $this->belongsTo(JamSekolah::class, 'jam_keluar', 'id');
     }
 
-    public function presensiSiswaDetail(): HasMany
+    // DIUBAH: Dari presensiSiswaDetail menjadi getBySiswaDetil
+    public function getBySiswaDetil(): HasMany
     {
         return $this->hasMany(PresensiSiswaDetail::class, 'presensi_guru_mapel_id', 'id');
     }

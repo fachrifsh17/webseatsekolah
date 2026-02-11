@@ -17,11 +17,14 @@ class KenaikanKelasController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['prosesMassal']);
+        $this->middleware('log.aktivitas')->only(['prosesMassal']);
     }
 
     public function index(Request $request): JsonResponse
     {
+        // Otorisasi: Menggunakan policy Kelas karena kenaikan kelas berbasis data Kelas
+        $this->authorize('viewAny', Kelas::class);
+
         try {
             $perPage = $request->get('per_page', 10);
 
@@ -53,6 +56,9 @@ class KenaikanKelasController extends Controller
 
     public function prosesMassal(KenaikanKelasRequest $request): JsonResponse
     {
+        // Otorisasi: Hanya user dengan izin update pada model Kelas/Siswa yang boleh mengeksekusi
+        $this->authorize('update', Kelas::class);
+
         $validated = $request->validated();
         $tahunAktif = TahunAjaran::where('is_active', true)->first();
 

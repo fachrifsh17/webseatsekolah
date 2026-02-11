@@ -3,17 +3,14 @@
 namespace App\Http\Controllers\Walikelas;
 
 use App\Http\Controllers\Controller;
-use App\Models\Siswa;
-use App\Models\Kelas;
-use App\Models\User;
+use App\Models\{Siswa, Kelas};
 use App\Http\Resources\SiswaResource;
 use App\Exports\SiswaExport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Support\Facades\{Auth, DB, Log};
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class SiswaController extends Controller
 {
@@ -23,18 +20,20 @@ class SiswaController extends Controller
         $this->middleware('role:Guru');
     }
 
-    private function applyFilters(Request $request, $query)
+    /**
+     * Helper untuk mendapatkan kelas perwalian aktif
+     */
+    private function getKelasPerwalian()
     {
-        $user = Auth::user();
-        $guruStafId = $user->guruStaf?->id;
+        return Kelas::where('wali_kelas_id', Auth::user()->guruStaf?->id)
+            ->where('is_active', true)
+            ->first();
+    }
 
-        $kelas = Kelas::where('wali_kelas_id', $guruStafId)->where('is_active', true)->first();
-
-        if ($kelas) {
-            $query->where('kelas_id', $kelas->id);
-        } else {
-            $query->whereRaw('1 = 0');
-        }
+    private function applyFilters(Request $request, $query, $kelasId)
+    {
+        // Filter berdasarkan kelas perwalian
+        $query->where('kelas_id', $kelasId);
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -50,57 +49,97 @@ class SiswaController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Siswa::with(['user', 'kelas.jurusan', 'orangtua']);
-        $query = $this->applyFilters($request, $query);
+        try {
+            $kelas = $this->getKelasPerwalian();
 
-        $data = $query->orderBy('nama_lengkap', 'asc')->paginate($request->get('per_page', 20));
+            if (!$kelas) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki kelas perwalian aktif.'
+                ], Response::HTTP_FORBIDDEN);
+            }
 
-        return response()->json([
-            'success' => true,
-            'data'    => SiswaResource::collection($data)->response()->getData(true),
-        ], Response::HTTP_OK);
+            $query = Siswa::with(['user', 'kelas.jurusan', 'orangtua']);
+            $query = $this->applyFilters($request, $query, $kelas->id);
+
+            $perPage = min((int) $request->get('per_page', 20), 100);
+            $data = $query->orderBy('nama_lengkap', 'asc')->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'message' => "Data siswa kelas {$kelas->nama_kelas} berhasil diambil.",
+                'data'    => SiswaResource::collection($data)->response()->getData(true),
+            ], Response::HTTP_OK);
+
+        } catch (Throwable $e) {
+            Log::error('Walikelas Siswa Index Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil data siswa.',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function show(Siswa $siswa): JsonResponse
     {
-        $user = Auth::user();
-        $guruStafId = $user->guruStaf?->id;
-        
-        $isWali = Kelas::where('id', $siswa->kelas_id)
-                       ->where('wali_kelas_id', $guruStafId)
-                       ->exists();
+        try {
+            $kelas = $this->getKelasPerwalian();
+            
+            // Validasi apakah siswa yang diminta ada di kelas perwalian login
+            if (!$kelas || $siswa->kelas_id !== $kelas->id) {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Akses ditolak. Siswa tidak terdaftar di kelas perwalian Anda.'
+                ], Response::HTTP_FORBIDDEN);
+            }
 
-        if (!$isWali) {
+            $siswa->load(['user', 'kelas.jurusan', 'orangtua']);
             return response()->json([
-                'success' => false, 
-                'message' => 'Akses ditolak.'
-            ], Response::HTTP_FORBIDDEN);
-        }
+                'success' => true,
+                'data'    => new SiswaResource($siswa)
+            ], Response::HTTP_OK);
 
-        $siswa->load(['user', 'kelas.jurusan', 'orangtua']);
-        return response()->json([
-            'success' => true,
-            'data'    => new SiswaResource($siswa)
-        ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil detail siswa.',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function export(Request $request)
     {
-        $user = Auth::user();
-        $guruStafId = $user->guruStaf?->id;
-        
-        $kelas = Kelas::where('wali_kelas_id', $guruStafId)->first();
-        $namaKelas = $kelas ? $kelas->nama_kelas : 'Kelas';
+        try {
+            $kelas = $this->getKelasPerwalian();
 
-        $query = Siswa::query();
-        $query = $this->applyFilters($request, $query);
+            if (!$kelas) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal ekspor: Kelas perwalian tidak ditemukan.'
+                ], Response::HTTP_FORBIDDEN);
+            }
 
-        $profil = DB::table('profil_sekolah')->first();
-        $kontak = DB::table('data_kontak')->first();
+            $query = Siswa::query();
+            $query = $this->applyFilters($request, $query, $kelas->id);
 
-        return Excel::download(
-            new SiswaExport($query, $profil, $kontak, $namaKelas), 
-            'Data_Siswa_' . str_replace(' ', '_', $namaKelas) . '_' . date('Ymd_His') . '.xlsx'
-        );
+            $profil = DB::table('profil_sekolah')->first();
+            $kontak = DB::table('data_kontak')->first();
+            $fileName = 'Data_Siswa_' . str_replace(' ', '_', $kelas->nama_kelas) . '_' . date('Ymd_His') . '.xlsx';
+
+            return Excel::download(
+                new SiswaExport($query, $profil, $kontak, $kelas->nama_kelas), 
+                $fileName
+            );
+
+        } catch (Throwable $e) {
+            Log::error('Walikelas Siswa Export Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengekspor data.',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 }

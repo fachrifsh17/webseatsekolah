@@ -18,7 +18,11 @@ class PpdbLinkController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['update']);
+        $this->middleware('log.aktivitas')->only(['update']);
+
+        // Siapkan otorisasi (pastikan buat Policy nantinya)
+        // Karena ini singleton, kita biasanya pakai manual authorize di method atau 
+        // tetap didaftarkan jika menggunakan standar resource.
     }
 
     public function index(): JsonResponse
@@ -42,7 +46,6 @@ class PpdbLinkController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil data PPDB',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -53,6 +56,7 @@ class PpdbLinkController extends Controller
 
         DB::beginTransaction();
         try {
+            // Logika updateOrCreate tetap sama: memastikan hanya ada satu record (ID 1)
             $link = PpdbLink::updateOrCreate(
                 ['id' => 1],
                 $validated
@@ -73,7 +77,6 @@ class PpdbLinkController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui data PPDB',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

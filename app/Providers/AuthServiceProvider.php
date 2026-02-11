@@ -27,6 +27,22 @@ use App\Models\JamSekolah;
 use App\Models\JadwalProduktif;
 use App\Models\Ekstrakurikuler;
 use App\Models\Fasilitas;
+use App\Models\Album;
+use App\Models\Banner;
+use App\Models\DataKontak;
+use App\Models\GuruStaf;
+use App\Models\Jabatan;
+use App\Models\KalenderAkademik;
+use App\Models\Kurikulum;
+use App\Models\LogAktivitas;
+use App\Models\Media;
+use App\Models\Pesan;
+use App\Models\PortalSosmed;
+use App\Models\PpdbLink;
+use App\Models\PresensiSiswaDetail;
+use App\Models\Prestasi as PrestasiModel;
+use App\Models\RateLimits;
+use App\Models\StrukturJabatan;
 
 // Policies
 use App\Policies\SiswaPolicy;
@@ -50,6 +66,20 @@ use App\Policies\JamSekolahPolicy;
 use App\Policies\JadwalProduktifPolicy;
 use App\Policies\EkstrakurikulerPolicy;
 use App\Policies\FasilitasPolicy;
+use App\Policies\AlbumPolicy;
+use App\Policies\BannerPolicy;
+use App\Policies\DataKontakPolicy;
+use App\Policies\GuruPolicy;
+use App\Policies\JabatanPolicy;
+use App\Policies\KalenderAkademikPolicy;
+use App\Policies\KurikulumPolicy;
+use App\Policies\LogAktivitasPolicy;
+use App\Policies\MediaPolicy;
+use App\Policies\PesanPolicy;
+use App\Policies\PortalSosmedPolicy;
+use App\Policies\PpdbLinkPolicy;
+use App\Policies\PresensiSiswaDetailPolicy;
+use App\Policies\StrukturJabatanPolicy;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -75,6 +105,19 @@ class AuthServiceProvider extends ServiceProvider
         JadwalProduktif::class   => JadwalProduktifPolicy::class,
         Ekstrakurikuler::class   => EkstrakurikulerPolicy::class,
         Fasilitas::class         => FasilitasPolicy::class,
+        Album::class             => AlbumPolicy::class,
+        Banner::class            => BannerPolicy::class,
+        DataKontak::class        => DataKontakPolicy::class,
+        GuruStaf::class          => GuruPolicy::class,
+        Jabatan::class           => JabatanPolicy::class,
+        KalenderAkademik::class  => KalenderAkademikPolicy::class,
+        Kurikulum::class         => KurikulumPolicy::class,
+        LogAktivitas::class      => LogAktivitasPolicy::class,
+        Media::class             => MediaPolicy::class,
+        Pesan::class             => PesanPolicy::class,
+        PortalSosmed::class      => PortalSosmedPolicy::class,
+        PpdbLink::class          => PpdbLinkPolicy::class,
+        StrukturJabatan::class   => StrukturJabatanPolicy::class,
     ];
 
     public function boot(): void

@@ -17,6 +17,13 @@ class UpdatePresensiRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Validasi untuk massal
+            'data_presensi' => ['sometimes', 'array', 'min:1'],
+            'data_presensi.*.siswa_id' => ['required_with:data_presensi', 'string', 'exists:siswa,id'],
+            'data_presensi.*.status' => ['required_with:data_presensi', 'in:Hadir,Izin,Sakit,Alpa'],
+            'data_presensi.*.keterangan' => ['nullable', 'string', 'max:255'],
+
+            // Validasi untuk satuan (jika bukan massal)
             'siswa_id'     => ['sometimes', 'string', 'exists:siswa,id'],
             'tanggal'      => ['nullable', 'date'],  
             'status'       => ['sometimes', 'in:Hadir,Izin,Sakit,Alpa'],
@@ -28,13 +35,15 @@ class UpdatePresensiRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'siswa_id.string'      => 'Siswa harus berupa ID string.',
+            'data_presensi.array' => 'Format data harus berupa array.',
+            'data_presensi.*.siswa_id.required_with' => 'Siswa wajib diisi dalam data massal.',
+            'data_presensi.*.status.required_with' => 'Status wajib diisi dalam data massal.',
+            'data_presensi.*.status.in' => 'Status massal harus berupa Hadir, Izin, Sakit, atau Alpa.',
+            
             'siswa_id.exists'      => 'Data siswa tidak ditemukan.',
             'tanggal.date'         => 'Format tanggal tidak valid.',
             'status.in'            => 'Status harus berupa Hadir, Izin, Sakit, atau Alpa.',
-            'keterangan.string'    => 'Keterangan harus berupa teks.',
             'keterangan.max'       => 'Keterangan tidak boleh lebih dari 255 karakter.',
-            'guru_staf_id.string'  => 'ID guru harus berupa ID string.',
             'guru_staf_id.exists'  => 'Data guru tidak ditemukan.',
         ];
     }
@@ -42,11 +51,10 @@ class UpdatePresensiRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'siswa_id'     => 'Siswa',
-            'tanggal'      => 'Tanggal',
-            'status'       => 'Status presensi',
-            'keterangan'   => 'Keterangan',
-            'guru_staf_id' => 'Guru Penginput',
+            'data_presensi' => 'Daftar Presensi',
+            'data_presensi.*.siswa_id' => 'Siswa',
+            'data_presensi.*.status' => 'Status presensi',
+            'status' => 'Status presensi',
         ];
     }
 

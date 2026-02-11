@@ -3,29 +3,30 @@
 namespace App\Http\Controllers\KepalaSekolah;
 
 use App\Http\Controllers\Controller;
-use App\Models\SekolahSetting;
-use App\Models\DataKontak;
-use App\Http\Resources\SekolahSettingResource;
-use App\Http\Resources\DataKontakResource;
+use App\Models\{SekolahSetting, DataKontak};
+use App\Http\Resources\{SekolahSettingResource, DataKontakResource};
 use App\Http\Requests\UpdateSekolahSettingRequest;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\{Storage, DB, Log};
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class SettingController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('Log.admin')->only(('updateGeneral'));
+        $this->middleware('Log.aktivitas')->only('updateGeneral');
     }
 
     public function index(): JsonResponse
     {
         try {
+            $this->authorize('view', SekolahSetting::class);
+
             $setting = SekolahSetting::firstOrCreate(
                 ['id' => 1],
                 [
@@ -63,6 +64,8 @@ class SettingController extends Controller
 
     public function updateGeneral(UpdateSekolahSettingRequest $request): JsonResponse
     {
+        $this->authorize('update', SekolahSetting::class);
+
         $validated    = $request->validated();
         $newLogoPath  = null;
         $newPdfPath   = null;

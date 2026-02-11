@@ -9,19 +9,25 @@ use App\Http\Requests\UpdatePpdbLinkRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class PpdbLinkController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['update']);
+        $this->middleware('log.aktivitas')->only(['update']);
     }
 
     public function index(): JsonResponse
     {
+        // Otorisasi viewAny pada model PpdbLink
+        $this->authorize('viewAny', PpdbLink::class);
+
         try {
             $link = PpdbLink::first();
 
@@ -48,6 +54,9 @@ class PpdbLinkController extends Controller
 
     public function update(UpdatePpdbLinkRequest $request): JsonResponse
     {
+        // Otorisasi update pada model PpdbLink
+        $this->authorize('update', PpdbLink::class);
+
         $validated = $request->validated();
 
         DB::beginTransaction();

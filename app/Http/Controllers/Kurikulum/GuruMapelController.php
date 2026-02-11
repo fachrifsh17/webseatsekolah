@@ -3,34 +3,29 @@
 namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
-use App\Models\GuruMapel;
-use App\Models\JamSekolah;
-use App\Models\TahunAjaran;
-use App\Models\ProfilSekolah;
-use App\Models\DataKontak;
-use App\Models\GuruStaf;
-use App\Models\MataPelajaran;
-use App\Models\Kelas;
+use App\Models\{GuruMapel, JamSekolah, TahunAjaran, ProfilSekolah, DataKontak, GuruStaf, MataPelajaran, Kelas};
 use App\Http\Resources\GuruMapelResource;
-use App\Http\Requests\StoreGuruMapelRequest;
-use App\Http\Requests\UpdateGuruMapelRequest;
+use App\Http\Requests\{StoreGuruMapelRequest, UpdateGuruMapelRequest};
 use App\Exports\GuruMapelExport;
 use App\Imports\GuruMapelImport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Support\Facades\{DB, Log};
 use Illuminate\Support\Str;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class GuruMapelController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+        
+        $this->authorizeResource(GuruMapel::class, 'guru_mapel');
     }
 
     private function applyFilters(Request $request)
@@ -86,6 +81,8 @@ class GuruMapelController extends Controller
     public function export(Request $request)
     {
         try {
+            $this->authorize('viewAny', GuruMapel::class);
+            
             $query = $this->applyFilters($request);
             $tahunAktif = TahunAjaran::where('is_active', 1)->first();
 
@@ -126,6 +123,8 @@ class GuruMapelController extends Controller
 
     public function import(Request $request): JsonResponse
     {
+        $this->authorize('create', GuruMapel::class);
+        
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
         try {
@@ -140,7 +139,6 @@ class GuruMapelController extends Controller
                                : 'Data penugasan guru berhasil diimport oleh tim Kurikulum.',
                 'conflicts' => $conflicts
             ], Response::HTTP_OK);
-
         } catch (Throwable $e) {
             Log::error('Import Guru Mapel Error (Kurikulum)', ['error' => $e->getMessage()]);
             return response()->json([

@@ -5,29 +5,30 @@ namespace App\Http\Controllers\Kurikulum;
 use App\Http\Controllers\Controller;
 use App\Models\KalenderAkademik;
 use App\Http\Resources\KalenderAkademikResource;
-use App\Http\Requests\StoreKalenderAkademikRequest;
-use App\Http\Requests\UpdateKalenderAkademikRequest;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use App\Http\Requests\{StoreKalenderAkademikRequest, UpdateKalenderAkademikRequest};
+use Illuminate\Support\Facades\{DB, Log};
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class KalenderController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        // Sesuaikan role jika diperlukan, misal: Kurikulum juga bisa akses
         $this->middleware('role:Admin,Kurikulum');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+
+        $this->authorizeResource(KalenderAkademik::class, 'kalender');
     }
 
     public function index(): JsonResponse
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-            // Mengurutkan dari yang terbaru berdasarkan tanggal mulai
             $data = KalenderAkademik::orderBy('tanggal_mulai', 'desc')->paginate($perPage);
 
             return response()->json([
@@ -71,7 +72,6 @@ class KalenderController extends Controller
     {
         $validated = $request->validated();
 
-        // Cek apakah kegiatan yang sama sudah terdaftar di tanggal mulai yang sama
         $isDuplicate = KalenderAkademik::where('kegiatan', $validated['kegiatan'])
             ->where('tanggal_mulai', $validated['tanggal_mulai'])
             ->exists();
@@ -109,11 +109,9 @@ class KalenderController extends Controller
     {
         $validated = $request->validated();
 
-        // Ambil nilai lama jika tidak ada di input update
         $kegiatan = $validated['kegiatan'] ?? $kalender->kegiatan;
         $tanggalMulai = $validated['tanggal_mulai'] ?? $kalender->tanggal_mulai;
 
-        // Cek duplikasi kecuali untuk ID yang sedang diupdate
         $isDuplicate = KalenderAkademik::where('id', '!=', $kalender->id)
             ->where('kegiatan', $kegiatan)
             ->where('tanggal_mulai', $tanggalMulai)

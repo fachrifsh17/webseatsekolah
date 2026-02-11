@@ -3,31 +3,28 @@
 namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
-use App\Models\MataPelajaran;
-use App\Models\User;
-use App\Models\ProfilSekolah;
-use App\Models\DataKontak;
+use App\Models\{MataPelajaran, User, ProfilSekolah, DataKontak};
 use App\Http\Resources\MapelResource;
-use App\Http\Requests\StoreMapelRequest;
-use App\Http\Requests\UpdateMapelRequest;
+use App\Http\Requests\{StoreMapelRequest, UpdateMapelRequest};
 use App\Exports\MapelExport;
 use App\Imports\MapelImport;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Str;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\{DB, Log, Auth};
+use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Maatwebsite\Excel\Facades\Excel;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class MapelController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy', 'import']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+
+        $this->authorizeResource(MataPelajaran::class, 'mapel');
     }
 
     private function getUserAccess()

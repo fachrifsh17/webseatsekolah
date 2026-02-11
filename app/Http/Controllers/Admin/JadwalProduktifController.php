@@ -20,14 +20,15 @@ class JadwalProduktifController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin,Guru');
-        $this->middleware('log.admin')->only(['store','update','destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        $this->authorizeResource(JadwalProduktif::class, 'jadwalProduktif');
     }
 
     public function index(): JsonResponse
     {
         $perPage = min((int) request()->get('per_page', 20), 100);
 
-        $jadwal = JadwalProduktif::with(['jurusan','guruStaf'])
+        $jadwal = JadwalProduktif::with(['jurusan', 'guruStaf'])
             ->latest()
             ->paginate($perPage);
 
@@ -47,7 +48,7 @@ class JadwalProduktifController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data'    => new JadwalProduktifResource($jadwalProduktif->load(['jurusan','guruStaf']))
+            'data'    => new JadwalProduktifResource($jadwalProduktif->load(['jurusan', 'guruStaf']))
         ], Response::HTTP_OK);
     }
 
@@ -56,7 +57,7 @@ class JadwalProduktifController extends Controller
         $validated = $request->validated();
         $user      = $request->user();
 
-        $isAdmin = $user->roles()->where('role_name','admin')->exists();
+        $isAdmin = $user->roles()->where('role_name', 'admin')->exists();
 
         if (!$isAdmin) {
             $guruId = $user->guruStaf?->id ?? $user->guru_staf_id ?? $user->guru_id ?? null;
@@ -85,7 +86,7 @@ class JadwalProduktifController extends Controller
         }
 
         if ($request->hasFile('file_jadwal_path')) {
-            $validated['file_jadwal_path'] = $request->file('file_jadwal_path')->store('jadwal_produktif','public');
+            $validated['file_jadwal_path'] = $request->file('file_jadwal_path')->store('jadwal_produktif', 'public');
         }
 
         try {
@@ -94,7 +95,7 @@ class JadwalProduktifController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Jadwal produktif berhasil ditambahkan.',
-                'data'    => new JadwalProduktifResource($jadwal->load(['jurusan','guruStaf']))
+                'data'    => new JadwalProduktifResource($jadwal->load(['jurusan', 'guruStaf']))
             ], Response::HTTP_CREATED);
         } catch (QueryException $qe) {
             if (!empty($validated['file_jadwal_path'] ?? null)) {
@@ -130,7 +131,7 @@ class JadwalProduktifController extends Controller
         $validated = $request->validated();
         $user      = $request->user();
 
-        $isAdmin = $user->roles()->where('role_name','admin')->exists();
+        $isAdmin = $user->roles()->where('role_name', 'admin')->exists();
 
         if (!$isAdmin) {
             $guruId = $user->guruStaf?->id ?? $user->guru_staf_id ?? $user->guru_id ?? null;
@@ -156,7 +157,7 @@ class JadwalProduktifController extends Controller
         }
 
         if ($request->hasFile('file_jadwal_path')) {
-            $newFilePath = $request->file('file_jadwal_path')->store('jadwal_produktif','public');
+            $newFilePath = $request->file('file_jadwal_path')->store('jadwal_produktif', 'public');
             if ($newFilePath) {
                 if (!empty($jadwalProduktif->file_jadwal_path)) {
                     Storage::disk('public')->delete($jadwalProduktif->file_jadwal_path);
@@ -171,7 +172,7 @@ class JadwalProduktifController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Jadwal produktif berhasil diperbarui.',
-                'data'    => new JadwalProduktifResource($jadwalProduktif->load(['jurusan','guruStaf']))
+                'data'    => new JadwalProduktifResource($jadwalProduktif->load(['jurusan', 'guruStaf']))
             ], Response::HTTP_OK);
         } catch (QueryException $qe) {
             if (!empty($validated['file_jadwal_path'] ?? null)) {

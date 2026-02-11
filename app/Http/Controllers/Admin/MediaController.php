@@ -19,8 +19,11 @@ class MediaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('role:Admin');
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+
+        // Proteksi Policy tetap aktif
+        $this->authorizeResource(Media::class, 'media');
     }
 
     public function index(Request $request): JsonResponse
@@ -56,21 +59,12 @@ class MediaController extends Controller
         }
     }
 
-    // MENGGUNAKAN MEDIA $media (Route Model Binding)
     public function show(Media $media): JsonResponse
     {
-        try {
-            return response()->json([
-                'success' => true,
-                'data'    => new MediaResource($media->load('album'))
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to fetch media detail', ['error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail media',
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        return response()->json([
+            'success' => true,
+            'data'    => new MediaResource($media->load('album'))
+        ], Response::HTTP_OK);
     }
 
     public function store(StoreMediaRequest $request): JsonResponse
@@ -119,9 +113,14 @@ class MediaController extends Controller
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
-            return response()->json(['success' => false, 'message' => 'Gagal menyimpan media'], 500);
+            Log::error('Media Store Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal menyimpan media'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
+
     public function update(Request $request, Media $media): JsonResponse
     {
         $validated = $request->validate([
@@ -156,7 +155,11 @@ class MediaController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            return response()->json(['success' => false, 'message' => 'Gagal memperbarui media'], 500);
+            Log::error('Media Update Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal memperbarui media'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -171,13 +174,16 @@ class MediaController extends Controller
             DB::commit();
 
             return response()->json([
-                'success'      => true,
-                'message'      => 'Media berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
+                'success' => true,
+                'message' => 'Media berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            return response()->json(['success' => false, 'message' => 'Gagal menghapus media'], 500);
+            Log::error('Media Delete Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal menghapus media'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

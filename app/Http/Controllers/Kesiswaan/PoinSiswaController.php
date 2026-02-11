@@ -7,8 +7,10 @@ use App\Models\{PoinSiswa, TahunAjaran, Siswa};
 use App\Http\Requests\{StorePoinSiswaRequest, UpdatePoinSiswaRequest};
 use App\Http\Resources\PoinSiswaResource;
 use App\Exports\PoinSiswaExport;
-use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Auth, Log};
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Carbon;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,10 +18,13 @@ use Throwable;
 
 class PoinSiswaController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        $this->authorizeResource(PoinSiswa::class, 'poin_siswa');
     }
 
     public function index(Request $request): JsonResponse
@@ -104,7 +109,7 @@ class PoinSiswaController extends Controller
             if (!$siswa) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Gagal: Siswa tidak ditemukan atau berada di kelas yang sudah tidak aktif.'
+                    'message' => 'Siswa tidak ditemukan atau kelas tidak aktif.'
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
@@ -145,7 +150,7 @@ class PoinSiswaController extends Controller
             if (!$siswa) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Gagal: Data tidak dapat diubah karena siswa atau kelas sudah tidak aktif.'
+                    'message' => 'Data tidak dapat diubah karena siswa atau kelas sudah tidak aktif.'
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
@@ -157,6 +162,7 @@ class PoinSiswaController extends Controller
                 'data'    => new PoinSiswaResource($poinSiswa->fresh(['siswa.kelas', 'guruStaf', 'tahunAjaran']))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
+            Log::error('Kesiswaan Poin Update Error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Gagal memperbarui data.'], 500);
         }
     }
@@ -167,12 +173,15 @@ class PoinSiswaController extends Controller
             DB::transaction(fn() => $poinSiswa->delete());
             return response()->json(['success' => true, 'message' => 'Data berhasil dihapus.'], Response::HTTP_OK);
         } catch (Throwable $e) {
+            Log::error('Kesiswaan Poin Destroy Error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Gagal menghapus data.'], 500);
         }
     }
 
     public function export(Request $request)
     {
+        $this->authorize('viewAny', PoinSiswa::class);
+
         $profil = DB::table('profil_sekolah')->first();
         $kontak = DB::table('data_kontak')->first();
 
@@ -192,18 +201,17 @@ class PoinSiswaController extends Controller
         }
 
         $bulanFilter = 'Semua_Waktu';
+        $labelWaktu = "Seluruh Periode (Kumulatif)";
+
         if ($request->filled('bulan')) {
             $date = Carbon::parse($request->bulan);
             $query->whereMonth('tanggal', $date->month)->whereYear('tanggal', $date->year);
             $labelWaktu = $date->translatedFormat('F Y');
             $bulanFilter = $date->format('M_Y');
-        } else {
-            $labelWaktu = "Seluruh Periode (Kumulatif)";
         }
 
         $namaKelas = $request->nama_kelas ?? 'Seluruh Siswa';
         $namaKelasFile = str_replace([' ', '/', '\\'], '_', $namaKelas);
-
         $fileName = "Rekap_Poin_{$namaKelasFile}_{$bulanFilter}_" . now()->format('His') . ".xlsx";
 
         return Excel::download(

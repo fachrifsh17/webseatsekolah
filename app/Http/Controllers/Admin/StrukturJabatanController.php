@@ -10,22 +10,26 @@ use App\Http\Requests\UpdateStrukturJabatanRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class StrukturJabatanController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+
+        $this->authorizeResource(StrukturJabatan::class, 'struktur_jabatan');
     }
 
     public function index(): JsonResponse
     {
         try {
-            // Menambahkan eager loading yang kuat dan pengecekan data
             $data = StrukturJabatan::with(['guru', 'jabatan'])
                 ->orderBy('urutan_tampil', 'asc')
                 ->get();
@@ -35,7 +39,6 @@ class StrukturJabatanController extends Controller
                 'data'    => StrukturJabatanResource::collection($data),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            // Log secara detail untuk debugging 500 error
             Log::error('Struktur Jabatan Index Error: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
                 'line' => $e->getLine()
@@ -44,7 +47,7 @@ class StrukturJabatanController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar struktur jabatan.',
-                'debug'   => $e->getMessage() // Lepaskan ini hanya saat development
+                'debug'   => $e->getMessage()
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -53,7 +56,6 @@ class StrukturJabatanController extends Controller
     {
         $validated = $request->validated();
 
-        // Validasi Duplikasi: 1 Pejabat = 1 Jabatan
         $conflict = StrukturJabatan::where('guru_staf_id', $validated['guru_staf_id'])
             ->orWhere('jabatan_id', $validated['jabatan_id'])
             ->exists();
@@ -91,7 +93,6 @@ class StrukturJabatanController extends Controller
     {
         $validated = $request->validated();
 
-        // Cek duplikasi dengan mengecualikan ID saat ini
         if (isset($validated['guru_staf_id']) || isset($validated['jabatan_id'])) {
             $conflict = StrukturJabatan::where('id', '!=', $strukturJabatan->id)
                 ->where(function($q) use ($validated) {

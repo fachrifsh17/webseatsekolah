@@ -12,19 +12,20 @@ use App\Exports\OrangtuaExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\{DB, Log};
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Str;
 
 class OrangtuaController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        // Hanya update yang dilog karena tidak ada import di sini
-        $this->middleware('log.admin')->only(['update']);
+        $this->middleware('log.aktivitas')->only(['update']);
     }
 
     private function applyFilters(Request $request, $query)
@@ -63,6 +64,8 @@ class OrangtuaController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', Orangtua::class);
+
         $taId = $request->filled('tahun_ajaran_id') 
                 ? $request->tahun_ajaran_id 
                 : DB::table('tahun_ajaran')->where('is_active', 1)->value('id');
@@ -95,6 +98,8 @@ class OrangtuaController extends Controller
 
     public function update(UpdateOrangtuaRequest $request, Orangtua $orangtua): JsonResponse
     {
+        $this->authorize('update', $orangtua);
+
         $validated = $request->validated();
 
         try {
@@ -132,6 +137,8 @@ class OrangtuaController extends Controller
 
     public function export(Request $request)
     {
+        $this->authorize('viewAny', Orangtua::class);
+
         $taId = $request->filled('tahun_ajaran_id') 
                 ? $request->tahun_ajaran_id 
                 : DB::table('tahun_ajaran')->where('is_active', 1)->value('id');

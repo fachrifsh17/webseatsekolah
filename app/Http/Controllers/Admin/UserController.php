@@ -13,16 +13,21 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class UserController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+
+        $this->authorizeResource(User::class, 'user');
     }
 
     public function index(): JsonResponse
@@ -97,7 +102,6 @@ class UserController extends Controller
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         } catch (Throwable $e) {
             Log::error('Failed to create user', ['error' => $e->getMessage()]);
-
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal membuat user.',
@@ -149,7 +153,6 @@ class UserController extends Controller
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         } catch (Throwable $e) {
             Log::error('Failed to update user', ['user_id' => (string)$user->id, 'error' => $e->getMessage()]);
-
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui user.',
@@ -175,7 +178,6 @@ class UserController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Failed to delete user', ['user_id' => (string)$user->id, 'error' => $e->getMessage()]);
-
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus user.',

@@ -9,13 +9,15 @@ use App\Exports\PoinSiswaExport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Log};
-use Illuminate\Support\Carbon;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Maatwebsite\Excel\Facades\Excel;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class PoinSiswaController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
@@ -23,7 +25,6 @@ class PoinSiswaController extends Controller
 
     /**
      * Helper untuk mengambil data poin dengan subquery kumulatif
-     * Sesuai dengan struktur Admin
      */
     private function getPoinWithKumulatif($id)
     {
@@ -42,6 +43,9 @@ class PoinSiswaController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        // Pastikan hanya Kepsek atau Admin yang bisa masuk
+        $this->authorize('viewAny', PoinSiswa::class);
+
         try {
             $query = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
                 ->select('poin_siswa.*')
@@ -58,7 +62,7 @@ class PoinSiswaController extends Controller
                       ->whereHas('kelas', fn($qk) => $qk->where('is_active', true));
                 });
 
-            // Filter Tahun Ajaran (Default ke yang aktif jika tidak diisi)
+            // Filter Tahun Ajaran
             if ($request->filled('tahun_ajaran_id')) {
                 $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
             } else {
@@ -85,7 +89,6 @@ class PoinSiswaController extends Controller
 
             $perPage = min((int) $request->get('per_page', 20), 100);
             
-            // Urutan disamakan dengan Admin: Negatif terbanyak dulu baru tanggal terbaru
             $data = $query->orderByDesc('total_kumulatif_negatif')
                           ->orderByDesc('tanggal')
                           ->paginate($perPage);
@@ -112,9 +115,12 @@ class PoinSiswaController extends Controller
     public function show($id): JsonResponse
     {
         try {
+            $poin = $this->getPoinWithKumulatif($id);
+            $this->authorize('view', $poin);
+
             return response()->json([
                 'success' => true,
-                'data'    => new PoinSiswaResource($this->getPoinWithKumulatif($id))
+                'data'    => new PoinSiswaResource($poin)
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json([
@@ -126,6 +132,8 @@ class PoinSiswaController extends Controller
 
     public function export(Request $request)
     {
+        $this->authorize('viewAny', PoinSiswa::class);
+
         try {
             $profil = DB::table('profil_sekolah')->first() ?? DB::table('sekolah_setting')->first();
             $kontak = DB::table('data_kontak')->first();

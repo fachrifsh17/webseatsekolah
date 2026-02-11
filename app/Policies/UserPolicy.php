@@ -13,7 +13,7 @@ class UserPolicy
     public function before(User $user, $capability)
     {
         if ($user->hasRole('Admin')) {
-            return true;
+            return true; 
         }
     }
 
@@ -23,7 +23,7 @@ class UserPolicy
             return Response::deny('Anda hanya diizinkan mengubah data profil milik sendiri.');
         }
 
-        if ($user->hasAnyRole(['orangtua', 'Orang Tua', 'ortu'])) {
+        if ($user->roles->pluck('role_name')->contains('Orangtua')) {
             return Response::deny('Akses ditolak. Orang tua tidak diizinkan mengubah profil melalui fitur ini.');
         }
 
@@ -32,7 +32,7 @@ class UserPolicy
 
     public function viewAny(User $user): bool
     {
-        return false;
+        return false; 
     }
 
     public function view(User $user, User $model): bool
@@ -42,26 +42,34 @@ class UserPolicy
 
     public function create(User $user): bool
     {
-        return false;
+        return false; 
     }
 
     public function update(User $user, User $model): bool
     {
-        return $user->id === $model->id;
+        if ($user->id !== $model->id) {
+            return false;
+        }
+
+        if ($user->roles->pluck('role_name')->contains('Orangtua')) {
+            return false;
+        }
+
+        return true;
     }
 
     public function delete(User $user, User $model): bool
     {
-        return false;
+        return false; 
     }
 
     public function restore(User $user, User $model): bool
     {
-        return false;
+        return false; 
     }
 
     public function forceDelete(User $user, User $model): bool
     {
-        return false;
+        return false; 
     }
 }

@@ -10,16 +10,21 @@ use App\Http\Requests\UpdateRoleRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class RoleController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+
+        $this->authorizeResource(Role::class, 'role');
     }
 
     public function index(): JsonResponse
@@ -121,12 +126,12 @@ class RoleController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Role berhasil dihapus.'
-            ], Response::HTTP_NO_CONTENT);
+            ], Response::HTTP_OK); 
         } catch (Throwable $e) {
             Log::error('Failed to delete role', ['role_id' => (string)$role->id, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus role.'
+                'message' => 'Gagal menghapus role.',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

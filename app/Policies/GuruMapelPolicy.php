@@ -7,37 +7,54 @@ use App\Models\GuruMapel;
 
 class GuruMapelPolicy
 {
+    public function viewAny(User $user): bool
+    {
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum', 'ketua-jurusan']);
+    }
+
     public function view(User $user, GuruMapel $guruMapel): bool
     {
-        return $this->checkAccess($user);
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum', 'ketua-jurusan']);
     }
 
     public function create(User $user): bool
     {
-        return $this->checkAccess($user);
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum']);
     }
 
     public function update(User $user, GuruMapel $guruMapel): bool
     {
-        return $this->checkAccess($user);
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum']);
     }
 
     public function delete(User $user, GuruMapel $guruMapel): bool
     {
-        return $this->checkAccess($user);
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum']);
     }
 
-    protected function checkAccess(User $user): bool
+    public function export(User $user): bool
     {
-        if ($user->hasAnyRole(['admin', 'Admin', 'ADMIN'])) {
-            return true;
-        }
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum', 'ketua-jurusan']);
+    }
 
-        $jabatan = optional($user->guruStaf->strukturJabatan)->slug;
+    public function import(User $user): bool
+    {
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum']);
+    }
 
-        return in_array($jabatan, [
-            'kepala-sekolah',
-            'waka-kurikulum'
-        ]);
+    protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
+    {
+        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+
+        $jabatanSlugs = $user->guruStaf
+            ? $user->guruStaf->strukturJabatan
+                ->map(fn($sj) => $sj->jabatan?->slug)
+                ->filter()
+                ->toArray()
+            : [];
+
+        $hasJabatan = !empty(array_intersect($jabatanSlugs, $allowedJabatans));
+
+        return $hasRole || $hasJabatan;
     }
 }

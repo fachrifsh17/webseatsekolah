@@ -19,14 +19,17 @@ class PortalController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin'); 
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        
+        // Aktifkan ini setelah file Policy dibuat
+        $this->authorizeResource(PortalSosmed::class, 'portal');
     }
 
     public function index(): JsonResponse
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-            $data    = PortalSosmed::paginate($perPage);
+            $data    = PortalSosmed::latest()->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -43,39 +46,23 @@ class PortalController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar portal sosmed',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
     
     public function show(PortalSosmed $portal): JsonResponse
     {
-        try {
-            return response()->json([
-                'success' => true,
-                'data'    => new PortalSosmedResource($portal),
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to fetch portal sosmed detail', [
-                'portal_id' => (string) $portal->id,
-                'error'     => $e->getMessage()
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail portal sosmed',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        return response()->json([
+            'success' => true,
+            'data'    => new PortalSosmedResource($portal),
+        ], Response::HTTP_OK);
     }
 
     public function store(StorePortalRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        if (isset($validated['is_active'])) {
-            $validated['is_active'] = (int) $validated['is_active'];
-        }
-
+        // Logika pembersihan URL tetap dipertahankan
         if (!empty($validated['url_link'])) {
             $validated['url_link'] = rtrim($validated['url_link'], '/');
         }
@@ -92,11 +79,10 @@ class PortalController extends Controller
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to create portal sosmed', ['payload' => $validated, 'error' => $e->getMessage()]);
+            Log::error('Failed to create portal sosmed', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menambahkan portal sosmed',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -117,15 +103,10 @@ class PortalController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to update portal sosmed', [
-                'portal_id' => (string) $portal->id,
-                'payload'   => $validated,
-                'error'     => $e->getMessage()
-            ]);
+            Log::error('Failed to update portal sosmed', ['id' => $portal->id, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui portal sosmed',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -138,21 +119,15 @@ class PortalController extends Controller
             DB::commit();
 
             return response()->json([
-                'success'      => true,
-                'message'      => 'Portal sosmed berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
+                'success' => true,
+                'message' => 'Portal sosmed berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to delete portal sosmed', [
-                'portal_id' => (string) $portal->id,
-                'error'     => $e->getMessage()
-            ]);
+            Log::error('Failed to delete portal sosmed', ['id' => $portal->id, 'error' => $e->getMessage()]);
             return response()->json([
-                'success'      => false,
-                'message'      => 'Gagal menghapus portal sosmed',
-                'notification' => 'Gagal dihapus',
-                'errors'       => ['exception' => [$e->getMessage()]]
+                'success' => false,
+                'message' => 'Gagal menghapus portal sosmed',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

@@ -15,7 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.token' => \App\Http\Middleware\CheckAuthToken::class,
             'role'       => \App\Http\Middleware\CheckRole::class,
-            'log.admin'  => \App\Http\Middleware\LogAktivitas::class,
+            'log.aktivitas'  => \App\Http\Middleware\LogAktivitas::class,
             'jabatan'    => \App\Http\Middleware\CheckJabatan::class, 
         ]);
     })

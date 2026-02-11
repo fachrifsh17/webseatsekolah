@@ -3,18 +3,17 @@
 namespace App\Http\Controllers\Orangtua;
 
 use App\Http\Controllers\Controller;
-use App\Models\Presensi;
-use App\Models\Siswa;
-use App\Models\TahunAjaran;
+use App\Models\{Presensi, Siswa, TahunAjaran};
 use App\Http\Resources\PresensiResource;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Support\Facades\{Auth, DB};
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Symfony\Component\HttpFoundation\Response;
 
 class PresensiController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');

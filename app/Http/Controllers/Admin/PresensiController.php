@@ -19,7 +19,8 @@ class PresensiController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('role:Admin');
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
     }
 
     private function validateSemesterMonth(Request $request)
@@ -47,25 +48,36 @@ class PresensiController extends Controller
             return response()->json(['success' => false, 'message' => $error], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $query = Presensi::query();
-        $query = $this->applyPresensiFilters($request, $query);
+        try {
+            $query = Presensi::query();
+            $query = $this->applyPresensiFilters($request, $query);
 
-        $perPage = min((int) $request->get('per_page', 50), 100);
-        $data = $query->paginate($perPage);
+            $perPage = min((int) $request->get('per_page', 50), 100);
+            $data = $query->paginate($perPage);
 
-        return response()->json([
-            'success' => true,
-            'data'    => PresensiResource::collection($data),
-            'meta'    => [
-                'current_page' => $data->currentPage(),
-                'last_page'    => $data->lastPage(),
-                'total'        => $data->total(),
-            ],
-        ], Response::HTTP_OK);
+            return response()->json([
+                'success' => true,
+                'data'    => PresensiResource::collection($data),
+                'meta'    => [
+                    'current_page' => $data->currentPage(),
+                    'last_page'    => $data->lastPage(),
+                    'total'        => $data->total(),
+                ],
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Admin Presensi Index Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal mengambil data presensi'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function export(Request $request)
     {
+        // Menambahkan pengecekan Policy untuk export
+        $this->authorize('viewAny', Presensi::class);
+
         try {
             if (!$request->filled('kelas_id')) {
                 return response()->json(['success' => false, 'message' => 'ID Kelas wajib dipilih.'], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -123,15 +135,32 @@ class PresensiController extends Controller
             $taId = $request->get('tahun_ajaran_id') ?? TahunAjaran::where('is_active', true)->first()?->id;
             if (!$taId) return response()->json(['success' => false, 'message' => 'Tahun Ajaran tidak ditemukan.'], Response::HTTP_NOT_FOUND);
 
+            $tanggal = $request->get('tanggal', date('Y-m-d'));
+
             $kelas = Kelas::where('tahun_ajaran_id', $taId)
                 ->select('id', 'nama_kelas', 'tahun_ajaran_id')
                 ->withCount(['siswa' => fn($q) => $q->where('is_active', true)])
                 ->orderBy('nama_kelas', 'asc')
                 ->get();
 
+            $dataWithStatus = $kelas->map(function ($item) use ($tanggal, $taId) {
+                $sudahAbsen = Presensi::where('tanggal', $tanggal)
+                    ->where('tahun_ajaran_id', $taId)
+                    ->whereHas('siswa', fn($q) => $q->where('kelas_id', $item->id))
+                    ->exists();
+
+                return [
+                    'id' => $item->id,
+                    'nama_kelas' => $item->nama_kelas,
+                    'tahun_ajaran_id' => $item->tahun_ajaran_id,
+                    'siswa_count' => $item->siswa_count,
+                    'status_presensi' => $sudahAbsen ? 'Sudah Absen' : 'Belum Absen'
+                ];
+            });
+
             return response()->json([
                 'success' => true,
-                'data'    => $kelas
+                'data'    => $dataWithStatus
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json(['success' => false, 'message' => 'Gagal memuat daftar kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
@@ -143,37 +172,60 @@ class PresensiController extends Controller
         $this->authorize('viewAny', Siswa::class);
 
         if (!$request->filled('kelas_id')) {
-            return response()->json(['success' => false, 'message' => 'ID Kelas wajib.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return response()->json(['success' => false, 'message' => 'ID Kelas wajib dipilih.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $tanggal = $request->get('tanggal', date('Y-m-d'));
-        $ta = $request->filled('tahun_ajaran_id') 
-            ? TahunAjaran::find($request->tahun_ajaran_id) 
-            : TahunAjaran::where('is_active', true)->first();
+        try {
+            $tanggal = $request->get('tanggal', date('Y-m-d'));
+            $ta = $request->filled('tahun_ajaran_id') 
+                ? TahunAjaran::find($request->tahun_ajaran_id) 
+                : TahunAjaran::where('is_active', true)->first();
 
-        if (!$ta) return response()->json(['success' => false, 'message' => 'TA tidak ditemukan.'], Response::HTTP_NOT_FOUND);
+            if (!$ta) return response()->json(['success' => false, 'message' => 'Tahun Ajaran tidak ditemukan.'], Response::HTTP_NOT_FOUND);
 
-        $siswa = Siswa::where('kelas_id', $request->kelas_id)
-            ->where('is_active', true)
-            ->with(['kelas', 'presensi' => fn($q) => $q->whereDate('tanggal', $tanggal)->where('tahun_ajaran_id', $ta->id)])
-            ->orderBy('nama_lengkap', 'asc')
-            ->get();
+            $siswa = Siswa::where('kelas_id', $request->kelas_id)
+                ->where('is_active', true)
+                ->with(['kelas', 'presensi' => fn($q) => $q->whereDate('tanggal', $tanggal)->where('tahun_ajaran_id', $ta->id)])
+                ->orderBy('nama_lengkap', 'asc')
+                ->get();
 
-        $collection = $siswa->map(function ($item) use ($tanggal) {
-            $presensi = $item->presensi->first() ?? new Presensi([
-                'siswa_id' => (string) $item->id,
-                'tanggal'  => $tanggal,
-                'status'   => null
-            ]);
-            $presensi->setRelation('siswa', $item);
-            return new PresensiResource($presensi);
-        });
+            $collection = $siswa->map(function ($item) use ($tanggal, $ta) {
+                $presensiExisting = $item->presensi->first();
+                
+                return [
+                    'siswa_id'      => $item->id,
+                    'nama_lengkap'  => $item->nama_lengkap,
+                    'nisn'          => $item->nisn,
+                    'jenis_kelamin' => $item->jenis_kelamin,
+                    'presensi'      => [
+                        'id'              => $presensiExisting?->id ?? null,
+                        'tanggal'         => $tanggal,
+                        'status'          => $presensiExisting?->status ?? null,
+                        'keterangan'      => $presensiExisting?->keterangan ?? '',
+                        'tahun_ajaran_id' => $ta->id
+                    ]
+                ];
+            });
 
-        return response()->json(['success' => true, 'data' => $collection], Response::HTTP_OK);
+            return response()->json([
+                'success' => true, 
+                'data'    => $collection,
+                'info'    => [
+                    'tanggal' => $tanggal,
+                    'kelas'   => Kelas::find($request->kelas_id)?->nama_kelas
+                ]
+            ], Response::HTTP_OK);
+
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal memuat daftar siswa.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function store(StorePresensiRequest $request): JsonResponse
     {
+        // Menambahkan pengecekan Policy untuk store
+        $this->authorize('create', Presensi::class);
+
         $tanggalInput = $request->get('tanggal', date('Y-m-d'));
 
         if ($this->isDayOff($tanggalInput)) {
@@ -213,16 +265,48 @@ class PresensiController extends Controller
     public function show(Presensi $presensi): JsonResponse
     {
         $this->authorize('view', $presensi);
-        return response()->json(['success' => true, 'data' => new PresensiResource($presensi->load(['siswa.kelas', 'guruStaf', 'tahunAjaran']))], Response::HTTP_OK);
+        return response()->json([
+            'success' => true, 
+            'data' => new PresensiResource($presensi->load(['siswa.kelas', 'guruStaf', 'tahunAjaran']))
+        ], Response::HTTP_OK);
     }
 
-    public function update(UpdatePresensiRequest $request, Presensi $presensi): JsonResponse
+    public function update(UpdatePresensiRequest $request, $id = null): JsonResponse
     {
-        $this->authorize('update', $presensi);
         try {
+            if ($request->has('data_presensi')) {
+                $tanggal = $request->get('tanggal', date('Y-m-d'));
+                
+                $results = DB::transaction(function () use ($request, $tanggal) {
+                    $updatedData = [];
+                    foreach ($request->input('data_presensi') as $item) {
+                        $presensi = Presensi::where('siswa_id', $item['siswa_id'])
+                                            ->where('tanggal', $tanggal)
+                                            ->first();
+                        
+                        if ($presensi) {
+                            $this->authorize('update', $presensi);
+                            $presensi->update([
+                                'status' => $item['status'],
+                                'keterangan' => $item['keterangan'] ?? $presensi->keterangan,
+                            ]);
+                            $updatedData[] = $presensi->id;
+                        }
+                    }
+                    return $updatedData;
+                });
+
+                return response()->json(['success' => true, 'message' => count($results) . ' data diperbarui.'], Response::HTTP_OK);
+            }
+
+            $presensi = Presensi::findOrFail($id);
+            $this->authorize('update', $presensi);
             $presensi->update($request->validated());
+            
             return response()->json(['success' => true, 'data' => new PresensiResource($presensi)], Response::HTTP_OK);
+
         } catch (Throwable $e) {
+            Log::error('Admin Update Error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Gagal update.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

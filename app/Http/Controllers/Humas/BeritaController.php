@@ -10,15 +10,21 @@ use App\Http\Requests\UpdateBeritaRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class BeritaController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        
+        // Mengaitkan Controller dengan BeritaPolicy secara otomatis
+        $this->authorizeResource(Berita::class, 'berita');
     }
 
     public function index(): JsonResponse
@@ -100,13 +106,6 @@ class BeritaController extends Controller
     {
         $data = $request->validated();
 
-        if (! $berita->exists) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Berita tidak ditemukan'
-            ], Response::HTTP_NOT_FOUND);
-        }
-
         try {
             if ($request->hasFile('foto')) {
                 if ($berita->foto) {
@@ -117,13 +116,10 @@ class BeritaController extends Controller
 
             unset($data['id']);
 
-            foreach ($data as $key => $value) {
-                if ($value === null || $value === '') {
-                    unset($data[$key]);
-                }
-            }
+            // Membersihkan data kosong/null
+            $data = array_filter($data, fn($value) => $value !== null && $value !== '');
 
-            $berita->fill($data)->save();
+            $berita->update($data);
             $berita->refresh();
 
             return response()->json([

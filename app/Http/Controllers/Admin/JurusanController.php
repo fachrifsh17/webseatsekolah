@@ -20,7 +20,8 @@ class JurusanController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        $this->authorizeResource(Jurusan::class, 'jurusan');
     }
 
     public function index(): JsonResponse

@@ -12,39 +12,44 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class SettingController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.admin')->only(['updateGeneral']);
+        $this->middleware('log.aktivitas')->only(['updateGeneral']);
     }
 
     public function index(): JsonResponse
     {
+        $this->authorize('viewAny', SekolahSetting::class);
+
         try {
             $setting = SekolahSetting::firstOrCreate(
                 ['id' => 1],
                 [
-                    'tagline'              => '-',
-                    'logo'                 => null,
-                    'pesan_selamat_datang' => '-',
-                    'buku_poin_path'       => null,
-                    'no_wa_kesiswaan'      => '-',
+                    'tagline'               => '-',
+                    'logo'                  => null,
+                    'pesan_selamat_datang'  => '-',
+                    'buku_poin_path'        => null,
+                    'no_wa_kesiswaan'       => '-',
                 ]
             );
 
             $kontak = DataKontak::firstOrCreate(
                 ['id' => 1],
                 [
-                    'alamat_lengkap' => '-',
-                    'telepon'        => '-',
-                    'email_resmi'    => '-',
-                    'peta_embed_code'=> null,
+                    'alamat_lengkap'  => '-',
+                    'telepon'         => '-',
+                    'email_resmi'     => '-',
+                    'peta_embed_code' => null,
                 ]
             );
 
@@ -65,6 +70,8 @@ class SettingController extends Controller
 
     public function updateGeneral(UpdateSekolahSettingRequest $request): JsonResponse
     {
+        $this->authorize('update', SekolahSetting::class);
+
         $validated    = $request->validated();
         $newLogoPath  = null;
         $newPdfPath   = null;
@@ -74,11 +81,11 @@ class SettingController extends Controller
             $setting = SekolahSetting::firstOrCreate(
                 ['id' => 1],
                 [
-                    'tagline'              => '-',
-                    'logo'                 => null,
-                    'pesan_selamat_datang' => '-',
-                    'buku_poin_path'       => null,
-                    'no_wa_kesiswaan'      => '-',
+                    'tagline'               => '-',
+                    'logo'                  => null,
+                    'pesan_selamat_datang'  => '-',
+                    'buku_poin_path'        => null,
+                    'no_wa_kesiswaan'       => '-',
                 ]
             );
 
@@ -93,9 +100,9 @@ class SettingController extends Controller
             }
 
             $setting->fill([
-                'tagline'              => $validated['tagline'] ?? $setting->tagline,
-                'pesan_selamat_datang' => $validated['pesan_selamat_datang'] ?? $setting->pesan_selamat_datang,
-                'no_wa_kesiswaan'      => $validated['no_wa_kesiswaan'] ?? $setting->no_wa_kesiswaan,
+                'tagline'               => $validated['tagline'] ?? $setting->tagline,
+                'pesan_selamat_datang'  => $validated['pesan_selamat_datang'] ?? $setting->pesan_selamat_datang,
+                'no_wa_kesiswaan'       => $validated['no_wa_kesiswaan'] ?? $setting->no_wa_kesiswaan,
             ]);
 
             $setting->save();

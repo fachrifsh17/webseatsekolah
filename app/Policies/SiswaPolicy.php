@@ -4,39 +4,21 @@ namespace App\Policies;
 
 use App\Models\Siswa;
 use App\Models\User;
-use Illuminate\Auth\Access\HandlesAuthorization;
 
 class SiswaPolicy
 {
-    use HandlesAuthorization;
-
-    public function before(User $user, $capability)
-    {
-        if ($user->hasRole('Admin')) {
-            return true;
-        }
-    }
-
     public function viewAny(User $user): bool
     {
-        return in_array($user->jabatan, ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas']);
+        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas']);
     }
 
     public function view(User $user, Siswa $siswa): bool
     {
-        if ($user->jabatan === 'Waka Kesiswaan') {
+        if ($this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas'])) {
             return true;
         }
 
-        if ($user->jabatan === 'Wali Kelas') {
-            return $user->guruStaf?->kelas_id === $siswa->kelas_id;
-        }
-
-        if ($user->jabatan === 'Ketua Jurusan') {
-            return $user->guruStaf?->jurusan_id === $siswa->jurusan_id;
-        }
-
-        if ($user->hasRole('siswa')) {
+        if ($user->roles->pluck('role_name')->contains('Siswa')) {
             return $user->siswa_id === $siswa->id;
         }
 
@@ -45,26 +27,51 @@ class SiswaPolicy
 
     public function create(User $user): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function update(User $user, Siswa $siswa): bool
     {
-        return $user->jabatan === 'Waka Kesiswaan';
+        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan']);
     }
 
     public function delete(User $user, Siswa $siswa): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function restore(User $user, Siswa $siswa): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
     }
 
     public function forceDelete(User $user, Siswa $siswa): bool
     {
-        return false;
+        return $this->authorize($user, ['Admin']);
+    }
+
+    public function export(User $user): bool
+    {
+        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas']);
+    }
+
+    public function import(User $user): bool
+    {
+        return $this->authorize($user, ['Admin']);
+    }
+
+    protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
+    {
+        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+
+        $hasJabatan = $user->guruStaf
+            ? $user->guruStaf->strukturJabatan
+                ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
+                ->filter()
+                ->intersect($allowedJabatans)
+                ->isNotEmpty()
+            : false;
+
+        return $hasRole || $hasJabatan;
     }
 }

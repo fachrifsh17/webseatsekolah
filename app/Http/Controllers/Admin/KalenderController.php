@@ -19,7 +19,8 @@ class KalenderController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin,Guru');
-        $this->middleware('log.admin')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        $this->authorizeResource(KalenderAkademik::class, 'kalender');
     }
 
     public function index(): JsonResponse
