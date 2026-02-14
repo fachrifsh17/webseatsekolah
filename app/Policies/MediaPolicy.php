@@ -32,27 +32,20 @@ class MediaPolicy
         return $this->authorize($user, ['Admin'], ['Waka Sarpras']);
     }
 
-    public function restore(User $user, Media $media): bool
-    {
-        return $this->authorize($user, ['Admin'], ['Waka Sarpras']);
-    }
-
-    public function forceDelete(User $user, Media $media): bool
-    {
-        return $this->authorize($user, ['Admin'], ['Waka Sarpras']);
-    }
-
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // Cek Role menggunakan contains
+        $hasRole = $user->roles->contains(function ($role) use ($allowedRoles) {
+            return in_array($role->role_name, $allowedRoles);
+        });
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
-                ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
-                ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+        // Cek Jabatan melalui relasi guruStaf
+        $hasJabatan = false;
+        if ($user->guruStaf && $user->guruStaf->strukturJabatan) {
+            $hasJabatan = $user->guruStaf->strukturJabatan->contains(function ($sj) use ($allowedJabatans) {
+                return $sj->jabatan && in_array($sj->jabatan->nama_jabatan, $allowedJabatans);
+            });
+        }
 
         return $hasRole || $hasJabatan;
     }

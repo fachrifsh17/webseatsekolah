@@ -7,39 +7,46 @@ use App\Models\User;
 
 class JadwalProduktifPolicy
 {
-    public function viewAny(User $user): bool
+    public function before(User $user, $ability)
     {
-        return $this->authorize($user, ['Admin', 'Siswa'], ['Kepala Sekolah', 'Waka Kurikulum']);
+        if ($user->roles->pluck('role_name')->contains('Admin')) {
+            return true;
+        }
     }
 
-    public function view(User $user, JadwalProduktif $jadwalProduktif): bool
+    public function viewAny(User $user): bool
     {
-        return $this->authorize($user, ['Admin', 'Siswa'], ['Kepala Sekolah', 'Waka Kurikulum']);
+        return $this->authorize($user, ['Admin', 'Siswa'], ['Waka Kurikulum', 'Ketua Jurusan']);
+    }
+
+    public function view(User $user, JadwalProduktif $jadwal_Produktif): bool
+    {
+        return $this->authorize($user, ['Admin', 'Siswa'], ['Waka Kurikulum', 'Ketua Jurusan']);
     }
 
     public function create(User $user): bool
     {
-        return $this->authorize($user, ['Admin'], ['Kepala Sekolah', 'Waka Kurikulum']);
+        return $this->authorize($user, ['Admin'], ['Waka Kurikulum']);
     }
 
-    public function update(User $user, JadwalProduktif $jadwalProduktif): bool
+    public function update(User $user, JadwalProduktif $jadwal_Produkt_if): bool
     {
-        return $this->authorize($user, ['Admin'], ['Kepala Sekolah', 'Waka Kurikulum']);
+        return $this->authorize($user, ['Admin'], ['Waka Kurikulum']);
     }
 
-    public function delete(User $user, JadwalProduktif $jadwalProduktif): bool
+    public function delete(User $user, JadwalProduktif $jadwal_Produktif): bool
     {
-        return $this->authorize($user, ['Admin'], ['Kepala Sekolah', 'Waka Kurikulum']);
+        return $this->authorize($user, ['Admin'], ['Waka Kurikulum']);
     }
 
-    public function restore(User $user, JadwalProduktif $jadwalProduktif): bool
+    public function restore(User $user, JadwalProduktif $jadwal_Produktif): bool
     {
-        return $this->authorize($user, ['Admin'], ['Kepala Sekolah', 'Waka Kurikulum']);
+        return $this->authorize($user, ['Admin'], ['Waka Kurikulum']);
     }
 
-    public function forceDelete(User $user, JadwalProduktif $jadwalProduktif): bool
+    public function forceDelete(User $user, JadwalProduktif $jadwal_Produktif): bool
     {
-        return $this->authorize($user, ['Admin'], ['Kepala Sekolah', 'Waka Kurikulum']);
+        return $this->authorize($user, ['Admin'], ['Waka Kurikulum']);
     }
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool

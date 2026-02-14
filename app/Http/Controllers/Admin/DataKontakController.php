@@ -16,9 +16,7 @@ class DataKontakController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['update']);
-        $this->authorizeResource(DataKontak::class, 'data_kontak');
     }
 
     public function index(): JsonResponse
@@ -50,6 +48,8 @@ class DataKontakController extends Controller
 
     public function update(UpdateDataKontakRequest $request): JsonResponse
     {
+        $this->authorize('update', DataKontak::class);
+
         try {
             $dataKontak = DataKontak::firstOrCreate(
                 ['id' => 1],
@@ -60,8 +60,6 @@ class DataKontakController extends Controller
                     'peta_embed_code'=> null,
                 ]
             );
-
-            $this->authorize('update', $dataKontak);
 
             $dataKontak->update($request->validated());
 

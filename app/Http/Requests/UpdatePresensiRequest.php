@@ -17,13 +17,16 @@ class UpdatePresensiRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Field kunci untuk filter keamanan di Controller
+            'kelas_id'      => ['sometimes', 'string', 'exists:kelas,id'],
+
             // Validasi untuk massal
             'data_presensi' => ['sometimes', 'array', 'min:1'],
             'data_presensi.*.siswa_id' => ['required_with:data_presensi', 'string', 'exists:siswa,id'],
-            'data_presensi.*.status' => ['required_with:data_presensi', 'in:Hadir,Izin,Sakit,Alpa'],
+            'data_presensi.*.status'   => ['required_with:data_presensi', 'in:Hadir,Izin,Sakit,Alpa'],
             'data_presensi.*.keterangan' => ['nullable', 'string', 'max:255'],
 
-            // Validasi untuk satuan (jika bukan massal)
+            // Validasi untuk satuan (jika bukan massal/lewat ID di URL)
             'siswa_id'     => ['sometimes', 'string', 'exists:siswa,id'],
             'tanggal'      => ['nullable', 'date'],  
             'status'       => ['sometimes', 'in:Hadir,Izin,Sakit,Alpa'],
@@ -35,10 +38,11 @@ class UpdatePresensiRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'kelas_id.exists'     => 'Data kelas tidak ditemukan.',
             'data_presensi.array' => 'Format data harus berupa array.',
             'data_presensi.*.siswa_id.required_with' => 'Siswa wajib diisi dalam data massal.',
-            'data_presensi.*.status.required_with' => 'Status wajib diisi dalam data massal.',
-            'data_presensi.*.status.in' => 'Status massal harus berupa Hadir, Izin, Sakit, atau Alpa.',
+            'data_presensi.*.status.required_with'   => 'Status wajib diisi dalam data massal.',
+            'data_presensi.*.status.in'              => 'Status massal harus berupa Hadir, Izin, Sakit, atau Alpa.',
             
             'siswa_id.exists'      => 'Data siswa tidak ditemukan.',
             'tanggal.date'         => 'Format tanggal tidak valid.',
@@ -51,10 +55,11 @@ class UpdatePresensiRequest extends FormRequest
     public function attributes(): array
     {
         return [
+            'kelas_id'      => 'ID Kelas',
             'data_presensi' => 'Daftar Presensi',
             'data_presensi.*.siswa_id' => 'Siswa',
-            'data_presensi.*.status' => 'Status presensi',
-            'status' => 'Status presensi',
+            'data_presensi.*.status'   => 'Status presensi',
+            'status'                   => 'Status presensi',
         ];
     }
 

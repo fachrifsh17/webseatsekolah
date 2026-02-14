@@ -19,22 +19,22 @@ class PoinSiswaPolicy
 
     public function create(User $user): bool
     {
-        return $this->authorize($user, ['Admin', 'Guru'], ['Waka Kesiswaan']);
+        return $this->authorizeRoute($user, ['Admin']) || $this->authorize($user, ['Guru'], ['Waka Kesiswaan']);
     }
 
     public function update(User $user, PoinSiswa $poinSiswa): bool
     {
-        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan']);
+        return $this->authorizeRoute($user, ['Admin']) || $this->authorize($user, [], ['Waka Kesiswaan']);
     }
 
     public function delete(User $user, PoinSiswa $poinSiswa): bool
     {
-        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan']);
+        return $this->authorizeRoute($user, ['Admin']) || $this->authorize($user, [], ['Waka Kesiswaan']);
     }
 
     public function export(User $user): bool
     {
-        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan']);
+        return $this->authorizeRoute($user, ['Admin']) || $this->authorize($user, [], ['Waka Kesiswaan']);
     }
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
@@ -50,5 +50,16 @@ class PoinSiswaPolicy
             : false;
 
         return $hasRole || $hasJabatan;
+    }
+
+    protected function authorizeRoute(User $user, array $allowedRoles = []): bool
+    {
+        $isAdmin = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+
+        if ($isAdmin && request()->is('api/admin/*')) {
+            return true;
+        }
+
+        return false;
     }
 }

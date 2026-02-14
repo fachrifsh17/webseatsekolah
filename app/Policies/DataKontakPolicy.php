@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Models\DataKontak;
 use App\Models\User;
 
 class DataKontakPolicy
@@ -12,7 +11,7 @@ class DataKontakPolicy
         return $this->authorize($user, ['Admin']);
     }
 
-    public function view(User $user, DataKontak $dataKontak): bool
+    public function view(User $user): bool
     {
         return $this->authorize($user, ['Admin']);
     }
@@ -22,22 +21,22 @@ class DataKontakPolicy
         return $this->authorize($user, ['Admin']);
     }
 
-    public function update(User $user, DataKontak $dataKontak): bool
+    public function update(User $user): bool
     {
         return $this->authorize($user, ['Admin']);
     }
 
-    public function delete(User $user, DataKontak $dataKontak): bool
+    public function delete(User $user): bool
     {
         return $this->authorize($user, ['Admin']);
     }
 
-    public function restore(User $user, DataKontak $dataKontak): bool
+    public function restore(User $user): bool
     {
         return $this->authorize($user, ['Admin']);
     }
 
-    public function forceDelete(User $user, DataKontak $dataKontak): bool
+    public function forceDelete(User $user): bool
     {
         return $this->authorize($user, ['Admin']);
     }

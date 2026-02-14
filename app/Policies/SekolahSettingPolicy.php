@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Models\SekolahSetting;
 use App\Models\User;
 
 class SekolahSettingPolicy
@@ -12,7 +11,7 @@ class SekolahSettingPolicy
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
 
-    public function view(User $user, SekolahSetting $sekolahSetting): bool
+    public function view(User $user): bool
     {
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
@@ -22,22 +21,22 @@ class SekolahSettingPolicy
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
 
-    public function update(User $user, SekolahSetting $sekolahSetting): bool
+    public function update(User $user): bool
     {
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
 
-    public function delete(User $user, SekolahSetting $sekolahSetting): bool
+    public function delete(User $user): bool
     {
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
 
-    public function restore(User $user, SekolahSetting $sekolahSetting): bool
+    public function restore(User $user): bool
     {
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
 
-    public function forceDelete(User $user, SekolahSetting $sekolahSetting): bool
+    public function forceDelete(User $user): bool
     {
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }

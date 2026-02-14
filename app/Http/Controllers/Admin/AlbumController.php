@@ -7,6 +7,7 @@ use App\Models\Album;
 use App\Http\Resources\AlbumResource;
 use App\Http\Requests\StoreAlbumRequest;
 use App\Http\Requests\UpdateAlbumRequest;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -20,16 +21,28 @@ class AlbumController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.aktivitas')->only(['store','update','destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
         $this->authorizeResource(Album::class, 'album');
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         try {
-            $perPage = min((int) request()->get('per_page', 12), 100);
+            $search = $request->query('search');
+            $perPage = min((int) $request->get('per_page', 12), 100);
 
-            $data = Album::with('media')->orderByDesc('tanggal_kegiatan')->paginate($perPage);
+            $query = Album::withCount('media');
+
+            if (!empty(trim($search))) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('nama_album', 'LIKE', "%{$search}%")
+                      ->orWhere('tanggal_kegiatan', 'LIKE', "%{$search}%");
+                });
+            }
+
+            $data = $query->orderByDesc('tanggal_kegiatan')
+                          ->orderByDesc('created_at')
+                          ->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -88,17 +101,14 @@ class AlbumController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Album berhasil ditambahkan.',
-                'data'    => new AlbumResource($album->fresh()->load('media')),
+                'data'    => new AlbumResource($album->fresh()->loadCount('media')),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
-
             if (!empty($validated['cover_path']) && Storage::disk('public')->exists($validated['cover_path'])) {
                 Storage::disk('public')->delete($validated['cover_path']);
             }
-
             Log::error('Failed to create album', ['payload' => $validated, 'error' => $e->getMessage()]);
-
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menambahkan album',
@@ -120,8 +130,8 @@ class AlbumController extends Controller
         }
 
         DB::beginTransaction();
-        $newCoverPath   = null;
-        $originalCover  = $album->getOriginal('cover_path');
+        $newCoverPath = null;
+        $originalCover = $album->getOriginal('cover_path');
 
         try {
             if ($request->hasFile('cover') && $request->file('cover')->isValid()) {
@@ -141,21 +151,18 @@ class AlbumController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Album berhasil diperbarui.',
-                'data'    => new AlbumResource($album->fresh()->load('media')),
+                'data'    => new AlbumResource($album->fresh()->loadCount('media')),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-
             if ($newCoverPath && Storage::disk('public')->exists($newCoverPath)) {
                 Storage::disk('public')->delete($newCoverPath);
             }
-
             Log::error('Failed to update album', [
                 'album_id' => (string) $album->id,
                 'payload'  => $validated,
                 'error'    => $e->getMessage()
             ]);
-
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui album',
@@ -193,7 +200,6 @@ class AlbumController extends Controller
                 'album_id' => (string) $album->id,
                 'error'    => $e->getMessage()
             ]);
-
             return response()->json([
                 'success'      => false,
                 'message'      => 'Gagal menghapus album',

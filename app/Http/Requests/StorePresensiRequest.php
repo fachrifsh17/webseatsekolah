@@ -17,6 +17,8 @@ class StorePresensiRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Tambahkan kelas_id sebagai field wajib
+            'kelas_id' => ['required', 'string', 'exists:kelas,id'],
             'tanggal' => ['required', 'date'],
             'data_presensi' => ['required', 'array', 'min:1'],
             'data_presensi.*.siswa_id' => ['required', 'string', 'exists:siswa,id'],
@@ -28,6 +30,8 @@ class StorePresensiRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'kelas_id.required' => 'ID Kelas wajib disertakan.',
+            'kelas_id.exists' => 'Data kelas tidak ditemukan.',
             'tanggal.required' => 'Tanggal absensi wajib diisi.',
             'tanggal.date' => 'Format tanggal tidak valid.',
             'data_presensi.required' => 'Data presensi tidak boleh kosong.',
@@ -43,6 +47,7 @@ class StorePresensiRequest extends FormRequest
     public function attributes(): array
     {
         return [
+            'kelas_id' => 'ID Kelas',
             'tanggal' => 'Tanggal absensi',
             'data_presensi' => 'Daftar Presensi',
             'data_presensi.*.siswa_id' => 'Siswa',

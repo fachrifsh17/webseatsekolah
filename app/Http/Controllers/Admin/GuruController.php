@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\GuruStaf;
 use App\Models\Jurusan;
+use App\Models\User;
+use App\Models\DataKontak;
 use App\Http\Resources\GuruResource;
 use App\Http\Requests\StoreGuruRequest;
 use App\Http\Requests\UpdateGuruRequest;
@@ -14,6 +16,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -184,16 +187,45 @@ class GuruController extends Controller
     {
         $validated = $request->validated();
 
-        if ($request->hasFile('foto')) {
-            $validated['foto'] = $request->file('foto')->store('uploads/guru', 'public');
-        }
-
-        if (empty($validated['user_id'])) {
-            $validated['user_id'] = (string) Auth::id();
-        }
-
         try {
-            $guru = DB::transaction(function () use ($validated) {
+            $guru = DB::transaction(function () use ($request, $validated) {
+                $lastUser = User::where('id', 'like', 'U%')
+                    ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
+                    ->lockForUpdate()
+                    ->first();
+                
+                $lastId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
+                $newUserId = 'U' . str_pad($lastId + 1, 3, '0', STR_PAD_LEFT);
+
+                $usernameBase = !empty($validated['nip']) ? trim($validated['nip']) : strtolower(str_replace(' ', '', $validated['nama']));
+                $finalUsername = $usernameBase;
+                $count = 1;
+                while (User::where('username', $finalUsername)->exists()) {
+                    $finalUsername = $usernameBase . $count;
+                    $count++;
+                }
+
+                User::create([
+                    'id'        => $newUserId,
+                    'username'  => $finalUsername, 
+                    'password'  => Hash::make($finalUsername),
+                    'is_active' => 1,
+                ]);
+
+                DB::table('user_roles')->insert([
+                    'user_id'    => $newUserId,
+                    'role_id'    => 'R002', 
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                if ($request->hasFile('foto')) {
+                    $validated['foto'] = $request->file('foto')->store('uploads/guru', 'public');
+                }
+
+                $validated['user_id'] = $newUserId;
+                $validated['is_active'] = 1;
+
                 return GuruStaf::create($validated);
             });
 
@@ -278,59 +310,28 @@ class GuruController extends Controller
             ], Response::HTTP_NOT_FOUND);
         }
 
-        $oldFoto = $guru->foto;
-
         try {
-            $blockers = [];
-
-            $relations = [
-                'user' => 'Terdapat akun user yang terhubung',
-                'guruMapel' => 'Terhubung dengan data guru_mapel',
-                'presensiGuruMapel' => 'Memiliki data presensi per mapel',
-                'presensi' => 'Memiliki data presensi',
-                'jadwalMengajar' => 'Memiliki jadwal mengajar',
-                'strukturJabatan' => 'Memiliki struktur jabatan',
-                'jadwalProduktif' => 'Memiliki jadwal produktif',
-                'poinGuru' => 'Memiliki data poin'
-            ];
-
-            foreach ($relations as $method => $message) {
-                if (method_exists($guru, $method) && $guru->$method()->exists()) {
-                    $blockers[] = $message;
-                }
-            }
-
-            if (!empty($blockers)) {
-                return response()->json([
-                    'success'    => false,
-                    'error_code' => 'conflict_relations',
-                    'message'    => 'Gagal menghapus: data masih terhubung dengan resource lain.',
-                    'details'    => array_values(array_unique($blockers)),
-                ], Response::HTTP_CONFLICT);
-            }
-
             DB::transaction(function () use ($guru) {
-                if (method_exists($guru, 'mapel')) {
-                    $guru->mapel()->detach();
+                // Nonaktifkan profil guru
+                $guru->update(['is_active' => 0]);
+                
+                // Nonaktifkan akun user terkait agar tidak bisa login
+                if ($guru->user_id) {
+                    User::where('id', $guru->user_id)->update(['is_active' => 0]);
                 }
-                $guru->delete();
             });
-
-            if ($oldFoto) {
-                Storage::disk('public')->delete($oldFoto);
-            }
 
             return response()->json([
                 'success'      => true,
-                'message'      => 'Data guru berhasil dihapus',
-                'notification' => 'Berhasil dihapus',
+                'message'      => 'Data guru berhasil dinonaktifkan',
+                'notification' => 'Berhasil dinonaktifkan',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to delete guru', ['error' => $e->getMessage()]);
+            Log::error('Failed to deactivate guru', ['error' => $e->getMessage()]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus data guru',
+                'message' => 'Gagal menonaktifkan data guru',
                 'errors'  => ['exception' => [$e->getMessage()]],
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }

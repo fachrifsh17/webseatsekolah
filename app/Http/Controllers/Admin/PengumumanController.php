@@ -7,29 +7,41 @@ use App\Models\Pengumuman;
 use App\Http\Resources\PengumumanResource;
 use App\Http\Requests\StorePengumumanRequest;
 use App\Http\Requests\UpdatePengumumanRequest;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class PengumumanController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
-
-        // Mengaktifkan Policy otomatis
         $this->authorizeResource(Pengumuman::class, 'pengumuman');
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         try {
-            $perPage = min((int) request()->get('per_page', 10), 100);
-            $data    = Pengumuman::latest()->paginate($perPage);
+            $perPage = min((int) $request->get('per_page', 10), 100);
+            $query = Pengumuman::query();
+
+            if ($request->filled('tanggal')) {
+                $query->whereDate('tanggal_publikasi', $request->tanggal);
+            }
+
+            if ($request->has('penting')) {
+                $query->where('penting', $request->boolean('penting'));
+            }
+
+            $data = $query->latest('tanggal_publikasi')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -42,7 +54,7 @@ class PengumumanController extends Controller
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch pengumuman list', ['error' => $e->getMessage()]);
+            Log::error('Humas: Failed to fetch pengumuman list', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar pengumuman',
@@ -63,6 +75,16 @@ class PengumumanController extends Controller
     {
         $validated = $request->validated();
 
+        // Paksa tanggal mengikuti hari ini, abaikan input dari user
+        $validated['tanggal_publikasi'] = now()->format('Y-m-d');
+
+        if (Pengumuman::where('judul', $validated['judul'])->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Judul pengumuman sudah ada.',
+            ], Response::HTTP_CONFLICT);
+        }
+
         DB::beginTransaction();
         try {
             $item = Pengumuman::create($validated);
@@ -75,10 +97,11 @@ class PengumumanController extends Controller
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to create pengumuman', ['payload' => $validated, 'error' => $e->getMessage()]);
+            Log::error('Humas: Failed to create pengumuman', ['payload' => $validated, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menambahkan pengumuman',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -86,6 +109,22 @@ class PengumumanController extends Controller
     public function update(UpdatePengumumanRequest $request, Pengumuman $pengumuman): JsonResponse
     {
         $validated = $request->validated();
+
+        // Paksa tanggal update tetap mengikuti tanggal hari ini
+        $validated['tanggal_publikasi'] = now()->format('Y-m-d');
+
+        if (isset($validated['judul'])) {
+            $conflict = Pengumuman::where('judul', $validated['judul'])
+                ->where('id', '!=', $pengumuman->id)
+                ->exists();
+            
+            if ($conflict) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Judul sudah digunakan oleh pengumuman lain.',
+                ], Response::HTTP_CONFLICT);
+            }
+        }
 
         DB::beginTransaction();
         try {
@@ -99,13 +138,14 @@ class PengumumanController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to update pengumuman', [
+            Log::error('Humas: Failed to update pengumuman', [
                 'pengumuman_id' => $pengumuman->id,
                 'error'         => $e->getMessage()
             ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui pengumuman',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -123,13 +163,14 @@ class PengumumanController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to delete pengumuman', [
+            Log::error('Humas: Failed to delete pengumuman', [
                 'pengumuman_id' => $pengumuman->id,
                 'error'         => $e->getMessage()
             ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus pengumuman',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

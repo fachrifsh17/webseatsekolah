@@ -3,31 +3,29 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\JamSekolah;
-use App\Models\TahunAjaran;
-use App\Models\ProfilSekolah;
-use App\Models\DataKontak;
+use App\Models\{JamSekolah, TahunAjaran, ProfilSekolah, DataKontak};
 use App\Http\Resources\JamSekolahResource;
-use App\Http\Requests\StoreJamSekolahRequest;
-use App\Http\Requests\UpdateJamSekolahRequest;
+use App\Http\Requests\{StoreJamSekolahRequest, UpdateJamSekolahRequest};
 use App\Exports\JamSekolahExport;
 use App\Imports\JamSekolahImport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\{DB, Log};
+use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class JamSekolahController extends Controller
 {
+    use AuthorizesRequests;
+
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['update', 'store', 'import', 'destroy']);
-        $this->authorizeResource(JamSekolah::class, 'jamSekolah');
+
+        $this->authorizeResource(JamSekolah::class, 'jam_sekolah');
     }
 
     private function resolveTahunAjaranId(Request $request)
@@ -50,7 +48,7 @@ class JamSekolahController extends Controller
                 $query->where('tahun_ajaran_id', $tahunAjaranId);
             }
 
-            $data = $query->orderBy('hari')
+            $data = $query->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
                           ->orderBy('waktu_mulai')
                           ->get();
 
@@ -72,9 +70,9 @@ class JamSekolahController extends Controller
 
     public function export(Request $request)
     {
-        $this->authorize('viewAny', JamSekolah::class);
-
         try {
+            $this->authorize('viewAny', JamSekolah::class);
+
             $tahunAjaranId = $this->resolveTahunAjaranId($request);
             
             if (!$tahunAjaranId) {
@@ -139,6 +137,13 @@ class JamSekolahController extends Controller
             $validated['tahun_ajaran_id'] = $tahunAktif->id;
         }
 
+        if ($validated['waktu_selesai'] <= $validated['waktu_mulai']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Waktu selesai harus lebih besar dari waktu mulai.'
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         $exists = JamSekolah::where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
             ->where('hari', $validated['hari'])
             ->where('jam_ke', $validated['jam_ke'])
@@ -149,6 +154,20 @@ class JamSekolahController extends Controller
             return response()->json([
                 'success' => false, 
                 'message' => 'Jadwal jam tersebut sudah ada.'
+            ], Response::HTTP_CONFLICT);
+        }
+
+        $overlap = JamSekolah::where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+            ->where('hari', $validated['hari'])
+            ->where(function ($query) use ($validated) {
+                $query->where('waktu_mulai', '<', $validated['waktu_selesai'])
+                      ->where('waktu_selesai', '>', $validated['waktu_mulai']);
+            })->exists();
+
+        if ($overlap) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Waktu yang diinput bertabrakan dengan jam lain di hari yang sama.'
             ], Response::HTTP_CONFLICT);
         }
 
@@ -166,14 +185,33 @@ class JamSekolahController extends Controller
         }
     }
 
+    public function show(JamSekolah $jamSekolah): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data'    => new JamSekolahResource($jamSekolah->load('tahunAjaran'))
+        ], Response::HTTP_OK);
+    }
+
     public function update(UpdateJamSekolahRequest $request, JamSekolah $jamSekolah): JsonResponse
     {
         $validated = $request->validated();
         $tahunId = $validated['tahun_ajaran_id'] ?? $jamSekolah->tahun_ajaran_id;
+        $hari = $validated['hari'] ?? $jamSekolah->hari;
+        $mulai = $validated['waktu_mulai'] ?? $jamSekolah->waktu_mulai;
+        $selesai = $validated['waktu_selesai'] ?? $jamSekolah->waktu_selesai;
+        $jamKe = $validated['jam_ke'] ?? $jamSekolah->jam_ke;
+
+        if ($selesai <= $mulai) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Waktu selesai harus lebih besar dari waktu mulai.'
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
         $exists = JamSekolah::where('tahun_ajaran_id', $tahunId)
-            ->where('hari', $validated['hari'] ?? $jamSekolah->hari)
-            ->where('jam_ke', $validated['jam_ke'] ?? $jamSekolah->jam_ke)
+            ->where('hari', $hari)
+            ->where('jam_ke', $jamKe)
             ->whereNotNull('jam_ke')
             ->where('id', '!=', $jamSekolah->id)
             ->exists();
@@ -181,7 +219,22 @@ class JamSekolahController extends Controller
         if ($exists) {
             return response()->json([
                 'success' => false, 
-                'message' => 'Konflik jadwal terdeteksi.'
+                'message' => 'Konflik nomor jam terdeteksi.'
+            ], Response::HTTP_CONFLICT);
+        }
+
+        $overlap = JamSekolah::where('tahun_ajaran_id', $tahunId)
+            ->where('hari', $hari)
+            ->where('id', '!=', $jamSekolah->id)
+            ->where(function ($query) use ($mulai, $selesai) {
+                $query->where('waktu_mulai', '<', $selesai)
+                      ->where('waktu_selesai', '>', $mulai);
+            })->exists();
+
+        if ($overlap) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Waktu bertabrakan dengan jadwal lain di hari yang sama.'
             ], Response::HTTP_CONFLICT);
         }
 

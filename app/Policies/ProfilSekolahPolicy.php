@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Models\ProfilSekolah;
 use App\Models\User;
 
 class ProfilSekolahPolicy
@@ -12,7 +11,7 @@ class ProfilSekolahPolicy
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
 
-    public function view(User $user, ProfilSekolah $profilSekolah): bool
+    public function view(User $user): bool
     {
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
@@ -22,22 +21,22 @@ class ProfilSekolahPolicy
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
 
-    public function update(User $user, ProfilSekolah $profilSekolah): bool
+    public function update(User $user): bool
     {
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
 
-    public function delete(User $user, ProfilSekolah $profilSekolah): bool
+    public function delete(User $user): bool
     {
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
 
-    public function restore(User $user, ProfilSekolah $profilSekolah): bool
+    public function restore(User $user): bool
     {
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }
 
-    public function forceDelete(User $user, ProfilSekolah $profilSekolah): bool
+    public function forceDelete(User $user): bool
     {
         return $this->authorize($user, ['Admin'], ['Kepala Sekolah']);
     }

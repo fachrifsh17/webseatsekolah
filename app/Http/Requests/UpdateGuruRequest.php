@@ -21,13 +21,6 @@ class UpdateGuruRequest extends FormRequest
         $guruId = is_object($guru) ? $guru->id : $guru;
 
         return [
-            'user_id' => [
-                'sometimes',
-                'required',
-                'string',
-                'exists:users,id',
-                Rule::unique('guru_staf', 'user_id')->ignore($guruId),
-            ],
             'nip' => [
                 'nullable',
                 'string',
@@ -56,8 +49,9 @@ class UpdateGuruRequest extends FormRequest
             'nip.unique' => 'NIP sudah terdaftar dalam sistem.',
             'nuptk.size' => 'NUPTK harus tepat 16 karakter.',
             'nuptk.unique' => 'NUPTK sudah terdaftar dalam sistem.',
-            'user_id.unique' => 'Akun user ini sudah dipakai guru lain.',
             'foto.max' => 'Ukuran foto maksimal 5MB.',
+            'foto.mimes' => 'Format foto harus jpg, jpeg, atau png.',
+            'nama.required' => 'Nama lengkap wajib diisi.',
         ];
     }
 

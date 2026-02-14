@@ -22,7 +22,6 @@ class KenaikanKelasController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        // Otorisasi: Menggunakan policy Kelas karena kenaikan kelas berbasis data Kelas
         $this->authorize('viewAny', Kelas::class);
 
         try {
@@ -56,8 +55,7 @@ class KenaikanKelasController extends Controller
 
     public function prosesMassal(KenaikanKelasRequest $request): JsonResponse
     {
-        // Otorisasi: Hanya user dengan izin update pada model Kelas/Siswa yang boleh mengeksekusi
-        $this->authorize('update', Kelas::class);
+        $this->authorize('create', Kelas::class);
 
         $validated = $request->validated();
         $tahunAktif = TahunAjaran::where('is_active', true)->first();
@@ -88,6 +86,7 @@ class KenaikanKelasController extends Controller
                     }
 
                     $excludedIds = $map['excluded_siswa_ids'] ?? [];
+
                     if (empty($map['kelas_baru_id'])) {
                         $count = Siswa::where('kelas_id', $kelasLama->id)
                             ->where('is_active', true)
@@ -117,6 +116,7 @@ class KenaikanKelasController extends Controller
                         
                         $summary['berhasil_naik'] += $count;
                     }
+
                     if (!empty($excludedIds)) {
                         $kelasTetap = Kelas::where('nama_kelas', $kelasLama->nama_kelas)
                             ->where('tahun_ajaran_id', $tahunAktif->id)

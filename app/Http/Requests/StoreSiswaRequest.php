@@ -17,7 +17,6 @@ class StoreSiswaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id'       => ['bail', 'required', 'string', 'exists:users,id', 'unique:siswa,user_id'],
             'kelas_id'      => ['required', 'string', 'exists:kelas,id'],
             'nis'           => ['required', 'string', 'max:20', 'unique:siswa,nis'],
             'nisn'          => ['required', 'string', 'size:10', 'unique:siswa,nisn'],
@@ -44,18 +43,13 @@ class StoreSiswaRequest extends FormRequest
             'tempat_lahir'  => $this->filled('tempat_lahir') ? trim($this->tempat_lahir) : null,
             'no_telp_siswa' => $this->filled('no_telp_siswa') ? trim($this->no_telp_siswa) : null,
             'jenis_kelamin' => $this->filled('jenis_kelamin') ? trim($this->jenis_kelamin) : null,
-            'is_active'     => $this->filled('is_active') ? (int) $this->is_active : null,
+            'is_active'     => $this->filled('is_active') ? (int) $this->is_active : 1,
         ]);
     }
 
     public function messages(): array
     {
         return [
-            'user_id.required'         => 'Akun pengguna wajib dihubungkan.',
-            'user_id.string'           => 'User ID harus berupa ID string.',
-            'user_id.exists'           => 'User tidak ditemukan.',
-            'user_id.unique'           => 'User sudah terhubung dengan siswa lain.',
-
             'nis.required'             => 'NIS tidak boleh kosong.',
             'nis.max'                  => 'NIS tidak boleh lebih dari 20 karakter.',
             'nis.unique'               => 'NIS sudah terdaftar.',
@@ -85,14 +79,13 @@ class StoreSiswaRequest extends FormRequest
             'orangtua.*.hubungan.in'   => 'Hubungan harus ayah, ibu, atau wali.',
 
             'is_active.integer'        => 'Status aktif harus berupa angka.',
-            'is_active.in'             => 'Status aktif tidak valid. Gunakan 0 atau 1.',
+            'is_active.in'             => 'Status aktif tidak valid.',
         ];
     }
 
     public function attributes(): array
     {
         return [
-            'user_id'              => 'Akun pengguna',
             'kelas_id'             => 'Kelas',
             'orangtua'             => 'Orang Tua',
             'orangtua.*.id'        => 'Orang Tua',
@@ -113,6 +106,7 @@ class StoreSiswaRequest extends FormRequest
     protected function failedValidation(Validator $validator): void
     {
         throw new HttpResponseException(response()->json([
+            'success' => false,
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
         ], Response::HTTP_UNPROCESSABLE_ENTITY));

@@ -6,8 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\{MataPelajaran, GuruStaf, ProfilSekolah, DataKontak};
 use App\Http\Resources\MapelResource;
 use App\Exports\MapelExport;
-use Illuminate\Support\Facades\{Log, Auth};
-use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Support\Facades\{Log, Auth, DB};
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\Response;
@@ -20,6 +21,7 @@ class MapelController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'export']);
         $this->authorizeResource(MataPelajaran::class, 'mata_pelajaran');
     }
 
@@ -85,8 +87,44 @@ class MapelController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar mata pelajaran',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $jurusanId = $this->getJurusanId();
+
+        if (!$jurusanId) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $request->validate([
+            'nama_mapel'     => 'required|string|max:255',
+            'kode_mapel'     => 'required|string|unique:mata_pelajaran,kode_mapel',
+            'tipe_mapel'     => 'required|in:Nasional,Kewilayahan,Kejuruan',
+            'kategori_mapel' => 'required|string',
+            'is_active'      => 'boolean'
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $data = $request->all();
+            $data['jurusan_id'] = $jurusanId;
+            
+            $mapel = MataPelajaran::create($data);
+
+            DB::commit();
+            return response()->json([
+                'success' => true,
+                'message' => 'Mata pelajaran berhasil ditambahkan',
+                'data'    => new MapelResource($mapel->load('jurusan'))
+            ], Response::HTTP_CREATED);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('Store Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Gagal menambahkan mata pelajaran'], 500);
         }
     }
 
@@ -107,6 +145,54 @@ class MapelController extends Controller
         ], Response::HTTP_OK);
     }
 
+    public function update(Request $request, MataPelajaran $mataPelajaran): JsonResponse
+    {
+        $jurusanId = $this->getJurusanId();
+
+        if (!$jurusanId || $mataPelajaran->jurusan_id !== $jurusanId) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $request->validate([
+            'nama_mapel' => 'sometimes|string|max:255',
+            'kode_mapel' => 'sometimes|string|unique:mata_pelajaran,kode_mapel,' . $mataPelajaran->id,
+        ]);
+
+        try {
+            $mataPelajaran->update($request->all());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Mata pelajaran berhasil diperbarui',
+                'data'    => new MapelResource($mataPelajaran->load('jurusan'))
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Update Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Gagal memperbarui mata pelajaran'], 500);
+        }
+    }
+
+    public function destroy(MataPelajaran $mataPelajaran): JsonResponse
+    {
+        $jurusanId = $this->getJurusanId();
+
+        if (!$jurusanId || $mataPelajaran->jurusan_id !== $jurusanId) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
+        }
+
+        try {
+            $mataPelajaran->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Mata pelajaran berhasil dihapus'
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Delete Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus mata pelajaran'], 500);
+        }
+    }
+
     public function export(Request $request)
     {
         try {
@@ -114,10 +200,7 @@ class MapelController extends Controller
             $jurusanId = $this->getJurusanId();
 
             if (!$jurusanId) {
-                return response()->json([
-                    'success' => false, 
-                    'message' => 'Akses ditolak. Anda tidak terdaftar di jurusan manapun.'
-                ], Response::HTTP_FORBIDDEN);
+                return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
             }
 
             $filters = [
@@ -129,17 +212,12 @@ class MapelController extends Controller
 
             $profil = ProfilSekolah::first() ?? new ProfilSekolah();
             $kontak = DataKontak::first() ?? new DataKontak();
-
             $fileName = 'Data_Mapel_Jurusan_' . date('Ymd_His') . '.xlsx';
 
             return Excel::download(new MapelExport($filters, $profil, $kontak), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Mapel Jurusan Error', ['error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false, 
-                'message' => 'Gagal mengekspor data mata pelajaran',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json(['success' => false, 'message' => 'Gagal mengekspor data'], 500);
         }
     }
 }

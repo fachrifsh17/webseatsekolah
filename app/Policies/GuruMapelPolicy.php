@@ -24,7 +24,7 @@ class GuruMapelPolicy
 
     public function update(User $user, GuruMapel $guruMapel): bool
     {
-        return $this->authorize($user, ['Admin'], ['waka-kurikulum']);
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum', 'ketua-jurusan']);
     }
 
     public function delete(User $user, GuruMapel $guruMapel): bool
@@ -44,16 +44,17 @@ class GuruMapelPolicy
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        $userRoles = $user->roles->pluck('role_name')->map(fn($r) => strtolower($r));
+        $hasRole = $userRoles->intersect(array_map('strtolower', $allowedRoles))->isNotEmpty();
 
         $jabatanSlugs = $user->guruStaf
             ? $user->guruStaf->strukturJabatan
-                ->map(fn($sj) => $sj->jabatan?->slug)
+                ->map(fn($sj) => strtolower($sj->jabatan?->slug))
                 ->filter()
                 ->toArray()
             : [];
 
-        $hasJabatan = !empty(array_intersect($jabatanSlugs, $allowedJabatans));
+        $hasJabatan = !empty(array_intersect($jabatanSlugs, array_map('strtolower', $allowedJabatans)));
 
         return $hasRole || $hasJabatan;
     }

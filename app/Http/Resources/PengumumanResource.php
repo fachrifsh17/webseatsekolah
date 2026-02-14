@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Carbon\Carbon;
 
 class PengumumanResource extends JsonResource
 {
@@ -12,12 +13,9 @@ class PengumumanResource extends JsonResource
             'id' => $this->id,
             'judul' => $this->judul,
             'isi_pengumuman' => $this->isi_pengumuman,
-            'tanggal_publikasi' => $this->tanggal_publikasi,
+            // Format tanggal agar hanya YYYY-MM-DD
+            'tanggal_publikasi' => $this->tanggal_publikasi ? Carbon::parse($this->tanggal_publikasi)->format('Y-m-d') : null,
             'penting' => (bool) $this->penting,
-            
-            // Metadata
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at, 
         ];
     }
 }

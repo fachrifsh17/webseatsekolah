@@ -9,33 +9,29 @@ use App\Http\Requests\UpdateProfilSekolahRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests; // Tambahkan ini
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class ProfilSekolahController extends Controller
 {
-    use AuthorizesRequests; // Tambahkan ini
+    use AuthorizesRequests;
 
     public function __construct()
     {
         $this->middleware('auth.token');
-        // Middleware log admin tetap dipertahankan untuk audit trail
-        $this->middleware('Log.aktivitas')->only('update'); 
+        $this->middleware('log.aktivitas')->only(['update', 'destroy']);
     }
 
     public function index(): JsonResponse
     {
-        // Otorisasi: Kepsek boleh melihat profil sekolah
-        $this->authorize('viewAny', ProfilSekolah::class);
-
         try {
             $profil = ProfilSekolah::with(['guruStaf'])->first();
 
             if (!$profil) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Data profil sekolah tidak ditemukan'
+                    'message' => 'Data profil tidak ditemukan'
                 ], Response::HTTP_NOT_FOUND);
             }
 
@@ -46,19 +42,17 @@ class ProfilSekolahController extends Controller
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal mengambil data'
+                'message' => 'Internal Server Error'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function update(UpdateProfilSekolahRequest $request): JsonResponse
     {
-        // Otorisasi: Cek apakah Kepsek boleh memperbarui profil
         $this->authorize('update', ProfilSekolah::class);
 
         $validated = $request->validated();
 
-        // Logika otomatis mengambil ID Guru yang menjabat Kepala Sekolah
         $kepsekOtomatis = DB::table('struktur_jabatan')
             ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
             ->where('jabatans.slug', 'kepala-sekolah')
@@ -77,7 +71,6 @@ class ProfilSekolahController extends Controller
                     'misi'            => $validated['misi'] ?? null,
                     'sejarah'         => $validated['sejarah'] ?? null,
                     'sambutan_kepsek' => $validated['sambutan_kepsek'] ?? null,
-                    // Prioritaskan kepsek dari struktur_jabatan, jika tidak ada baru dari input
                     'guru_staf_id'    => $kepsekOtomatis->guru_staf_id ?? ($validated['guru_staf_id'] ?? null),
                 ]
             );
@@ -85,16 +78,51 @@ class ProfilSekolahController extends Controller
             DB::commit();
 
             return response()->json([
-                'success' => true,
-                'message' => 'Profil dan Sambutan berhasil diperbarui',
-                'data'    => new ProfilSekolahResource($profil->fresh(['guruStaf'])),
+                'success'      => true,
+                'message'      => 'Profil sekolah berhasil diperbarui',
+                'notification' => 'Berhasil diperbarui',
+                'data'         => new ProfilSekolahResource($profil->fresh(['guruStaf'])),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Update Profil Error: ' . $e->getMessage());
+            Log::error('Admin Update Profil Error: ' . $e->getMessage());
+
             return response()->json([
-                'success' => false, 
-                'message' => 'Gagal memperbarui profil'
+                'success'      => false,
+                'message'      => 'Gagal menyimpan profil sekolah',
+                'notification' => 'Gagal menyimpan',
+                'errors'       => ['exception' => [$e->getMessage()]],
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function destroy(): JsonResponse
+    {
+        $this->authorize('delete', ProfilSekolah::class);
+
+        DB::beginTransaction();
+        try {
+            $profil = ProfilSekolah::find(1);
+            if ($profil) {
+                $profil->delete();
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success'      => true,
+                'message'      => 'Profil sekolah berhasil dihapus',
+                'notification' => 'Berhasil dihapus',
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('Admin Delete Profil Error: ' . $e->getMessage());
+
+            return response()->json([
+                'success'      => false,
+                'message'      => 'Gagal menghapus profil sekolah',
+                'notification' => 'Gagal dihapus',
+                'errors'       => ['exception' => [$e->getMessage()]],
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

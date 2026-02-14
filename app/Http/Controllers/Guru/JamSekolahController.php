@@ -8,46 +8,58 @@ use App\Models\TahunAjaran;
 use App\Models\ProfilSekolah;
 use App\Models\DataKontak;
 use App\Http\Resources\JamSekolahResource;
+use App\Http\Requests\StoreJamSekolahRequest;
+use App\Http\Requests\UpdateJamSekolahRequest;
 use App\Exports\JamSekolahExport;
+use App\Imports\JamSekolahImport;
 use Maatwebsite\Excel\Facades\Excel;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Http\Request;
 use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 class JamSekolahController extends Controller
 {
-    use AuthorizesRequests;
-
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('role:Guru');
+        $this->middleware('log.aktivitas')->only(['update', 'store', 'import', 'destroy']);
+        $this->authorizeResource(JamSekolah::class, 'jam_sekolah');
     }
 
-    public function index(): JsonResponse
+    private function resolveTahunAjaranId(Request $request)
+    {
+        if ($request->has('tahun_ajaran_id') && !empty($request->tahun_ajaran_id)) {
+            return $request->tahun_ajaran_id;
+        }
+
+        $aktif = TahunAjaran::where('is_active', true)->first();
+        return $aktif ? $aktif->id : null;
+    }
+
+    public function index(Request $request): JsonResponse
     {
         try {
-            $tahunAktif = TahunAjaran::where('is_active', true)->first();
+            $tahunAjaranId = $this->resolveTahunAjaranId($request);
+            $query = JamSekolah::with('tahunAjaran');
 
-            if (!$tahunAktif) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Tidak ada Tahun Ajaran yang aktif saat ini.',
-                ], Response::HTTP_NOT_FOUND);
+            if ($tahunAjaranId) {
+                $query->where('tahun_ajaran_id', $tahunAjaranId);
             }
 
-            $data = JamSekolah::with('tahunAjaran')
-                ->where('tahun_ajaran_id', $tahunAktif->id)
-                ->orderBy('hari')
-                ->orderBy('waktu_mulai')
-                ->get();
+            $data = $query->orderBy('hari')
+                          ->orderBy('waktu_mulai')
+                          ->get();
 
             return response()->json([
                 'success' => true,
                 'data'    => JamSekolahResource::collection($data),
                 'meta'    => [
-                    'tahun_ajaran' => $tahunAktif->nama
+                    'filter_tahun_ajaran_id' => $tahunAjaranId,
+                    'is_auto_selected' => !$request->has('tahun_ajaran_id')
                 ]
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -58,51 +70,148 @@ class JamSekolahController extends Controller
         }
     }
 
-    public function export()
+    public function export(Request $request)
     {
-        try {
-            $tahunAktif = TahunAjaran::where('is_active', true)->first();
+        $this->authorize('viewAny', JamSekolah::class);
 
-            if (!$tahunAktif) {
+        try {
+            $tahunAjaranId = $this->resolveTahunAjaranId($request);
+            
+            if (!$tahunAjaranId) {
                 return response()->json([
-                    'success' => false,
-                    'message' => 'Gagal ekspor: Tahun ajaran aktif tidak ditemukan.'
+                    'success' => false, 
+                    'message' => 'Tahun ajaran tidak ditentukan.'
                 ], Response::HTTP_BAD_REQUEST);
             }
 
+            $ta = TahunAjaran::find($tahunAjaranId);
+            $namaTA = $ta ? str_replace(['/', '\\', ' '], '-', $ta->nama) : date('Ymd_His');
+
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
-            
-            $namaTA = str_replace(['/', '\\', ' '], '-', $tahunAktif->nama);
             $fileName = 'jam_sekolah_' . $namaTA . '.xlsx';
 
-            return Excel::download(new JamSekolahExport($profil, $kontak, $tahunAktif->id), $fileName);
+            return Excel::download(new JamSekolahExport($profil, $kontak, $tahunAjaranId), $fileName);
         } catch (Throwable $e) {
+            Log::error('Export Error: ' . $e->getMessage());
             return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengekspor jadwal.',
+                'success' => false, 
+                'message' => 'Gagal ekspor.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-    public function show($id): JsonResponse
+    public function import(Request $request): JsonResponse
     {
-        try {
-            $tahunAktif = TahunAjaran::where('is_active', true)->first();
+        $this->authorize('create', JamSekolah::class);
 
-            $jamSekolah = JamSekolah::with('tahunAjaran')
-                ->where('tahun_ajaran_id', $tahunAktif->id ?? 0)
-                ->findOrFail($id);
+        $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
+
+        try {
+            $import = new JamSekolahImport();
+            DB::transaction(fn() => Excel::import($import, $request->file('file')));
 
             return response()->json([
-                'success' => true,
-                'data'    => new JamSekolahResource($jamSekolah)
+                'success'   => true,
+                'message'   => 'Impor selesai.',
+                'conflicts' => $import->getMessages()
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json([
-                'success' => false,
-                'message' => 'Data jam sekolah tidak ditemukan atau tidak aktif.',
-            ], Response::HTTP_NOT_FOUND);
+                'success' => false, 
+                'message' => 'Gagal impor: ' . $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function store(StoreJamSekolahRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+        
+        if (!isset($validated['tahun_ajaran_id'])) {
+            $tahunAktif = TahunAjaran::where('is_active', true)->first();
+            if (!$tahunAktif) {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Tidak ada tahun ajaran aktif.'
+                ], Response::HTTP_BAD_REQUEST);
+            }
+            $validated['tahun_ajaran_id'] = $tahunAktif->id;
+        }
+
+        $exists = JamSekolah::where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+            ->where('hari', $validated['hari'])
+            ->where('jam_ke', $validated['jam_ke'])
+            ->whereNotNull('jam_ke')
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Jadwal jam tersebut sudah ada.'
+            ], Response::HTTP_CONFLICT);
+        }
+
+        try {
+            $jamSekolah = DB::transaction(fn() => JamSekolah::create($validated));
+            return response()->json([
+                'success' => true, 
+                'data' => new JamSekolahResource($jamSekolah->load('tahunAjaran'))
+            ], Response::HTTP_CREATED);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal simpan.'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function update(UpdateJamSekolahRequest $request, JamSekolah $jamSekolah): JsonResponse
+    {
+        $validated = $request->validated();
+        $tahunId = $validated['tahun_ajaran_id'] ?? $jamSekolah->tahun_ajaran_id;
+
+        $exists = JamSekolah::where('tahun_ajaran_id', $tahunId)
+            ->where('hari', $validated['hari'] ?? $jamSekolah->hari)
+            ->where('jam_ke', $validated['jam_ke'] ?? $jamSekolah->jam_ke)
+            ->whereNotNull('jam_ke')
+            ->where('id', '!=', $jamSekolah->id)
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Konflik jadwal terdeteksi.'
+            ], Response::HTTP_CONFLICT);
+        }
+
+        try {
+            DB::transaction(fn() => $jamSekolah->update($validated));
+            return response()->json([
+                'success' => true, 
+                'data' => new JamSekolahResource($jamSekolah->load('tahunAjaran'))
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal update.'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function destroy(JamSekolah $jamSekolah): JsonResponse
+    {
+        try {
+            DB::transaction(fn() => $jamSekolah->delete());
+            return response()->json([
+                'success' => true, 
+                'message' => 'Berhasil dihapus.'
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal hapus.'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

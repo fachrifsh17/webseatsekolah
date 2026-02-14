@@ -211,13 +211,13 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     
     Route::post('guru-mapel/import', [GuruMapelController::class, 'import']);
     Route::get('guru-mapel/export', [GuruMapelController::class, 'export']);
-    Route::apiResource('guru-mapel', GuruMapelController::class);
+    Route::apiResource('guru_mapel', GuruMapelController::class);
     
     Route::apiResource('jurusan', JurusanController::class);
     
     Route::post('jam-sekolah/import', [JamSekolahController::class, 'import']);
     Route::get('jam-sekolah/export', [JamSekolahController::class, 'export']);
-    Route::apiResource('jam-sekolah', JamSekolahController::class);
+    Route::apiResource('jam_sekolah', JamSekolahController::class);
     
     Route::apiResource('kurikulum', KurikulumController::class);
     Route::apiResource('kalender', KalenderController::class);
@@ -231,8 +231,8 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::post('mapel/import', [MapelController::class, 'import']);
     Route::apiResource('mapel', MapelController::class);
     
-    Route::apiResource('tahun-ajaran', TahunAjaranController::class);
-    Route::apiResource('jadwal-produktif', JadwalProduktifController::class);
+    Route::apiResource('tahun_ajaran', TahunAjaranController::class);
+    Route::apiResource('jadwal_produktif', JadwalProduktifController::class);
     
     Route::get('presensi/export', [AdminPresensi::class, 'export']); 
     Route::get('list-kelas', [AdminPresensi::class, 'listKelas']);
@@ -245,7 +245,7 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::apiResource('presensi-guru-mapel', PresensiGuruMapelController::class);
     
     Route::get('poin-siswa/export', [AdminPoin::class, 'export']);
-    Route::apiResource('poin-siswa', AdminPoin::class); 
+    Route::apiResource('poin_siswa', AdminPoin::class); 
     
     Route::apiResource('portal', PortalController::class);
     Route::apiResource('berita', BeritaController::class);
@@ -274,9 +274,9 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
     Route::post('change-password', [ProfilApiController::class, 'changePassword']);
     Route::get('dashboard', [GuruDashboard::class, 'index']);
     Route::get('poin-siswa', [GuruPoin::class, 'index']); 
-    Route::post('poin-siswa', [GuruPoin::class, 'store']); 
-    Route::get('jam-sekolah', [GuruJamSekolah::class, 'index']);
     Route::get('jam-sekolah/export', [GuruJamSekolah::class, 'export']);
+    Route::apiResource('jam_sekolah', GuruJamSekolah::class);
+    Route::apiResource('poin_siswa', GuruPoin::class); 
 
     // --- Jabatan: Waka Kurikulum ---
     Route::middleware(['jabatan:Waka Kurikulum'])->prefix('kurikulum')->group(function () {
@@ -288,32 +288,28 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         // Jam Sekolah
         Route::post('jam-sekolah/import', [KurikulumJam::class, 'import']);
         Route::get('jam-sekolah/export', [KurikulumJam::class, 'export']);
-        Route::apiResource('jam-sekolah', KurikulumJam::class);
+        Route::apiResource('jam_sekolah', KurikulumJam::class);
 
         // Guru Mapel
         Route::post('guru-mapel/import', [KurikulumGuruMapel::class, 'import']);
         Route::get('guru-mapel/export', [KurikulumGuruMapel::class, 'export']);
-        Route::apiResource('guru-mapel', KurikulumGuruMapel::class);
+        Route::apiResource('guru_mapel', KurikulumGuruMapel::class);
 
         // Lainnya
         Route::apiResource('kurikulum', KurikulumData::class);
         Route::apiResource('kalender', KurikulumKalender::class);
-        Route::apiResource('jadwal-produktif', KurikulumJadwal::class);
+        Route::apiResource('jadwal_produktif', KurikulumJadwal::class);
     });
 
     // --- Jabatan: Waka Kesiswaan ---
     Route::middleware(['jabatan:Waka Kesiswaan'])->prefix('kesiswaan')->group(function () {
         // Siswa
         Route::get('siswa/export', [KesiswaanSiswa::class, 'export']); 
-        Route::get('siswa', [KesiswaanSiswa::class, 'index']);
-        Route::get('siswa/{siswa}', [KesiswaanSiswa::class, 'show']);
-        Route::put('siswa/{siswa}', [KesiswaanSiswa::class, 'update']);
+        Route::apiResource('siswa', KesiswaanSiswa::class);
 
         // Orang Tua
-        Route::get('orangtua/export', [KesiswaanOrtu::class, 'export']);
-        Route::get('orangtua', [KesiswaanOrtu::class, 'index']);
-        Route::get('orangtua/{orangtua}', [KesiswaanOrtu::class, 'show']);
-        Route::put('orangtua/{orangtua}', [KesiswaanOrtu::class, 'update']);
+        Route::get('orangtua/export', [KesiswaanOrtu::class, 'export']);;
+        Route::apiResource('orangtua', KesiswaanOrtu::class);
 
         Route::apiResource('ekstrakurikuler', KesiswaanEskul::class);
 
@@ -321,22 +317,19 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         Route::get('presensi/export', [KesiswaanPresensi::class, 'export']); 
         Route::get('list-kelas', [KesiswaanPresensi::class, 'listKelas']);
         Route::get('list-siswa', [KesiswaanPresensi::class, 'listSiswaPresensi']);
-        Route::get('presensi', [KesiswaanPresensi::class, 'index']);
-        Route::get('presensi/{id}', [KesiswaanPresensi::class, 'show']);
-        Route::put('presensi/{id}', [KesiswaanPresensi::class, 'update']); 
+        Route::apiResource('presensi', KesiswaanPresensi::class);
 
         // Presensi Guru Mapel
-        Route::get('presensi-guru-mapel/export', [KesiswaanPresensiMapel::class, 'export']);
-        Route::get('presensi-guru-mapel/jadwal-hari-ini', [KesiswaanPresensiMapel::class, 'listJadwalHariIni']);
-        Route::get('siswa-by-jadwal/{id}', [KepsekPresensiMapel::class, 'getSiswaByJadwal']);
-        Route::get('presensi-guru-mapel', [KesiswaanPresensiMapel::class, 'index']);
-        Route::get('presensi-guru-mapel/{id}', [KesiswaanPresensiMapel::class, 'show']);
-        Route::put('presensi-guru-mapel/{id}', [KesiswaanPresensiMapel::class, 'update']);
+        Route::get('presensi-mapel/export', [KesiswaanPresensiMapel::class, 'export']);
+        Route::get('presensi-mapel/jadwal-hari-ini', [KesiswaanPresensiMapel::class, 'listJadwalHariIni']);
+        Route::get('siswa-by-jadwal/{id}', [KesiswaanPresensiMapel::class, 'getSiswaByJadwal']);
+        Route::apiResource('presensi-mapel', KesiswaanPresensiMapel::class);
 
         // Poin Siswa & Kenaikan
-        Route::get('poin-siswa/export', [KesiswaanPoin::class, 'export']);
-        Route::apiResource('poin-siswa', KesiswaanPoin::class); 
-        Route::apiResource('kenaikan-kelas', KesiswaanKenaikan::class);
+        Route::get('poin-siswa/export', action: [KesiswaanPoin::class, 'export']);
+        Route::apiResource('poin_siswa', KesiswaanPoin::class); 
+        Route::get('kenaikan-kelas', [KesiswaanKenaikan::class, 'index']);
+        Route::post('kenaikan-kelas/proses', [KesiswaanKenaikan::class, 'prosesMassal']);
     });
 
     // --- Jabatan: Waka Sarpras ---
@@ -360,7 +353,7 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
     // --- Jabatan: Kepala Sekolah ---
     Route::middleware(['jabatan:Kepala Sekolah'])->prefix('kepsek')->group(function () {
         Route::put('profil-sekolah', [KepsekProfil::class, 'update']);
-        Route::get('logs', [KepsekLog::class, 'index']);
+        Route::get('log', [KepsekLog::class, 'index']);
         Route::put('setting/general', [KepsekSetting::class, 'updateGeneral']);
         Route::get('monitoring-presensi-harian', [KepsekPresensi::class, 'rekapHarianKepsek']);
         Route::get('list-kelas', [KepsekPresensi::class, 'listKelas']);
@@ -381,32 +374,27 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         Route::get('mapel', [JurusanMapel::class, 'index']);
         Route::get('mapel/export', [JurusanMapel::class, 'export']);
         Route::get('mapel/{id}', [JurusanMapel::class, 'show']);
-        Route::get('guru-mapel', [JurusanGuruMapel::class, 'index']);
         Route::get('guru-mapel/export', [JurusanGuruMapel::class, 'export']);
-        Route::get('guru-mapel/{id}', [JurusanGuruMapel::class, 'show']);
-        Route::apiResource('jadwal-produktif', JurusanJadwal::class);
+        Route::get('guru_mapel', [JurusanGuruMapel::class, 'index']);
+        Route::apiResource('jadwal_produktif', JurusanJadwal::class);
     });
 
     // --- Jabatan: Wali Kelas ---
     Route::prefix('walikelas')->group(function () {
-        Route::get('data-siswa', [WaliSiswa::class, 'index']);
-        Route::get('data-orangtua', [WaliOrtu::class, 'index']);
-        Route::post('presensi', [WaliPresensi::class, 'store']); 
-        Route::get('siswa-wali', [WaliSiswa::class, 'index']); 
+        Route::apiResource('siswa', WaliSiswa::class);
+        Route::apiResource('orangtua', WaliOrtu::class);
+        Route::apiResource('presensi', WaliPresensi::class);
         Route::get('siswa-export', [WaliSiswa::class, 'export']); 
         Route::get('orangtua-export', [WaliOrtu::class, 'export']); 
-        Route::get('export', [WaliPresensi::class, 'export']);
+        Route::get('presensi-export', [WaliPresensi::class, 'export']);
     });
 
     // --- Guru Mapel General ---
     Route::prefix('mapel')->group(function () {
-        Route::get('tugas-hari-ini', [GuruPresensiMapel::class, 'tugasHariIni']);
-        Route::get('presensi/export', [GuruPresensiMapel::class, 'export']);
-        Route::get('presensi', [GuruPresensiMapel::class, 'index']);
-        Route::get('presensi/{id}', [GuruPresensiMapel::class, 'show']);
-        Route::post('presensi', [GuruPresensiMapel::class, 'store']);
         Route::get('jadwal-hari-ini', [GuruPresensiMapel::class, 'listJadwalHariIni']);
         Route::get('siswa-by-jadwal/{id}', [GuruPresensiMapel::class, 'getSiswaByJadwal']);
+        Route::get('presensi/export', [GuruPresensiMapel::class, 'export']);
+        Route::apiResource('presensi', GuruPresensiMapel::class);
     });
 });
 
@@ -421,7 +409,7 @@ Route::prefix('siswa')->middleware(['auth.token', 'role:siswa'])->group(function
     Route::get('dashboard', [SiswaDashboard::class, 'index']);
     Route::get('presensi-saya', [SiswaPresensi::class, 'index']);
     Route::get('poin-saya', [SiswaPoin::class, 'index']); 
-    Route::get('jadwal', [SiswaJadwal::class, 'index']);
+    Route::get('jadwal_produktif', [SiswaJadwal::class, 'index']);
     Route::get('jam-sekolah', [SiswaJamSekolah::class, 'index']);
     Route::get('jam-sekolah/export', [SiswaJamSekolah::class, 'export']);
     Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);

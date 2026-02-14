@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Orangtua;
+use App\Models\Siswa;
+use App\Models\User;
 use App\Models\Kelas;
 use App\Http\Requests\StoreOrangtuaRequest;
 use App\Http\Requests\UpdateOrangtuaRequest;
@@ -15,8 +17,11 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class OrangtuaController extends Controller
 {
@@ -26,12 +31,13 @@ class OrangtuaController extends Controller
         $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
 
-        // Mengaktifkan Policy otomatis
         $this->authorizeResource(Orangtua::class, 'orangtua');
     }
 
     private function applyFilters(Request $request, $query)
     {
+        $query->distinct();
+
         $tahunAjaranAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
         $tahunAjaranId = $request->query('tahun_ajaran_id', $tahunAjaranAktif?->id);
 
@@ -105,38 +111,59 @@ class OrangtuaController extends Controller
     public function store(StoreOrangtuaRequest $request): JsonResponse
     {
         $validated = $request->validated();
-
         try {
             $orangtua = DB::transaction(function () use ($validated) {
-                $anak = $validated['anak'] ?? [];
+                $lastUser = User::where('id', 'like', 'U%')
+                    ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
+                    ->lockForUpdate()->first();
+                $newUserId = 'U' . str_pad(($lastUser ? (int) substr($lastUser->id, 1) : 0) + 1, 3, '0', STR_PAD_LEFT);
+
+                User::create([
+                    'id' => $newUserId,
+                    'username' => $validated['telepon'],
+                    'password' => Hash::make($validated['telepon']),
+                    'is_active' => 1,
+                ]);
+
+                DB::table('user_roles')->insert([
+                    'user_id' => $newUserId,
+                    'role_id' => 'R004',
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+
+                $anakList = $validated['anak'] ?? [];
                 unset($validated['anak']);
 
-                $orangtua = Orangtua::create($validated);
+                $orangtua = Orangtua::create(array_merge($validated, ['user_id' => $newUserId]));
 
-                if (!empty($anak)) {
+                if (!empty($anakList)) {
                     $syncData = [];
-                    foreach ($anak as $item) {
-                        $syncData[(string) $item['siswa_id']] = [
-                            'hubungan' => $item['hubungan'] ?? null
-                        ];
+                    foreach ($anakList as $item) {
+                        $siswa = Siswa::where('nis', $item['nis'])->first();
+                        if ($siswa) {
+                            if ($siswa->orangtua()->count() >= 2) {
+                                abort(Response::HTTP_UNPROCESSABLE_ENTITY, "Siswa dengan NIS {$item['nis']} ({$siswa->nama_lengkap}) sudah memiliki maksimal 2 orang tua.");
+                            }
+                            $syncData[$siswa->id] = ['hubungan' => $item['hubungan'] ?? null];
+                        }
                     }
                     $orangtua->anak()->sync($syncData);
                 }
-
                 return $orangtua;
             });
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data orang tua berhasil ditambahkan',
+                'message' => 'Data orang tua berhasil dibuat',
                 'data'    => new OrangtuaResource($orangtua->load(['user','anak.kelas.jurusan']))
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
+            $statusCode = ($e instanceof HttpExceptionInterface) ? $e->getStatusCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
             Log::error('Create Orangtua Error', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan orang tua',
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+                'message' => $e->getMessage(),
+            ], $statusCode);
         }
     }
 
@@ -151,36 +178,48 @@ class OrangtuaController extends Controller
     public function update(UpdateOrangtuaRequest $request, Orangtua $orangtua): JsonResponse
     {
         $validated = $request->validated();
-
         try {
             DB::transaction(function () use ($validated, $orangtua) {
-                $anak = $validated['anak'] ?? [];
+                $anakList = $validated['anak'] ?? [];
                 unset($validated['anak']);
+
+                if (isset($validated['telepon']) && $orangtua->user) {
+                    $orangtua->user->update([
+                        'username' => $validated['telepon'],
+                        'password' => Hash::make($validated['telepon'])
+                    ]);
+                }
 
                 $orangtua->update($validated);
 
-                if (isset($anak)) {
-                     $syncData = [];
-                     foreach ($anak as $item) {
-                         $syncData[(string) $item['siswa_id']] = [
-                             'hubungan' => $item['hubungan'] ?? null
-                         ];
-                     }
-                     $orangtua->anak()->sync($syncData);
+                if (isset($anakList)) {
+                    $syncData = [];
+                    foreach ($anakList as $item) {
+                        $siswa = Siswa::where('nis', $item['nis'])->first();
+                        if ($siswa) {
+                            $count = $siswa->orangtua()->where('orangtua.id', '!=', $orangtua->id)->count();
+                            if ($count >= 2) {
+                                abort(Response::HTTP_UNPROCESSABLE_ENTITY, "Siswa dengan NIS {$item['nis']} ({$siswa->nama_lengkap}) sudah memiliki maksimal 2 orang tua.");
+                            }
+                            $syncData[$siswa->id] = ['hubungan' => $item['hubungan'] ?? null];
+                        }
+                    }
+                    $orangtua->anak()->sync($syncData);
                 }
             });
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data orang tua berhasil diperbarui',
+                'message' => 'Data berhasil diperbarui',
                 'data'    => new OrangtuaResource($orangtua->load(['user','anak.kelas.jurusan']))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
+            $statusCode = ($e instanceof HttpExceptionInterface) ? $e->getStatusCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
             Log::error('Update Orangtua Error', ['id' => $orangtua->id, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui orang tua',
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+                'message' => $e->getMessage(),
+            ], $statusCode);
         }
     }
 
@@ -188,28 +227,27 @@ class OrangtuaController extends Controller
     {
         try {
             $blockers = [];
-            if ($orangtua->user()->exists()) {
-                $blockers[] = 'Terdapat akun user yang terhubung';
-            }
             if ($orangtua->anak()->exists()) {
                 $blockers[] = 'Terhubung dengan data anak';
             }
 
             $force = request()->boolean('force', false);
-
             if (!empty($blockers) && !$force) {
                 return response()->json([
                     'success'    => false,
-                    'error_code' => 'conflict_relations',
                     'message'    => 'Penghapusan diblokir karena terdapat data terkait.',
-                    'reasons'    => $blockers,
-                    'hint'       => 'Gunakan parameter ?force=1 untuk memaksa penghapusan.'
+                    'reasons'    => $blockers
                 ], Response::HTTP_CONFLICT);
             }
 
             DB::transaction(function () use ($orangtua) {
+                $user = $orangtua->user;
                 $orangtua->anak()->detach();
                 $orangtua->delete();
+                if ($user) {
+                    $user->roles()->detach();
+                    $user->delete();
+                }
             });
 
             return response()->json([
@@ -220,7 +258,7 @@ class OrangtuaController extends Controller
             Log::error('Delete Orangtua Error', ['id' => $orangtua->id, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus orang tua',
+                'message' => 'Gagal menghapus data',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -229,55 +267,79 @@ class OrangtuaController extends Controller
     {
         try {
             $this->authorize('viewAny', Orangtua::class);
-
+            
             $query = Orangtua::query()->with(['anak.kelas.jurusan']);
             $query = $this->applyFilters($request, $query);
+            
+            $filenameParts = ['Data_Orangtua'];
 
-            $filterParts = [];
-            // ... (logika penamaan file tetap sama) ...
-            
-            $filename = 'Data_Orangtua_' . now()->format('Ymd_His') . '.xlsx';
-            
-            $profil = DB::table('profil_sekolah')->first();
-            $kontak = DB::table('data_kontak')->first();
-            $kelasData = $request->filled('kelas_id') ? Kelas::find($request->kelas_id) : null;
+            $tahunAjaranAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+            $tahunAjaranId = $request->query('tahun_ajaran_id', $tahunAjaranAktif?->id);
+            $ta = DB::table('tahun_ajaran')->where('id', $tahunAjaranId)->first();
+            if ($ta) {
+                $filenameParts[] = Str::slug($ta->nama);
+            }
+
+            if ($request->filled('jurusan_id')) {
+                $jurusan = DB::table('jurusan')->where('id', $request->jurusan_id)->first();
+                if ($jurusan) {
+                    $filenameParts[] = Str::slug($jurusan->nama_jurusan);
+                }
+            }
+
+            $kelasData = null;
+            if ($request->filled('kelas_id')) {
+                $kelasData = DB::table('kelas')->where('id', $request->kelas_id)->first();
+                if ($kelasData) {
+                    $filenameParts[] = Str::slug($kelasData->nama_kelas);
+                }
+            }
+
+            if ($request->filled('is_active')) {
+                $filenameParts[] = $request->is_active == 1 ? 'aktif' : 'nonaktif';
+            }
+
+            $filenameParts[] = now()->format('Ymd_His');
+            $fileName = implode('_', $filenameParts) . '.xlsx';
+
+            if (ob_get_contents()) ob_end_clean();
 
             return Excel::download(
-                new OrangtuaExport($query, $profil, $kontak, $kelasData, $request->all()), 
-                $filename
+                new OrangtuaExport(
+                    $query, 
+                    DB::table('profil_sekolah')->first(), 
+                    DB::table('data_kontak')->first(), 
+                    $kelasData, 
+                    $request->all()
+                ), 
+                $fileName
             );
+
         } catch (Throwable $e) {
             Log::error('Export Orangtua Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal export data'], 500);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal export data: ' . $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function import(Request $request): JsonResponse
     {
         $this->authorize('create', Orangtua::class);
-
-        $request->validate([
-            'file' => 'required|mimes:xlsx,xls,csv|max:2048'
-        ]);
-
+        $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
         try {
             $import = new OrangtuaImport;
             Excel::import($import, $request->file('file'));
-            $conflicts = $import->getMessages();
-
             return response()->json([
                 'success' => true, 
-                'message' => count($conflicts) > 0 
-                             ? 'Import selesai dengan beberapa catatan.' 
-                             : 'Data orang tua berhasil diimport.',
-                'conflicts' => $conflicts
+                'message' => count($import->getMessages()) > 0 ? 'Import selesai dengan catatan.' : 'Berhasil diimport.', 
+                'conflicts' => $import->getMessages()
             ], Response::HTTP_OK);
-            
         } catch (Throwable $e) {
-            Log::error('Import Orangtua Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false, 
-                'message' => 'Gagal mengimport data: ' . $e->getMessage()
+                'message' => 'Gagal import: ' . $e->getMessage()
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

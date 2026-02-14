@@ -9,22 +9,22 @@ class KelasPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorize($user, ['Admin'], ['waka-kesiswaan']);
     }
 
     public function view(User $user, Kelas $kelas): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorize($user, ['Admin'], ['waka-kesiswaan']);
     }
 
     public function create(User $user): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorize($user, ['Admin'], ['waka-kesiswaan']);
     }
 
     public function update(User $user, Kelas $kelas): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorize($user, ['Admin'], ['waka-kesiswaan']);
     }
 
     public function delete(User $user, Kelas $kelas): bool
@@ -42,8 +42,20 @@ class KelasPolicy
         return $this->authorize($user, ['Admin']);
     }
 
-    protected function authorize(User $user, array $allowedRoles = []): bool
+    protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        return $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        $userRoles = $user->roles->pluck('role_name')->map(fn($r) => strtolower($r));
+        $hasRole = $userRoles->intersect(array_map('strtolower', $allowedRoles))->isNotEmpty();
+
+        $jabatanSlugs = $user->guruStaf
+            ? $user->guruStaf->strukturJabatan
+                ->map(fn($sj) => strtolower($sj->jabatan?->slug))
+                ->filter()
+                ->toArray()
+            : [];
+
+        $hasJabatan = !empty(array_intersect($jabatanSlugs, array_map('strtolower', $allowedJabatans)));
+
+        return $hasRole || $hasJabatan;
     }
 }

@@ -19,7 +19,6 @@ class KalenderController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Kurikulum');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
 
         $this->authorizeResource(KalenderAkademik::class, 'kalender');

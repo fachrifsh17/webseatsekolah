@@ -29,7 +29,10 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
         $this->kontak = $kontak;
     }
 
-    public function startCell(): string { return 'A11'; }
+    public function startCell(): string 
+    { 
+        return 'A11'; 
+    }
 
     public function query()
     {
@@ -57,6 +60,7 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
     public function headings(): array
     {
         return [
+            'ID Guru',
             'NIP',
             'NUPTK',
             'Nama Lengkap',
@@ -67,11 +71,15 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
         ];
     }
 
+    /**
+    * @var GuruStaf $guru
+    */
     public function map($guru): array
     {
         return [
-            "'" . $guru->nip,
-            "'" . $guru->nuptk,
+            $guru->id, // Mengambil ID asli dari tabel (misal: G015)
+            $guru->nip ? "'" . $guru->nip : '-', // Menambahkan petik agar angka panjang tidak berantakan di excel
+            $guru->nuptk ? "'" . $guru->nuptk : '-',
             $guru->nama,
             $guru->jabatan_fungsional,
             $guru->status_kepegawaian,
@@ -82,7 +90,7 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
 
     public function styles(Worksheet $sheet)
     {
-        $sheet->getStyle('A11:G11')->applyFromArray([
+        $sheet->getStyle('A11:H11')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_WHITE]],
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
@@ -93,16 +101,19 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
 
         $lastRow = $sheet->getHighestRow();
 
-        for ($row = 12; $row <= $lastRow; $row++) {
-            $status = $sheet->getCell("G{$row}")->getValue();
-            if ($status == 'Aktif') {
-                $sheet->getStyle("G{$row}")->getFont()->getColor()->setARGB('FF008000');
-            } else {
-                $sheet->getStyle("G{$row}")->getFont()->getColor()->setARGB('FFFF0000');
+        if ($lastRow >= 12) {
+            for ($row = 12; $row <= $lastRow; $row++) {
+                // Kolom H adalah Status Aktif
+                $status = $sheet->getCell("H{$row}")->getValue();
+                if ($status == 'Aktif') {
+                    $sheet->getStyle("H{$row}")->getFont()->getColor()->setARGB('FF008000');
+                } else {
+                    $sheet->getStyle("H{$row}")->getFont()->getColor()->setARGB('FFFF0000');
+                }
             }
         }
         
-        $sheet->getStyle("A11:G{$lastRow}")->applyFromArray([
+        $sheet->getStyle("A11:H{$lastRow}")->applyFromArray([
             'borders' => [
                 'allBorders' => [
                     'borderStyle' => Border::BORDER_THIN,
@@ -117,13 +128,24 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
-                $lastCol = 'G';
+                $lastCol = 'H';
 
+                // Header Kop Surat
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
-                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', ($this->get_kontak->alamat_lengkap ?? '') . " | Telp: " . ($this->get_kontak->telepon ?? ''));
-                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "Email: " . ($this->get_kontak->email_resmi ?? '') . " | NPSN: " . ($this->profil->npsn ?? '-'));
+                
+                // Alamat dan Kontak dari data_kontak
+                $alamat = $this->kontak->alamat_lengkap ?? 'Alamat Belum Diatur';
+                $telp = $this->kontak->telepon ?? '-';
+                $email = $this->kontak->email_resmi ?? '-';
+                $npsn = $this->profil->npsn ?? '-';
+
+                $sheet->mergeCells("A4:{$lastCol}4"); 
+                $sheet->setCellValue('A4', $alamat . " | Telp: " . $telp);
+                
+                $sheet->mergeCells("A5:{$lastCol}5"); 
+                $sheet->setCellValue('A5', "Email: " . $email . " | NPSN: " . $npsn);
                 
                 $sheet->getStyle("A1:{$lastCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
@@ -137,24 +159,26 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                     ],
                 ]);
 
+                // Judul Dokumen
                 $sheet->mergeCells("A7:{$lastCol}7"); $sheet->setCellValue('A7', 'DATA GURU DAN STAF');
                 $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12);
                 $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+                // Informasi Filter
                 $filterText = [];
                 if (!empty($this->filters['q'])) $filterText[] = "Pencarian: " . $this->filters['q'];
                 if (!empty($this->filters['jabatan_fungsional'])) $filterText[] = "Jabatan: " . $this->filters['jabatan_fungsional'];
-                if (!empty($this->filters['status_kepegawaian'])) $filterText[] = "Status: " . $this->filters['status_kepegawaian'];
+                if (!empty($this->filters['status_kepegawaian'])) $filterText[] = "Status Kepegawaian: " . $this->filters['status_kepegawaian'];
                 if (!empty($this->filters['jurusan_id'])) {
                     $jurusan = Jurusan::find($this->filters['jurusan_id']);
                     if ($jurusan) $filterText[] = "Jurusan: " . $jurusan->nama_jurusan;
                 }
                 
                 $statusAktif = ($this->filters['is_active'] ?? '1') == '1' ? 'Aktif' : 'Non-Aktif';
-                $filterText[] = "Status: " . $statusAktif;
+                $filterText[] = "Status Data: " . $statusAktif;
 
                 $sheet->mergeCells("A8:{$lastCol}8");
-                $sheet->setCellValue('A8', "Filter: " . implode(' | ', $filterText));
+                $sheet->setCellValue('A8', "Filter: " . (empty($filterText) ? 'Semua Data' : implode(' | ', $filterText)));
                 $sheet->getStyle('A8')->getFont()->setItalic(true)->setSize(10);
                 $sheet->getStyle("A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 

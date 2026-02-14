@@ -9,32 +9,38 @@ class PresensiGuruMapelPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->authorize($user, ['Admin', 'Guru'], ['Waka Kesiswaan', 'Kepala Sekolah']);
+        return $this->authorize($user, ['Guru'], ['Waka Kesiswaan', 'Kepala Sekolah']) 
+            || $this->authorizeRoute($user, ['Admin']);
     }
 
     public function view(User $user, PresensiGuruMapel $presensi): bool
     {
-        return $this->authorize($user, ['Admin', 'Guru'], ['Waka Kesiswaan', 'Kepala Sekolah']);
+        return $this->authorize($user, ['Guru'], ['Waka Kesiswaan', 'Kepala Sekolah']) 
+            || $this->authorizeRoute($user, ['Admin']);
     }
 
     public function create(User $user): bool
     {
-        return $this->authorize($user, ['Admin', 'Guru'], ['Waka Kesiswaan']);
+        return $this->authorize($user, ['Guru'], ['Waka Kesiswaan']) 
+            || $this->authorizeRoute($user, ['Admin']);
     }
 
     public function update(User $user, PresensiGuruMapel $presensi): bool
     {
-        return $this->authorize($user, ['Admin', 'Guru'], ['Waka Kesiswaan']);
+        return $this->authorize($user, ['Guru'], ['Waka Kesiswaan']) 
+            || $this->authorizeRoute($user, ['Admin']);
     }
 
     public function delete(User $user, PresensiGuruMapel $presensi): bool
     {
-        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan']);
+        return $this->authorize($user, [], ['Waka Kesiswaan']) 
+            || $this->authorizeRoute($user, ['Admin']);
     }
 
     public function export(User $user): bool
     {
-        return $this->authorize($user, ['Admin', 'Guru'], ['Waka Kesiswaan', 'Kepala Sekolah']);
+        return $this->authorize($user, ['Guru'], ['Waka Kesiswaan', 'Kepala Sekolah']) 
+            || $this->authorizeRoute($user, ['Admin']);
     }
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
@@ -50,5 +56,16 @@ class PresensiGuruMapelPolicy
             : false;
 
         return $hasRole || $hasJabatan;
+    }
+
+    protected function authorizeRoute(User $user, array $allowedRoles = []): bool
+    {
+        $isAdmin = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+
+        if ($isAdmin && request()->is('api/admin/*')) {
+            return true;
+        }
+
+        return false;
     }
 }

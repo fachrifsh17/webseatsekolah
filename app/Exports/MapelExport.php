@@ -39,8 +39,8 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
     {
         $query = MataPelajaran::with(['jurusan']);
 
-        if (isset($this->filters['aktif'])) {
-            $query->where('aktif', $this->filters['aktif']);
+        if (isset($this->filters['is_active'])) {
+            $query->where('is_active', $this->filters['is_active']);
         }
 
         if (!empty($this->filters['search'])) {
@@ -85,7 +85,7 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             $mapel->jurusan->nama_jurusan ?? 'UMUM',
             strtoupper($mapel->tipe_mapel),
             strtoupper($mapel->kategori_mapel),
-            $mapel->aktif ? 'AKTIF' : 'NON-AKTIF',
+            $mapel->is_active ? 'AKTIF' : 'NON-AKTIF',
         ];
     }
 
@@ -130,7 +130,7 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
 
                 $tipeLabel = !empty($this->filters['tipe_mapel']) ? strtoupper($this->filters['tipe_mapel']) : 'SEMUA TIPE';
                 $kategoriLabel = !empty($this->filters['kategori_mapel']) ? strtoupper($this->filters['kategori_mapel']) : 'SEMUA KATEGORI';
-                $statusLabel = isset($this->filters['aktif']) ? ($this->filters['aktif'] ? 'AKTIF' : 'NON-AKTIF') : 'SEMUA STATUS';
+                $statusLabel = isset($this->filters['is_active']) ? ($this->filters['is_active'] ? 'AKTIF' : 'NON-AKTIF') : 'SEMUA STATUS';
 
                 $filterText = "Filter: Jurusan ($jurusanName) | Tipe ($tipeLabel) | Kategori ($kategoriLabel) | Status ($statusLabel)";
                 $sheet->mergeCells("A9:{$lastCol}9");
@@ -154,7 +154,7 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getStyle("A12:{$lastCol}{$lastRow}")->applyFromArray([
                     'borders' => [
                         'allBorders' => [
-                            'borderStyle' => Border::BORDER_THIN,
+                            'borderStyle' => Border::BORDER_THIN, // Mengubah THICK menjadi THIN
                         ],
                     ],
                     'alignment' => [

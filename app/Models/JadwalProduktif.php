@@ -14,7 +14,7 @@ class JadwalProduktif extends Model
 
     protected $fillable = [
         'jurusan_id',
-        'guru_staf_id',
+        'tahun_ajaran_id',   // ganti guru_staf_id dengan tahun_ajaran_id
         'judul',
         'penjelasan_jadwal',
         'file_jadwal_path',
@@ -22,7 +22,7 @@ class JadwalProduktif extends Model
 
     protected $casts = [
         'jurusan_id' => 'string',
-        'guru_staf_id' => 'string',
+        'tahun_ajaran_id' => 'string',  // sesuaikan tipe cast
     ];
 
     public function jurusan(): BelongsTo
@@ -30,8 +30,8 @@ class JadwalProduktif extends Model
         return $this->belongsTo(Jurusan::class, 'jurusan_id', 'id');
     }
 
-    public function guruStaf(): BelongsTo
+    public function tahunAjaran(): BelongsTo
     {
-        return $this->belongsTo(GuruStaf::class, 'guru_staf_id', 'id');
+        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id', 'id');
     }
 }

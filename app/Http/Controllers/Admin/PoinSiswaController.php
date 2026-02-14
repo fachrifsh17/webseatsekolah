@@ -19,10 +19,8 @@ class PoinSiswaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin,Guru'); // Menambahkan Guru jika mereka boleh mencatat poin
+        $this->middleware('role:Admin'); // Menambahkan Guru jika mereka boleh mencatat poin
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
-        
-        // Mengaktifkan Policy otomatis
         $this->authorizeResource(PoinSiswa::class, 'poin_siswa');
     }
 

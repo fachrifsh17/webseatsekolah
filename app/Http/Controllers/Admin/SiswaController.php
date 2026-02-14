@@ -3,26 +3,20 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Siswa;
-use App\Models\Kelas;
-use App\Models\User;
-use App\Http\Requests\StoreSiswaRequest;
-use App\Http\Requests\UpdateSiswaRequest;
+use App\Models\{Siswa, Kelas, User};
+use App\Http\Requests\{StoreSiswaRequest, UpdateSiswaRequest};
 use App\Http\Resources\SiswaResource;
 use App\Exports\SiswaExport;
 use App\Imports\SiswaImport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Support\Facades\{DB, Storage, Log, Hash};
 use Illuminate\Support\Arr;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException; // Tambahkan ini
 
 class SiswaController extends Controller
 {
@@ -127,9 +121,7 @@ class SiswaController extends Controller
     {
         $this->authorize('create', Siswa::class);
 
-        $request->validate([
-            'file' => 'required|mimes:xlsx,xls,csv'
-        ]);
+        $request->validate(['file' => 'required|mimes:xlsx,xls,csv']);
 
         try {
             $import = new SiswaImport;
@@ -138,9 +130,7 @@ class SiswaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => count($conflicts) > 0 
-                            ? 'Import selesai dengan beberapa catatan' 
-                            : 'Data siswa berhasil diimport',
+                'message' => count($conflicts) > 0 ? 'Import selesai dengan catatan' : 'Data siswa berhasil diimport',
                 'conflicts' => $conflicts
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -168,11 +158,50 @@ class SiswaController extends Controller
         $data = Arr::only($validated, (new Siswa())->getFillable());
 
         if ($request->hasFile('foto')) {
-            $data['foto'] = $request->file('foto')->store('siswa/foto', 'public');
+            $data['foto'] = $request->file('foto')->store('uploads/siswa/foto', 'public');
         }
 
         try {
             $siswa = DB::transaction(function() use ($data) {
+                // Check if username already exists
+                if (User::where('username', $data['nis'])->exists()) {
+                    throw ValidationException::withMessages([
+                        'nis' => ["NIS {$data['nis']} sudah terdaftar sebagai pengguna lain."]
+                    ]);
+                }
+
+                $lastUser = User::where('id', 'like', 'U%')
+                    ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
+                    ->lockForUpdate()
+                    ->first();
+                $lastUserId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
+                $newUserId = 'U' . str_pad($lastUserId + 1, 3, '0', STR_PAD_LEFT);
+
+                User::create([
+                    'id'        => $newUserId,
+                    'username'  => $data['nis'],
+                    'password'  => Hash::make($data['nis']),
+                    'is_active' => 1,
+                ]);
+
+                DB::table('user_roles')->insert([
+                    'user_id'    => $newUserId,
+                    'role_id'    => 'R003',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                $lastSiswa = Siswa::where('id', 'like', 'S%')
+                    ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
+                    ->lockForUpdate()
+                    ->first();
+                $lastSiswaId = $lastSiswa ? (int) substr($lastSiswa->id, 1) : 0;
+                $newSiswaId = 'S' . str_pad($lastSiswaId + 1, 3, '0', STR_PAD_LEFT);
+
+                $data['id'] = $newSiswaId;
+                $data['user_id'] = $newUserId;
+                $data['is_active'] = 1;
+
                 return Siswa::create($data);
             });
 
@@ -182,6 +211,13 @@ class SiswaController extends Controller
                 'data'    => new SiswaResource($siswa->load(['user', 'kelas.jurusan', 'orangtua']))
             ], Response::HTTP_CREATED);
 
+        } catch (ValidationException $e) {
+            if (isset($data['foto'])) Storage::disk('public')->delete($data['foto']);
+            return response()->json([
+                'success' => false,
+                'message' => 'Data tidak valid',
+                'errors' => $e->errors()
+            ], 422);
         } catch (Throwable $e) {
             if (isset($data['foto'])) Storage::disk('public')->delete($data['foto']);
             Log::error("Store Siswa Error: " . $e->getMessage());
@@ -199,11 +235,35 @@ class SiswaController extends Controller
         $oldFoto = $siswa->foto;
 
         if ($request->hasFile('foto')) {
-            $data['foto'] = $request->file('foto')->store('siswa/foto', 'public');
+            $data['foto'] = $request->file('foto')->store('uploads/siswa/foto', 'public');
         }
 
         try {
-            DB::transaction(fn() => $siswa->update($data));
+            DB::transaction(function() use ($siswa, $data) {
+                // Check if new NIS is used by another user
+                if (isset($data['nis']) && $siswa->user_id) {
+                    $isTaken = User::where('username', $data['nis'])
+                                   ->where('id', '!=', $siswa->user_id)
+                                   ->exists();
+                    if ($isTaken) {
+                        throw ValidationException::withMessages([
+                            'nis' => ["NIS {$data['nis']} sudah digunakan oleh pengguna lain."]
+                        ]);
+                    }
+                }
+
+                $siswa->update($data);
+
+                if ($siswa->user_id) {
+                    $userData = [];
+                    if (isset($data['nis'])) $userData['username'] = $data['nis'];
+                    if (isset($data['is_active'])) $userData['is_active'] = $data['is_active'];
+                    
+                    if (!empty($userData)) {
+                        User::where('id', $siswa->user_id)->update($userData);
+                    }
+                }
+            });
 
             if ($request->hasFile('foto') && $oldFoto) {
                 Storage::disk('public')->delete($oldFoto);
@@ -215,9 +275,17 @@ class SiswaController extends Controller
                 'data'    => new SiswaResource($siswa->fresh(['user', 'kelas.jurusan', 'orangtua']))
             ], Response::HTTP_OK);
 
+        } catch (ValidationException $e) {
+            // Hapus foto baru jika validasi gagal
+            if ($request->hasFile('foto') && isset($data['foto'])) Storage::disk('public')->delete($data['foto']);
+            return response()->json([
+                'success' => false,
+                'message' => 'Data tidak valid',
+                'errors' => $e->errors()
+            ], 422);
         } catch (Throwable $e) {
-            if (isset($data['foto'])) Storage::disk('public')->delete($data['foto']);
-            Log::error("Update Siswa ID {$siswa->id} Error: " . $e->getMessage());
+            if ($request->hasFile('foto') && isset($data['foto'])) Storage::disk('public')->delete($data['foto']);
+            Log::error("Update Siswa Error: " . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui siswa'
@@ -229,7 +297,14 @@ class SiswaController extends Controller
     {
         try {
             $fotoPath = $siswa->foto;
-            DB::transaction(fn() => $siswa->delete());
+            $userId = $siswa->user_id;
+
+            DB::transaction(function() use ($siswa, $userId) {
+                $siswa->delete();
+                if ($userId) {
+                    User::where('id', $userId)->delete();
+                }
+            });
 
             if ($fotoPath) {
                 Storage::disk('public')->delete($fotoPath);
@@ -241,7 +316,7 @@ class SiswaController extends Controller
             ], Response::HTTP_OK);
 
         } catch (Throwable $e) {
-            Log::error("Delete Siswa ID {$siswa->id} Error: " . $e->getMessage());
+            Log::error("Delete Siswa Error: " . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus siswa'

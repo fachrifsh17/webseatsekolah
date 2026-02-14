@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
 use App\Models\JadwalProduktif;
+use App\Models\TahunAjaran;
 use App\Http\Resources\JadwalProduktifResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -18,9 +19,13 @@ class JadwalProduktifController extends Controller
         $this->middleware('role:Siswa');
     }
 
+    /**
+     * Menampilkan jadwal produktif khusus untuk jurusan siswa di TA aktif
+     */
     public function index(): JsonResponse
     {
         try {
+            // Ambil data siswa dan kelas untuk mendapatkan jurusan_id
             $siswa = Auth::user()->siswa()->with('kelas')->first();
 
             if (!$siswa || !$siswa->kelas) {
@@ -30,16 +35,33 @@ class JadwalProduktifController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
+            // Cari Tahun Ajaran Aktif
+            $taAktif = TahunAjaran::where('is_active', 1)->first();
+
+            if (!$taAktif) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak ada Tahun Ajaran yang aktif.'
+                ], Response::HTTP_NOT_FOUND);
+            }
+
             $perPage = min((int) request()->get('per_page', 20), 100);
 
-            $jadwal = JadwalProduktif::where('jurusan_id', $siswa->kelas->jurusan_id)
-                ->with(['jurusan', 'guruStaf'])
+            // Filter: Hanya jurusan siswa DAN Tahun Ajaran Aktif
+            $jadwal = JadwalProduktif::with(['jurusan'])
+                ->where('jurusan_id', $siswa->kelas->jurusan_id)
+                ->where('tahun_ajaran_id', $taAktif->id)
                 ->latest()
                 ->paginate($perPage);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Daftar jadwal produktif berhasil diambil.',
+                'info'    => [
+                    'tahun_ajaran' => $taAktif->nama,
+                    'semester'     => $taAktif->semester,
+                    'jurusan'      => $siswa->kelas->jurusan?->nama_jurusan
+                ],
                 'data'    => JadwalProduktifResource::collection($jadwal),
                 'meta'    => [
                     'current_page' => $jadwal->currentPage(),
@@ -58,12 +80,22 @@ class JadwalProduktifController extends Controller
         }
     }
 
+    /**
+     * Menampilkan detail jadwal (dengan proteksi jurusan)
+     */
     public function show($id): JsonResponse
     {
         try {
             $siswa = Auth::user()->siswa()->with('kelas')->first();
-            $jadwal = JadwalProduktif::with(['jurusan', 'guruStaf'])->findOrFail($id);
+            
+            // Ambil Tahun Ajaran Aktif
+            $taAktif = TahunAjaran::where('is_active', 1)->first();
 
+            $jadwal = JadwalProduktif::with(['jurusan'])
+                ->where('tahun_ajaran_id', $taAktif?->id)
+                ->findOrFail($id);
+
+            // Proteksi: Pastikan siswa tidak mengakses jadwal jurusan lain via ID manual
             if ($jadwal->jurusan_id !== $siswa->kelas->jurusan_id) {
                 return response()->json([
                     'success' => false,
@@ -80,7 +112,7 @@ class JadwalProduktifController extends Controller
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Jadwal produktif tidak ditemukan.',
+                'message' => 'Jadwal produktif tidak ditemukan atau tidak aktif.',
                 'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_NOT_FOUND);
         }

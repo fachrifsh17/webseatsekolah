@@ -4,6 +4,7 @@ namespace App\Http\Controllers\KetuaJurusan;
 
 use App\Http\Controllers\Controller;
 use App\Models\JadwalProduktif;
+use App\Models\TahunAjaran;
 use App\Http\Requests\StoreJadwalProduktifRequest;
 use App\Http\Requests\UpdateJadwalProduktifRequest;
 use App\Http\Resources\JadwalProduktifResource;
@@ -32,17 +33,35 @@ class JadwalProduktifController extends Controller
         $perPage = min((int) request()->get('per_page', 20), 100);
         $user = Auth::user();
 
-        $query = JadwalProduktif::with(['jurusan', 'guruStaf']);
-
-        if ($user && !$user->roles()->where('role_name', 'admin')->exists()) {
-            $jurusanId = $user->guruStaf?->jurusan_id;
-            $query->where('jurusan_id', $jurusanId);
+        $taAktif = TahunAjaran::where('is_active', 1)->first();
+        if (!$taAktif) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tidak ada Tahun Ajaran yang aktif.'
+            ], Response::HTTP_NOT_FOUND);
         }
+
+        $jurusanId = $user->guruStaf?->jurusan_id;
+        if (!$jurusanId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun Anda tidak terhubung dengan data jurusan.'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        $query = JadwalProduktif::with(['jurusan'])
+                 ->where('tahun_ajaran_id', $taAktif->id)
+                 ->where('jurusan_id', $jurusanId);
 
         $jadwal = $query->latest()->paginate($perPage);
 
         return response()->json([
             'success' => true,
+            'info'    => [
+                'tahun_ajaran' => $taAktif->nama,
+                'semester'     => $taAktif->semester,
+                'jurusan_anda' => $user->guruStaf?->jurusan?->nama_jurusan
+            ],
             'data'    => JadwalProduktifResource::collection($jadwal),
             'meta'    => [
                 'current_page' => $jadwal->currentPage(),
@@ -56,19 +75,18 @@ class JadwalProduktifController extends Controller
     public function show(JadwalProduktif $jadwalProduktif): JsonResponse
     {
         $user = Auth::user();
+        $jurusanId = $user->guruStaf?->jurusan_id;
 
-        if ($user && !$user->roles()->where('role_name', 'admin')->exists()) {
-            if ($jadwalProduktif->jurusan_id !== $user->guruStaf?->jurusan_id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Anda tidak memiliki akses ke jadwal jurusan lain.'
-                ], Response::HTTP_FORBIDDEN);
-            }
+        if ($jadwalProduktif->jurusan_id !== $jurusanId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak. Ini bukan jadwal jurusan Anda.'
+            ], Response::HTTP_FORBIDDEN);
         }
 
         return response()->json([
             'success' => true,
-            'data'    => new JadwalProduktifResource($jadwalProduktif->load(['jurusan', 'guruStaf']))
+            'data'    => new JadwalProduktifResource($jadwalProduktif->load(['jurusan']))
         ], Response::HTTP_OK);
     }
 
@@ -76,32 +94,30 @@ class JadwalProduktifController extends Controller
     {
         $validated = $request->validated();
         $user = Auth::user();
-
-        if (!$user) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Unauthorized'
-            ], Response::HTTP_UNAUTHORIZED);
-        }
-
-        $isAdmin = $user->roles()->where('role_name', 'admin')->exists();
-
-        if (!$isAdmin) {
-            $guru = $user->guruStaf;
-            if (!$guru || !$guru->jurusan_id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Akun belum terhubung dengan data guru atau jurusan.'
-                ], Response::HTTP_UNPROCESSABLE_ENTITY);
-            }
-            $validated['guru_staf_id'] = $guru->id;
-            $validated['jurusan_id'] = $guru->jurusan_id;
-        }
-
-        if (JadwalProduktif::where('jurusan_id', $validated['jurusan_id'])->exists()) {
+        
+        $taAktif = TahunAjaran::where('is_active', 1)->first();
+        if (!$taAktif) {
             return response()->json([
                 'success' => false,
-                'message' => 'Jurusan ini sudah memiliki jadwal produktif'
+                'message' => 'Gagal simpan, tidak ada Tahun Ajaran aktif.'
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $jurusanId = $user->guruStaf?->jurusan_id;
+        if (!$jurusanId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data jurusan Anda tidak ditemukan.'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        $validated['jurusan_id'] = $jurusanId;
+        $validated['tahun_ajaran_id'] = $taAktif->id;
+
+        if (JadwalProduktif::where('jurusan_id', $jurusanId)->where('tahun_ajaran_id', $taAktif->id)->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jurusan Anda sudah memiliki jadwal di periode ini.'
             ], Response::HTTP_CONFLICT);
         }
 
@@ -111,20 +127,19 @@ class JadwalProduktifController extends Controller
 
         try {
             $jadwal = JadwalProduktif::create($validated);
-
             return response()->json([
                 'success' => true,
                 'message' => 'Jadwal produktif berhasil ditambahkan.',
-                'data'    => new JadwalProduktifResource($jadwal->load(['jurusan', 'guruStaf']))
+                'data'    => new JadwalProduktifResource($jadwal->load(['jurusan']))
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             if (!empty($validated['file_jadwal_path'])) {
                 Storage::disk('public')->delete($validated['file_jadwal_path']);
             }
-            Log::error('Store Error: ' . $e->getMessage());
+            Log::error('Store Error Ketua Jurusan: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menambahkan jadwal produktif',
+                'message' => 'Gagal menambahkan jadwal.',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -133,37 +148,33 @@ class JadwalProduktifController extends Controller
     {
         $validated = $request->validated();
         $user = Auth::user();
-        $isAdmin = $user && $user->roles()->where('role_name', 'admin')->exists();
+        $jurusanId = $user->guruStaf?->jurusan_id;
 
-        if (!$isAdmin) {
-            if ($jadwalProduktif->jurusan_id !== $user->guruStaf?->jurusan_id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Anda tidak memiliki otoritas untuk mengubah jadwal jurusan lain.'
-                ], Response::HTTP_FORBIDDEN);
-            }
-            $validated['guru_staf_id'] = $user->guruStaf?->id;
-            $validated['jurusan_id'] = $user->guruStaf?->jurusan_id;
+        if ($jadwalProduktif->jurusan_id !== $jurusanId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki otoritas mengubah jadwal jurusan lain.'
+            ], Response::HTTP_FORBIDDEN);
         }
 
+        $validated['jurusan_id'] = $jurusanId;
+
         if ($request->hasFile('file_jadwal_path')) {
-            $newFilePath = $request->file('file_jadwal_path')->store('jadwal_produktif', 'public');
             if (!empty($jadwalProduktif->file_jadwal_path)) {
                 Storage::disk('public')->delete($jadwalProduktif->file_jadwal_path);
             }
-            $validated['file_jadwal_path'] = $newFilePath;
+            $validated['file_jadwal_path'] = $request->file('file_jadwal_path')->store('jadwal_produktif', 'public');
         }
 
         try {
             $jadwalProduktif->update($validated);
-
             return response()->json([
                 'success' => true,
                 'message' => 'Jadwal produktif berhasil diperbarui.',
-                'data'    => new JadwalProduktifResource($jadwalProduktif->load(['jurusan', 'guruStaf']))
+                'data'    => new JadwalProduktifResource($jadwalProduktif->load(['jurusan']))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Update Error: ' . $e->getMessage());
+            Log::error('Update Error Ketua Jurusan: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui data.',
@@ -174,29 +185,24 @@ class JadwalProduktifController extends Controller
     public function destroy(JadwalProduktif $jadwalProduktif): JsonResponse
     {
         $user = Auth::user();
-
-        if ($user && !$user->roles()->where('role_name', 'admin')->exists()) {
-            if ($jadwalProduktif->jurusan_id !== $user->guruStaf?->jurusan_id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Akses ditolak.'
-                ], Response::HTTP_FORBIDDEN);
-            }
+        if ($jadwalProduktif->jurusan_id !== $user->guruStaf?->jurusan_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak.'
+            ], Response::HTTP_FORBIDDEN);
         }
 
         try {
             if (!empty($jadwalProduktif->file_jadwal_path)) {
                 Storage::disk('public')->delete($jadwalProduktif->file_jadwal_path);
             }
-
             $jadwalProduktif->delete();
-
             return response()->json([
                 'success' => true,
                 'message' => 'Jadwal produktif berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Delete Error: ' . $e->getMessage());
+            Log::error('Delete Error Ketua Jurusan: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus data.',

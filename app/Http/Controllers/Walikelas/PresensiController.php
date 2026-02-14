@@ -7,7 +7,8 @@ use App\Models\{Presensi, Siswa, Kelas, TahunAjaran};
 use App\Http\Resources\PresensiResource;
 use App\Exports\PresensiExport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB, Log};
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
@@ -18,9 +19,12 @@ class PresensiController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Guru');
-        $this->middleware('log.aktivitas')->only(['store']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
     }
 
+    /**
+     * Menampilkan daftar siswa untuk input presensi harian
+     */
     public function siswaWali(Request $request): JsonResponse
     {
         try {
@@ -63,6 +67,9 @@ class PresensiController extends Controller
         }
     }
 
+    /**
+     * Bulk Store Presensi (Input Massal)
+     */
     public function store(Request $request): JsonResponse
     {
         $tgl = date('Y-m-d');
@@ -72,15 +79,16 @@ class PresensiController extends Controller
             return response()->json(['success' => false, 'message' => 'Input ditolak pada hari libur.'], Response::HTTP_FORBIDDEN);
         }
 
-        if ($jamMenit < '06:30' || $jamMenit > '10:00') {
-            return response()->json(['success' => false, 'message' => 'Input presensi hanya dilayani jam 06:30 - 10:00.'], Response::HTTP_FORBIDDEN);
+        // Contoh pembatasan jam (Bisa disesuaikan)
+        if ($jamMenit < '06:00' || $jamMenit > '16:00') {
+            return response()->json(['success' => false, 'message' => 'Input presensi hanya dilayani pada jam operasional sekolah.'], Response::HTTP_FORBIDDEN);
         }
 
         $user = Auth::user();
         $kelas = Kelas::where('wali_kelas_id', $user->guru_staf_id)->where('is_active', true)->first();
         
         if (!$kelas) {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak. Anda bukan wali kelas aktif.'], Response::HTTP_FORBIDDEN);
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
         }
 
         $ta = TahunAjaran::where('is_active', true)->firstOrFail();
@@ -92,27 +100,86 @@ class PresensiController extends Controller
         ]);
 
         try {
-            DB::transaction(function () use ($validated, $tgl, $user, $ta) {
-                foreach ($validated['items'] as $item) {
+            DB::beginTransaction();
+            foreach ($validated['items'] as $item) {
+                // Pastikan siswa yang diinput memang siswa perwaliannya
+                $isOwnStudent = Siswa::where('id', $item['siswa_id'])->where('kelas_id', $kelas->id)->exists();
+                
+                if ($isOwnStudent) {
                     Presensi::updateOrCreate(
                         ['siswa_id' => $item['siswa_id'], 'tanggal' => $tgl],
                         [
                             'tahun_ajaran_id' => $ta->id,
                             'status'          => $item['status'], 
-                            'keterangan'      => $item['keterangan'] ?? 'Diinput oleh Wali Kelas: ' . $user->username, 
+                            'keterangan'      => $item['keterangan'] ?? 'Diinput oleh Wali Kelas', 
                             'guru_staf_id'    => $user->guru_staf_id
                         ]
                     );
                 }
-            });
-
+            }
+            DB::commit();
             return response()->json(['success' => true, 'message' => 'Presensi berhasil disimpan.'], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Walikelas Store Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal menyimpan data presensi.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Gagal menyimpan data.'], 500);
         }
     }
 
+    /**
+     * Update Presensi Tunggal
+     */
+    public function update(Request $request, Presensi $presensi): JsonResponse
+    {
+        $user = Auth::user();
+        // Cek apakah presensi ini milik siswa di kelas perwaliannya
+        $isOwnStudent = Siswa::where('id', $presensi->siswa_id)
+                             ->where('kelas_id', function($query) use ($user) {
+                                 $query->select('id')->from('kelas')->where('wali_kelas_id', $user->guru_staf_id)->limit(1);
+                             })->exists();
+
+        if (!$isOwnStudent) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], 403);
+        }
+
+        $validated = $request->validate([
+            'status' => 'required|in:Hadir,Sakit,Izin,Alpa',
+            'keterangan' => 'nullable|string'
+        ]);
+
+        try {
+            $presensi->update($validated);
+            return response()->json(['success' => true, 'message' => 'Data presensi berhasil diperbarui.'], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal memperbarui data.'], 500);
+        }
+    }
+
+    /**
+     * Hapus Presensi
+     */
+    public function destroy(Presensi $presensi): JsonResponse
+    {
+        $user = Auth::user();
+        $isOwnStudent = Siswa::where('id', $presensi->siswa_id)
+                             ->where('kelas_id', function($query) use ($user) {
+                                 $query->select('id')->from('kelas')->where('wali_kelas_id', $user->guru_staf_id)->limit(1);
+                             })->exists();
+
+        if (!$isOwnStudent) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], 403);
+        }
+
+        try {
+            $presensi->delete();
+            return response()->json(['success' => true, 'message' => 'Data presensi berhasil dihapus.'], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus data.'], 500);
+        }
+    }
+
+    /**
+     * Riwayat Presensi dengan Filter
+     */
     public function index(Request $request): JsonResponse
     {
         if ($error = $this->validateSemesterMonth($request)) {
@@ -123,9 +190,7 @@ class PresensiController extends Controller
             $user = Auth::user();
             $kelas = Kelas::where('wali_kelas_id', $user->guru_staf_id)->where('is_active', true)->first();
 
-            if (!$kelas) {
-                return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
-            }
+            if (!$kelas) return response()->json(['success' => false, 'message' => 'Akses ditolak.'], 403);
 
             $query = $this->applyPresensiFilters($request, Presensi::query(), $kelas);
             $perPage = min((int) $request->get('per_page', 20), 100);
@@ -142,12 +207,13 @@ class PresensiController extends Controller
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            return response()->json(['success' => false, 'message' => 'Gagal memuat riwayat presensi.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json(['success' => false, 'message' => 'Gagal memuat riwayat presensi.'], 500);
         }
     }
 
     public function export(Request $request)
     {
+        // ... (Logika export tetap sama seperti kode awal Anda)
         try {
             if ($error = $this->validateSemesterMonth($request)) {
                 return response()->json(['success' => false, 'message' => $error], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -181,9 +247,11 @@ class PresensiController extends Controller
             );
         } catch (Throwable $e) {
             Log::error('Walikelas Export Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal mengekspor file.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json(['success' => false, 'message' => 'Gagal mengekspor file.'], 500);
         }
     }
+
+    // --- Private Helper Methods ---
 
     private function getSummaryData($kelasId, $tanggal, $taId): array
     {

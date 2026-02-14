@@ -16,30 +16,17 @@ class UpdateJadwalProduktifRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $user = $this->user();
-
-        if (!$user) {
-            return;
-        }
-
-        $isAdmin = ($user->role ?? null) === 'admin';
-
-        if (!$isAdmin) {
-            $guruId = $user->guruStaf?->id ?? $user->guru_staf_id ?? $user->guru_id ?? null;
-            if ($guruId) {
-                $this->merge(['guru_staf_id' => $guruId]);
-            }
-        }
+        //
     }
 
     public function rules(): array
     {
         return [
-            'jurusan_id'        => ['bail','sometimes','required','string','exists:jurusan,id'],
-            'guru_staf_id'      => ['bail','sometimes','required','string','exists:guru_staf,id'],
-            'judul'             => ['bail','sometimes','required','string','max:255'],
-            'penjelasan_jadwal' => ['nullable','string'],
-            'file_jadwal_path'  => ['nullable','file','mimes:pdf,jpg,jpeg,png,webp','max:5120'],
+            'jurusan_id'        => ['bail', 'sometimes', 'required', 'string', 'exists:jurusan,id'],
+            'tahun_ajaran_id'   => ['bail', 'sometimes', 'nullable', 'string', 'exists:tahun_ajaran,id'],
+            'judul'             => ['bail', 'sometimes', 'required', 'string', 'max:255'],
+            'penjelasan_jadwal' => ['nullable', 'string'],
+            'file_jadwal_path'  => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:5120'],
         ];
     }
 
@@ -50,9 +37,8 @@ class UpdateJadwalProduktifRequest extends FormRequest
             'jurusan_id.string'         => 'Jurusan harus berupa ID string.',
             'jurusan_id.exists'         => 'Jurusan tidak valid.',
 
-            'guru_staf_id.required'     => 'Guru pengampu wajib dipilih.',
-            'guru_staf_id.string'       => 'Guru pengampu harus berupa ID string.',
-            'guru_staf_id.exists'       => 'Guru pengampu tidak ditemukan.',
+            'tahun_ajaran_id.string'    => 'Tahun ajaran harus berupa ID string.',
+            'tahun_ajaran_id.exists'    => 'Tahun ajaran tidak ditemukan.',
 
             'judul.required'            => 'Judul jadwal wajib diisi.',
             'judul.string'              => 'Judul jadwal harus berupa teks.',
@@ -70,7 +56,7 @@ class UpdateJadwalProduktifRequest extends FormRequest
     {
         return [
             'jurusan_id'        => 'Jurusan',
-            'guru_staf_id'      => 'Guru pengampu',
+            'tahun_ajaran_id'   => 'Tahun ajaran',
             'judul'             => 'Judul jadwal',
             'penjelasan_jadwal' => 'Penjelasan jadwal',
             'file_jadwal_path'  => 'File jadwal',
@@ -80,6 +66,7 @@ class UpdateJadwalProduktifRequest extends FormRequest
     protected function failedValidation(Validator $validator)
     {
         throw new HttpResponseException(response()->json([
+            'success' => false,
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
         ], Response::HTTP_UNPROCESSABLE_ENTITY));

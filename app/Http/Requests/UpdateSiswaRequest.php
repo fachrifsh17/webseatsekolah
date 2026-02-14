@@ -17,26 +17,31 @@ class UpdateSiswaRequest extends FormRequest
 
     public function rules(): array
     {
+        $siswaId = $this->siswa->id ?? $this->route('siswa');
+
         return [
-            'user_id'       => ['sometimes', 'required', 'string', 'exists:users,id'],
-            'nis'           => ['sometimes', 'required', 'string', 'max:20'],
+            'nis'           => [
+                'sometimes', 
+                'required', 
+                'string', 
+                'max:20', 
+                Rule::unique('siswa', 'nis')->ignore($siswaId)
+            ],
             'nisn'          => [
                 'sometimes',
                 'required',
                 'string',
                 'size:10',
-                Rule::unique('siswa', 'nisn')->ignore($this->siswa->id ?? $this->route('siswa')),
+                Rule::unique('siswa', 'nisn')->ignore($siswaId),
             ],
             'nama_lengkap'  => ['sometimes', 'required', 'string', 'max:100'],
             'tempat_lahir'  => ['nullable', 'string', 'max:100'],
             'tanggal_lahir' => ['nullable', 'date'],
             'jenis_kelamin' => ['sometimes', 'required', 'in:Laki-laki,Perempuan'],
             'kelas_id'      => ['sometimes', 'required', 'string', 'exists:kelas,id'],
-
-            'orangtua'              => ['nullable', 'array'],
-            'orangtua.*.id'         => ['required', 'string', 'exists:orangtua,id'],
-            'orangtua.*.hubungan'   => ['nullable', 'in:ayah,ibu,wali'],
-
+            'orangtua'            => ['nullable', 'array'],
+            'orangtua.*.id'       => ['required', 'string', 'exists:orangtua,id'],
+            'orangtua.*.hubungan' => ['nullable', 'in:ayah,ibu,wali'],
             'foto'          => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
             'no_telp_siswa' => ['nullable', 'string', 'max:15'],
             'alamat'        => ['nullable', 'string'],
@@ -53,57 +58,48 @@ class UpdateSiswaRequest extends FormRequest
             'tempat_lahir'  => $this->filled('tempat_lahir') ? trim($this->tempat_lahir) : null,
             'no_telp_siswa' => $this->filled('no_telp_siswa') ? trim($this->no_telp_siswa) : null,
             'jenis_kelamin' => $this->filled('jenis_kelamin') ? trim($this->jenis_kelamin) : null,
-            'is_active'     => $this->filled('is_active') ? (int) $this->is_active : null,
+            'is_active'     => $this->has('is_active') ? (int) $this->is_active : null,
         ]);
     }
 
     public function messages(): array
     {
         return [
-            'user_id.required'             => 'Akun pengguna wajib dihubungkan.',
-            'user_id.string'               => 'User ID harus berupa ID string.',
-            'user_id.exists'               => 'User tidak ditemukan.',
+            'nis.required'             => 'NIS wajib diisi.',
+            'nis.max'                  => 'NIS tidak boleh lebih dari 20 karakter.',
+            'nis.unique'               => 'NIS sudah digunakan oleh siswa lain.',
 
-            'nis.required'                 => 'NIS wajib diisi.',
-            'nis.max'                      => 'NIS tidak boleh lebih dari 20 karakter.',
+            'nisn.required'            => 'NISN wajib diisi.',
+            'nisn.size'                => 'NISN harus tepat 10 karakter.',
+            'nisn.unique'              => 'NISN sudah terdaftar di sistem.',
 
-            'nisn.required'                => 'NISN wajib diisi.',
-            'nisn.size'                    => 'NISN harus tepat 10 karakter.',
-            'nisn.unique'                  => 'NISN sudah terdaftar di sistem.',
+            'nama_lengkap.required'    => 'Nama lengkap wajib diisi.',
+            'nama_lengkap.max'         => 'Nama lengkap tidak boleh lebih dari 100 karakter.',
 
-            'nama_lengkap.required'        => 'Nama lengkap wajib diisi.',
-            'nama_lengkap.max'             => 'Nama lengkap tidak boleh lebih dari 100 karakter.',
+            'jenis_kelamin.required'   => 'Jenis kelamin wajib dipilih.',
+            'jenis_kelamin.in'         => 'Jenis kelamin harus Laki-laki atau Perempuan.',
 
-            'jenis_kelamin.required'       => 'Jenis kelamin wajib dipilih.',
-            'jenis_kelamin.in'             => 'Jenis kelamin harus Laki-laki atau Perempuan.',
+            'kelas_id.required'        => 'Kelas wajib dipilih.',
+            'kelas_id.exists'          => 'Kelas tidak ditemukan.',
 
-            'kelas_id.required'            => 'Kelas wajib dipilih.',
-            'kelas_id.string'              => 'Kelas ID harus berupa ID string.',
-            'kelas_id.exists'              => 'Kelas tidak ditemukan.',
+            'orangtua.array'           => 'Format orang tua tidak valid.',
+            'orangtua.*.id.required'   => 'ID orang tua wajib diisi.',
+            'orangtua.*.id.exists'     => 'Orang tua tidak ditemukan.',
+            'orangtua.*.hubungan.in'   => 'Hubungan harus ayah, ibu, atau wali.',
 
-            'orangtua.array'               => 'Format orang tua tidak valid.',
-            'orangtua.*.id.required'       => 'ID orang tua wajib diisi.',
-            'orangtua.*.id.string'         => 'ID orang tua harus berupa ID string.',
-            'orangtua.*.id.exists'         => 'Orang tua tidak ditemukan.',
-            'orangtua.*.hubungan.in'       => 'Hubungan harus ayah, ibu, atau wali.',
+            'is_active.required'       => 'Status aktif wajib diisi.',
+            'is_active.in'             => 'Status aktif tidak valid.',
 
-            'is_active.required'           => 'Status aktif siswa wajib diisi.',
-            'is_active.integer'            => 'Status aktif harus berupa angka.',
-            'is_active.in'                 => 'Status aktif tidak valid. Gunakan 0 atau 1.',
-
-            'foto.file'                    => 'File harus berupa berkas.',
-            'foto.image'                   => 'File harus berupa gambar.',
-            'foto.mimes'                   => 'Format foto harus jpg, jpeg, atau png.',
-            'foto.max'                     => 'Ukuran foto maksimal adalah 2MB.',
-
-            'tanggal_lahir.date'           => 'Format tanggal lahir tidak valid.',
+            'foto.image'               => 'File harus berupa gambar.',
+            'foto.mimes'               => 'Format foto harus jpg, jpeg, atau png.',
+            'foto.max'                 => 'Ukuran foto maksimal adalah 2MB.',
+            'tanggal_lahir.date'       => 'Format tanggal lahir tidak valid.',
         ];
     }
 
     public function attributes(): array
     {
         return [
-            'user_id'              => 'Akun pengguna',
             'nis'                  => 'NIS',
             'nisn'                 => 'NISN',
             'nama_lengkap'         => 'Nama lengkap',
@@ -124,6 +120,7 @@ class UpdateSiswaRequest extends FormRequest
     protected function failedValidation(Validator $validator)
     {
         throw new HttpResponseException(response()->json([
+            'success' => false,
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
         ], Response::HTTP_UNPROCESSABLE_ENTITY));

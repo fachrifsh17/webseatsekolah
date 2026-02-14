@@ -16,30 +16,17 @@ class StoreJadwalProduktifRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $user = $this->user();
-
-        if (!$user) {
-            return;
-        }
-
-        $isAdmin = ($user->role ?? null) === 'admin';
-
-        if (!$isAdmin) {
-            $guruId = $user->guruStaf?->id ?? $user->guru_staf_id ?? $user->guru_id ?? null;
-            if ($guruId) {
-                $this->merge(['guru_staf_id' => $guruId]);
-            }
-        }
+        //
     }
 
     public function rules(): array
     {
         return [
-            'jurusan_id'        => ['bail','required','string','exists:jurusan,id'],
-            'guru_staf_id'      => ['bail','required','string','exists:guru_staf,id'],
-            'judul'             => ['bail','required','string','max:255'],
-            'penjelasan_jadwal' => ['nullable','string'],
-            'file_jadwal_path'  => ['bail','required','file','mimes:pdf,jpg,jpeg,png,webp','max:5120'],
+            'jurusan_id'        => ['bail', 'required', 'string', 'exists:jurusan,id'],
+            'tahun_ajaran_id'   => ['bail', 'nullable', 'string', 'exists:tahun_ajaran,id'],
+            'judul'             => ['bail', 'required', 'string', 'max:255'],
+            'penjelasan_jadwal' => ['nullable', 'string'],
+            'file_jadwal_path'  => ['bail', 'required', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:5120'],
         ];
     }
 
@@ -50,9 +37,8 @@ class StoreJadwalProduktifRequest extends FormRequest
             'jurusan_id.string'         => 'Jurusan harus berupa ID string.',
             'jurusan_id.exists'         => 'Jurusan yang dipilih tidak ditemukan.',
 
-            'guru_staf_id.required'     => 'Guru pengampu wajib dipilih.',
-            'guru_staf_id.string'       => 'Guru pengampu harus berupa ID string.',
-            'guru_staf_id.exists'       => 'Guru pengampu tidak ditemukan.',
+            'tahun_ajaran_id.string'    => 'Tahun ajaran harus berupa ID string.',
+            'tahun_ajaran_id.exists'    => 'Tahun ajaran yang dipilih tidak ditemukan.',
 
             'judul.required'            => 'Judul jadwal tidak boleh kosong.',
             'judul.string'              => 'Judul jadwal harus berupa teks.',
@@ -71,7 +57,7 @@ class StoreJadwalProduktifRequest extends FormRequest
     {
         return [
             'jurusan_id'        => 'Jurusan',
-            'guru_staf_id'      => 'Guru pengampu',
+            'tahun_ajaran_id'   => 'Tahun ajaran',
             'judul'             => 'Judul jadwal',
             'penjelasan_jadwal' => 'Penjelasan jadwal',
             'file_jadwal_path'  => 'File jadwal',
@@ -81,6 +67,7 @@ class StoreJadwalProduktifRequest extends FormRequest
     protected function failedValidation(Validator $validator)
     {
         throw new HttpResponseException(response()->json([
+            'success' => false,
             'message' => 'Validasi gagal',
             'errors'  => $validator->errors()
         ], Response::HTTP_UNPROCESSABLE_ENTITY));

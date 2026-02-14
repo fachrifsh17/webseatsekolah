@@ -14,19 +14,18 @@ class OrangtuaPolicy
 
     public function view(User $user, Orangtua $orangtua): bool
     {
-        // Admin & Waka Kesiswaan bisa lihat semua
         if ($this->authorize($user, ['Admin'], ['Waka Kesiswaan'])) {
             return true;
         }
 
-        // Wali Kelas hanya bisa lihat orangtua dari siswa di kelasnya
         if ($this->authorize($user, [], ['Wali Kelas'])) {
             $idKelasWali = $user->guruStaf?->kelas_id;
             return $orangtua->anak()->where('kelas_id', $idKelasWali)->exists();
         }
 
-        // Orangtua hanya bisa lihat dirinya sendiri
-        if ($user->hasRole('Orangtua')) {
+        // Menggunakan array untuk mengecek role Orangtua
+        $userRoles = $user->roles->pluck('role_name')->toArray();
+        if (in_array('Orangtua', $userRoles)) {
             return $user->orangtua_id === $orangtua->id;
         }
 
@@ -35,7 +34,7 @@ class OrangtuaPolicy
 
     public function create(User $user): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorizeRoute($user, ['Admin']);
     }
 
     public function update(User $user, Orangtua $orangtua): bool
@@ -45,17 +44,17 @@ class OrangtuaPolicy
 
     public function delete(User $user, Orangtua $orangtua): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorizeRoute($user, ['Admin']);
     }
 
     public function restore(User $user, Orangtua $orangtua): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorizeRoute($user, ['Admin']);
     }
 
     public function forceDelete(User $user, Orangtua $orangtua): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorizeRoute($user, ['Admin']);
     }
 
     public function export(User $user): bool
@@ -65,21 +64,38 @@ class OrangtuaPolicy
 
     public function import(User $user): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorizeRoute($user, ['Admin']);
     }
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // Ubah collection menjadi array murni untuk menghindari getKey()
+        $userRoles = $user->roles->pluck('role_name')->toArray();
+        $hasRole = count(array_intersect($userRoles, $allowedRoles)) > 0;
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
+        $hasJabatan = false;
+        if ($user->guruStaf) {
+            $userJabatans = $user->guruStaf->strukturJabatan
                 ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
                 ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+                ->toArray();
+            
+            $hasJabatan = count(array_intersect($userJabatans, $allowedJabatans)) > 0;
+        }
 
         return $hasRole || $hasJabatan;
+    }
+
+    protected function authorizeRoute(User $user, array $allowedRoles = []): bool
+    {
+        // Ubah ke array murni
+        $userRoles = $user->roles->pluck('role_name')->toArray();
+        $isAdmin = count(array_intersect($userRoles, $allowedRoles)) > 0;
+
+        if ($isAdmin && request()->is('api/admin/*')) {
+            return true;
+        }
+
+        return false;
     }
 }

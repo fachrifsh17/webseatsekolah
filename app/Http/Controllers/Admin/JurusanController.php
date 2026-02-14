@@ -70,6 +70,13 @@ class JurusanController extends Controller
     {
         $validated = $request->validated();
 
+        if (Jurusan::where('nama_jurusan', $validated['nama_jurusan'])->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nama jurusan sudah terdaftar.',
+            ], Response::HTTP_CONFLICT);
+        }
+
         if ($request->hasFile('foto')) {
             $validated['foto'] = $request->file('foto')->store('uploads/jurusan', 'public');
         }
@@ -99,6 +106,19 @@ class JurusanController extends Controller
     public function update(UpdateJurusanRequest $request, Jurusan $jurusan): JsonResponse
     {
         $validated = $request->validated();
+
+        if (!empty($validated['nama_jurusan'])) {
+            $exists = Jurusan::where('nama_jurusan', $validated['nama_jurusan'])
+                ->where('id', '!=', $jurusan->id)
+                ->exists();
+
+            if ($exists) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Nama jurusan sudah digunakan oleh data lain.',
+                ], Response::HTTP_CONFLICT);
+            }
+        }
 
         if ($request->hasFile('foto')) {
             $newPath = $request->file('foto')->store('uploads/jurusan', 'public');

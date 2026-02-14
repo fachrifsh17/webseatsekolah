@@ -18,8 +18,10 @@ class SiswaPolicy
             return true;
         }
 
-        if ($user->roles->pluck('role_name')->contains('Siswa')) {
-            return $user->siswa_id === $siswa->id;
+        $roleNames = $user->roles->pluck('role_name')->toArray();
+
+        if (in_array('Siswa', $roleNames)) {
+            return $user->id === $siswa->user_id;
         }
 
         return false;
@@ -27,7 +29,7 @@ class SiswaPolicy
 
     public function create(User $user): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorizeRoute($user, ['Admin']);
     }
 
     public function update(User $user, Siswa $siswa): bool
@@ -37,17 +39,17 @@ class SiswaPolicy
 
     public function delete(User $user, Siswa $siswa): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorizeRoute($user, ['Admin']);
     }
 
     public function restore(User $user, Siswa $siswa): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorizeRoute($user, ['Admin']);
     }
 
     public function forceDelete(User $user, Siswa $siswa): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorizeRoute($user, ['Admin']);
     }
 
     public function export(User $user): bool
@@ -57,21 +59,36 @@ class SiswaPolicy
 
     public function import(User $user): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return $this->authorizeRoute($user, ['Admin']);
     }
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // Gunakan contains() untuk mengecek string di dalam collection, bukan intersect()
+        $userRoles = $user->roles->pluck('role_name');
+        $hasRole = $userRoles->ensure('string')->some(fn($role) => in_array($role, $allowedRoles));
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
+        $hasJabatan = false;
+        if ($user->guruStaf) {
+            $userJabatans = $user->guruStaf->strukturJabatan
                 ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
-                ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+                ->filter();
+            
+            $hasJabatan = $userJabatans->some(fn($jabatan) => in_array($jabatan, $allowedJabatans));
+        }
 
         return $hasRole || $hasJabatan;
+    }
+
+    protected function authorizeRoute(User $user, array $allowedRoles = []): bool
+    {
+        $userRoles = $user->roles->pluck('role_name');
+        $hasRole = $userRoles->some(fn($role) => in_array($role, $allowedRoles));
+
+        if ($hasRole && request()->is('api/admin/*')) {
+            return true;
+        }
+
+        return false;
     }
 }

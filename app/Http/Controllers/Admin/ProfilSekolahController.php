@@ -9,22 +9,18 @@ use App\Http\Requests\UpdateProfilSekolahRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests; // Tambahkan ini
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class ProfilSekolahController extends Controller
 {
-    use AuthorizesRequests; // Gunakan trait otorisasi
+    use AuthorizesRequests;
 
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['update', 'destroy']);
-        
-        // Mengotomatisasi pengecekan Policy
-        $this->authorizeResource(ProfilSekolah::class, 'profil_sekolah');
     }
 
     public function index(): JsonResponse
@@ -53,9 +49,10 @@ class ProfilSekolahController extends Controller
 
     public function update(UpdateProfilSekolahRequest $request): JsonResponse
     {
+        $this->authorize('update', ProfilSekolah::class);
+
         $validated = $request->validated();
 
-        // Logika Join Tabel Jabatan untuk mencari Kepala Sekolah tetap sama
         $kepsekOtomatis = DB::table('struktur_jabatan')
             ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
             ->where('jabatans.slug', 'kepala-sekolah')
@@ -101,6 +98,8 @@ class ProfilSekolahController extends Controller
 
     public function destroy(): JsonResponse
     {
+        $this->authorize('delete', ProfilSekolah::class);
+
         DB::beginTransaction();
         try {
             $profil = ProfilSekolah::find(1);

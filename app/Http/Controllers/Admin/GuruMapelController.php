@@ -30,14 +30,13 @@ class GuruMapelController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
-        $this->authorizeResource(GuruMapel::class, 'guruMapel');
+        $this->authorizeResource(GuruMapel::class, 'guru_mapel');
     }
 
     private function applyFilters(Request $request)
     {
-        $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran']);
+        $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran', 'jamMulai', 'jamSelesai']);
 
         if (!$request->has('show_all')) {
             $query->whereHas('mapel', function ($q) {
@@ -142,7 +141,7 @@ class GuruMapelController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => count($conflicts) > 0 
-                            ? 'Import selesai dengan beberapa catatan' 
+                            ? 'Import selesai with several notes' 
                             : 'Data penugasan guru berhasil diimport.',
                 'conflicts' => $conflicts
             ], Response::HTTP_OK);
@@ -160,7 +159,7 @@ class GuruMapelController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data'    => new GuruMapelResource($guruMapel->load(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran']))
+            'data'    => new GuruMapelResource($guruMapel->load(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran', 'jamMulai', 'jamSelesai']))
         ], Response::HTTP_OK);
     }
 
@@ -188,6 +187,50 @@ class GuruMapelController extends Controller
 
         $tahunAktif = TahunAjaran::where('is_active', 1)->first();
         $validated['tahun_ajaran_id'] = $validated['tahun_ajaran_id'] ?? optional($tahunAktif)->id;
+
+        $jamMulai = JamSekolah::find($validated['jam_mulai_id']);
+        $jamSelesai = JamSekolah::find($validated['jam_selesai_id']);
+
+        if (!$jamMulai || !$jamSelesai) {
+            return response()->json(['success' => false, 'message' => 'Data jam tidak valid.'], 422);
+        }
+
+        if ($jamMulai->hari !== $validated['hari'] || $jamSelesai->hari !== $validated['hari']) {
+            return response()->json([
+                'success' => false, 
+                'message' => "Gagal: Jam yang dipilih tidak tersedia pada hari {$validated['hari']}."
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        if ($jamSelesai->waktu_selesai <= $jamMulai->waktu_mulai) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal: Jam selesai harus lebih besar dari jam mulai.'
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $bentrok = GuruMapel::where('hari', $validated['hari'])
+            ->where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+            ->where(function ($q) use ($jamMulai, $jamSelesai) {
+                $q->whereHas('jamMulai', function ($query) use ($jamSelesai) {
+                    $query->where('waktu_mulai', '<', $jamSelesai->waktu_selesai);
+                })->whereHas('jamSelesai', function ($query) use ($jamMulai) {
+                    $query->where('waktu_selesai', '>', $jamMulai->waktu_mulai);
+                });
+            })
+            ->where(function ($q) use ($validated) {
+                $q->where('guru_staf_id', $validated['guru_staf_id'])
+                  ->orWhere('kelas_id', $validated['kelas_id']);
+            })
+            ->first();
+
+        if ($bentrok) {
+            $type = $bentrok->guru_staf_id == $validated['guru_staf_id'] ? "Guru" : "Kelas";
+            return response()->json([
+                'success' => false, 
+                'message' => "Jadwal Bentrok: {$type} sudah memiliki jadwal lain di jam tersebut."
+            ], Response::HTTP_CONFLICT);
+        }
 
         $exists = GuruMapel::where('guru_staf_id', $validated['guru_staf_id'])
             ->where('mata_pelajaran_id', $validated['mata_pelajaran_id'])
@@ -220,6 +263,51 @@ class GuruMapelController extends Controller
         $validated = $request->validated();
         $tahunAktif = TahunAjaran::where('is_active', 1)->first();
         $validated['tahun_ajaran_id'] = $validated['tahun_ajaran_id'] ?? optional($tahunAktif)->id;
+
+        $jamMulai = JamSekolah::find($validated['jam_mulai_id']);
+        $jamSelesai = JamSekolah::find($validated['jam_selesai_id']);
+
+        if (!$jamMulai || !$jamSelesai) {
+            return response()->json(['success' => false, 'message' => 'Data jam tidak valid.'], 422);
+        }
+
+        if ($jamMulai->hari !== $validated['hari'] || $jamSelesai->hari !== $validated['hari']) {
+            return response()->json([
+                'success' => false, 
+                'message' => "Gagal: Jam yang dipilih tidak tersedia pada hari {$validated['hari']}."
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        if ($jamSelesai->waktu_selesai <= $jamMulai->waktu_mulai) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal: Jam selesai harus lebih besar dari jam mulai.'
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $bentrok = GuruMapel::where('id', '<>', $guruMapel->id)
+            ->where('hari', $validated['hari'])
+            ->where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+            ->where(function ($q) use ($jamMulai, $jamSelesai) {
+                $q->whereHas('jamMulai', function ($query) use ($jamSelesai) {
+                    $query->where('waktu_mulai', '<', $jamSelesai->waktu_selesai);
+                })->whereHas('jamSelesai', function ($query) use ($jamMulai) {
+                    $query->where('waktu_selesai', '>', $jamMulai->waktu_mulai);
+                });
+            })
+            ->where(function ($q) use ($validated) {
+                $q->where('guru_staf_id', $validated['guru_staf_id'])
+                  ->orWhere('kelas_id', $validated['kelas_id']);
+            })
+            ->first();
+
+        if ($bentrok) {
+            $type = $bentrok->guru_staf_id == $validated['guru_staf_id'] ? "Guru" : "Kelas";
+            return response()->json([
+                'success' => false, 
+                'message' => "Jadwal Bentrok: {$type} sudah memiliki jadwal lain di jam tersebut."
+            ], Response::HTTP_CONFLICT);
+        }
 
         $exists = GuruMapel::where('guru_staf_id', $validated['guru_staf_id'])
             ->where('mata_pelajaran_id', $validated['mata_pelajaran_id'])

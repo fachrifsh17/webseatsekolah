@@ -14,7 +14,13 @@ class AlbumResource extends JsonResource
             'nama_album'       => $this->nama_album,
             'tanggal_kegiatan' => $this->tanggal_kegiatan?->format('Y-m-d'),
             'cover_url'        => $this->cover_path ? Storage::url($this->cover_path) : null,
+            
+            // Menampilkan jumlah file media dalam album ini
+            'jumlah_media'     => $this->media_count ?? 0,
+            
+            // Koleksi media hanya muncul jika di-load (misal di method show)
             'media'            => MediaResource::collection($this->whenLoaded('media')),
+            
             'created_at'       => $this->created_at?->format('Y-m-d H:i:s'),
             'updated_at'       => $this->updated_at?->format('Y-m-d H:i:s'),
         ];

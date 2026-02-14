@@ -17,67 +17,52 @@ class StoreOrangtuaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id'       => ['required','string','exists:users,id','unique:orangtua,user_id'],
-            'nama_lengkap'  => ['required','string','max:150'],
-            'telepon'       => ['required','string','max:15'],
-            'is_active'     => ['nullable','integer','in:0,1'],
+            'nama_lengkap'  => ['required', 'string', 'max:150'],
+            // TAMBAHKAN unique agar tidak bentrok di tabel orangtua dan tabel users (username)
+            'telepon'       => [
+                'required', 
+                'string', 
+                'max:15', 
+                'unique:orangtua,telepon', 
+                'unique:users,username'
+            ],
+            'is_active'     => ['nullable', 'integer', 'in:0,1'],
 
-            'anak'                => ['nullable','array'],
-            'anak.*.siswa_id'     => ['required','string','exists:siswa,id'],
-            'anak.*.hubungan'     => ['nullable','in:ayah,ibu,wali'],
+            'anak'            => ['nullable', 'array'],
+            'anak.*.nis'      => ['required', 'string', 'exists:siswa,nis'],
+            'anak.*.hubungan' => ['nullable', 'in:ayah,ibu,wali'],
         ];
     }
 
     protected function prepareForValidation(): void
     {
+        // Pastikan nomor telepon bersih dari spasi atau karakter aneh
+        $telepon = $this->filled('telepon') ? preg_replace('/[^0-9]/', '', $this->telepon) : null;
+
         $this->merge([
             'nama_lengkap' => $this->filled('nama_lengkap') ? trim($this->nama_lengkap) : null,
-            'telepon'      => $this->filled('telepon') ? trim($this->telepon) : null,
+            'telepon'      => $telepon,
+            'is_active'    => $this->filled('is_active') ? (int) $this->is_active : 1,
         ]);
     }
 
     public function messages(): array
     {
         return [
-            'user_id.required'        => 'Akun pengguna wajib dihubungkan.',
-            'user_id.string'          => 'Akun pengguna harus berupa ID string.',
-            'user_id.exists'          => 'Akun pengguna tidak ditemukan.',
-            'user_id.unique'          => 'Akun ini sudah terdaftar sebagai orang tua.',
-
-            'nama_lengkap.required'   => 'Nama lengkap wajib diisi.',
-            'nama_lengkap.max'        => 'Nama lengkap maksimal 150 karakter.',
-
-            'telepon.required'        => 'Nomor telepon wajib diisi.',
-            'telepon.max'             => 'Nomor telepon maksimal 15 karakter.',
-
-            'is_active.integer'       => 'Status aktif harus berupa angka.',
-            'is_active.in'            => 'Status aktif tidak valid. Gunakan 0 atau 1.',
-
-            'anak.array'              => 'Format data anak tidak valid.',
-            'anak.*.siswa_id.required'=> 'Siswa wajib dipilih.',
-            'anak.*.siswa_id.string'  => 'Siswa harus berupa ID string.',
-            'anak.*.siswa_id.exists'  => 'Data siswa tidak ditemukan.',
-            'anak.*.hubungan.in'      => 'Hubungan harus ayah, ibu, atau wali.',
+            'nama_lengkap.required'    => 'Nama lengkap wajib diisi.',
+            'telepon.required'         => 'Nomor telepon wajib diisi.',
+            'telepon.unique'           => 'Nomor telepon sudah terdaftar sebagai akun orang tua lain.',
+            'anak.*.nis.exists'        => 'NIS anak tidak terdaftar atau tidak aktif.',
+            'is_active.in'             => 'Status aktif tidak valid.',
         ];
     }
 
-    public function attributes(): array
-    {
-        return [
-            'user_id'            => 'Akun pengguna',
-            'nama_lengkap'       => 'Nama lengkap',
-            'telepon'            => 'Telepon',
-            'is_active'          => 'Status Aktif',
-            'anak'               => 'Anak',
-            'anak.*.siswa_id'    => 'Siswa',
-            'anak.*.hubungan'    => 'Hubungan',
-        ];
-    }
-
+    // ... failedValidation tetap sama seperti kode Anda
     protected function failedValidation(Validator $validator)
     {
         throw new HttpResponseException(
             response()->json([
+                'success' => false,
                 'message' => 'Validasi gagal',
                 'errors'  => $validator->errors(),
             ], Response::HTTP_UNPROCESSABLE_ENTITY)

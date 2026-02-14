@@ -28,7 +28,6 @@ class KelasController extends Controller
             'generateFromPreviousYear'
         ]);
         
-        // Injeksi Policy untuk CRUD standar
         $this->authorizeResource(Kelas::class, 'kelas');
     }
 
@@ -88,7 +87,6 @@ class KelasController extends Controller
 
     public function export(Request $request)
     {
-        // Otorisasi Manual untuk custom method
         $this->authorize('viewAny', Kelas::class);
 
         try {
@@ -190,8 +188,9 @@ class KelasController extends Controller
 
             $countKelas = 0;
             $countSiswa = 0;
+            $countSudahAda = 0;
 
-            DB::transaction(function () use ($kelasLama, $tahunAktif, $isGenap, &$countKelas, &$countSiswa) {
+            DB::transaction(function () use ($kelasLama, $tahunAktif, $isGenap, &$countKelas, &$countSiswa, &$countSudahAda) {
                 foreach ($kelasLama as $item) {
                     $kelasBaru = Kelas::where('nama_kelas', $item->nama_kelas)
                         ->where('tahun_ajaran_id', $tahunAktif->id)
@@ -211,6 +210,8 @@ class KelasController extends Controller
                             'wali_kelas_id'   => $isGenap ? $waliId : null,
                         ]);
                         $countKelas++;
+                    } else {
+                        $countSudahAda++;
                     }
 
                     if ($isGenap) {
@@ -220,6 +221,13 @@ class KelasController extends Controller
                     }
                 }
             });
+
+            if ($countKelas === 0 && $countSudahAda > 0) {
+                return response()->json([
+                    'success' => true, 
+                    'message' => 'Semua data kelas dari periode sebelumnya sudah dipindahkan ke Tahun Ajaran aktif.'
+                ], Response::HTTP_OK);
+            }
 
             $msg = $isGenap 
                 ? "Berhasil menyalin {$countKelas} kelas dan memindahkan {$countSiswa} siswa ke Semester Genap."
@@ -304,7 +312,7 @@ class KelasController extends Controller
                 'message' => 'Data kelas berhasil diperbarui.',
                 'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])->loadCount('siswa')),
             ], Response::HTTP_OK);
-        } catch (Throwable) {
+        } catch (Throwable $e) {
             return response()->json(['success' => false, 'message' => 'Gagal memperbarui data kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -318,7 +326,7 @@ class KelasController extends Controller
 
             DB::transaction(fn() => $kelas->delete());
             return response()->json(['success' => true, 'message' => 'Data kelas berhasil dihapus.'], Response::HTTP_OK);
-        } catch (Throwable) {
+        } catch (Throwable $e) {
             return response()->json(['success' => false, 'message' => 'Gagal menghapus data kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

@@ -3,17 +3,13 @@
 namespace App\Http\Controllers\KetuaJurusan;
 
 use App\Http\Controllers\Controller;
-use App\Models\Siswa;
-use App\Models\Kelas;
-use App\Models\User;
+use App\Models\{Siswa, Kelas, User};
 use App\Http\Resources\SiswaResource;
 use App\Exports\SiswaExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\{DB, Log, Auth, Hash};
 use Illuminate\Support\Str;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
@@ -26,6 +22,7 @@ class SiswaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'export']);
         $this->authorizeResource(Siswa::class, 'siswa');
     }
 
@@ -89,6 +86,51 @@ class SiswaController extends Controller
         ], Response::HTTP_OK);
     }
 
+    public function store(Request $request): JsonResponse
+    {
+        $jurusan = $this->getJurusanKetua();
+        
+        $request->validate([
+            'nama_lengkap' => 'required|string|max:255',
+            'nisn'         => 'required|string|unique:siswa,nisn',
+            'kelas_id'     => 'required|exists:kelas,id',
+            'email'        => 'required|email|unique:users,email',
+            'jenis_kelamin'=> 'required|in:L,P',
+        ]);
+
+        $kelas = Kelas::findOrFail($request->kelas_id);
+        if ($kelas->jurusan_id !== $jurusan->id) {
+            return response()->json(['success' => false, 'message' => 'Anda hanya bisa menambah siswa di kelas jurusan Anda.'], 403);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $user = User::create([
+                'name'     => $request->nama_lengkap,
+                'email'    => $request->email,
+                'password' => Hash::make($request->nisn),
+                'role'     => 'Siswa'
+            ]);
+
+            $siswaData = $request->all();
+            $siswaData['user_id'] = $user->id;
+            $siswa = Siswa::create($siswaData);
+
+            DB::commit();
+            return response()->json([
+                'success' => true,
+                'message' => 'Data siswa berhasil ditambahkan.',
+                'data'    => new SiswaResource($siswa->load('user', 'kelas'))
+            ], Response::HTTP_CREATED);
+
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('Store Siswa Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal menambah data siswa.'], 500);
+        }
+    }
+
     public function show(Siswa $siswa): JsonResponse
     {
         $jurusan = $this->getJurusanKetua();
@@ -104,6 +146,72 @@ class SiswaController extends Controller
             'success' => true,
             'data'    => new SiswaResource($siswa->load(['user', 'kelas.jurusan', 'orangtua']))
         ], Response::HTTP_OK);
+    }
+
+    public function update(Request $request, Siswa $siswa): JsonResponse
+    {
+        $jurusan = $this->getJurusanKetua();
+        if (!$jurusan || $siswa->kelas->jurusan_id !== $jurusan->id) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], 403);
+        }
+
+        $request->validate([
+            'nama_lengkap' => 'sometimes|string|max:255',
+            'nisn'         => 'sometimes|string|unique:siswa,nisn,' . $siswa->id,
+            'kelas_id'     => 'sometimes|exists:kelas,id',
+        ]);
+
+        if ($request->filled('kelas_id')) {
+            $newKelas = Kelas::findOrFail($request->kelas_id);
+            if ($newKelas->jurusan_id !== $jurusan->id) {
+                return response()->json(['success' => false, 'message' => 'Kelas tujuan harus berada di jurusan yang sama.'], 403);
+            }
+        }
+
+        try {
+            DB::beginTransaction();
+            
+            $siswa->update($request->all());
+            if ($request->filled('nama_lengkap')) {
+                $siswa->user->update(['name' => $request->nama_lengkap]);
+            }
+
+            DB::commit();
+            return response()->json([
+                'success' => true,
+                'message' => 'Data siswa berhasil diperbarui.',
+                'data'    => new SiswaResource($siswa->load('user', 'kelas'))
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('Update Siswa Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal memperbarui data siswa.'], 500);
+        }
+    }
+
+    public function destroy(Siswa $siswa): JsonResponse
+    {
+        $jurusan = $this->getJurusanKetua();
+        if (!$jurusan || $siswa->kelas->jurusan_id !== $jurusan->id) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], 403);
+        }
+
+        try {
+            DB::beginTransaction();
+            $user = $siswa->user;
+            $siswa->delete();
+            $user->delete(); // Menghapus akun user terkait
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data siswa dan akun terkait berhasil dihapus.'
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('Delete Siswa Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus data siswa.'], 500);
+        }
     }
 
     public function export(Request $request)
@@ -132,7 +240,6 @@ class SiswaController extends Controller
         }
 
         $filename = 'Data_Siswa_' . Str::slug($jurusan->nama_jurusan) . '_' . now()->format('Ymd_His') . '.xlsx';
-
         $profil = DB::table('profil_sekolah')->first();
         $kontak = DB::table('data_kontak')->first();
 

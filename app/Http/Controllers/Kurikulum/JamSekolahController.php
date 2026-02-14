@@ -22,7 +22,6 @@ class JamSekolahController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Kurikulum');
         $this->middleware('log.aktivitas')->only(['update', 'store', 'import', 'destroy']);
 
         $this->authorizeResource(JamSekolah::class, 'jam_sekolah');
@@ -48,7 +47,7 @@ class JamSekolahController extends Controller
                 $query->where('tahun_ajaran_id', $tahunAjaranId);
             }
 
-            $data = $query->orderBy('hari')
+            $data = $query->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
                           ->orderBy('waktu_mulai')
                           ->get();
 
@@ -137,6 +136,13 @@ class JamSekolahController extends Controller
             $validated['tahun_ajaran_id'] = $tahunAktif->id;
         }
 
+        if ($validated['waktu_selesai'] <= $validated['waktu_mulai']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Waktu selesai harus lebih besar dari waktu mulai.'
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         $exists = JamSekolah::where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
             ->where('hari', $validated['hari'])
             ->where('jam_ke', $validated['jam_ke'])
@@ -147,6 +153,20 @@ class JamSekolahController extends Controller
             return response()->json([
                 'success' => false, 
                 'message' => 'Jadwal jam tersebut sudah ada.'
+            ], Response::HTTP_CONFLICT);
+        }
+
+        $overlap = JamSekolah::where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+            ->where('hari', $validated['hari'])
+            ->where(function ($query) use ($validated) {
+                $query->where('waktu_mulai', '<', $validated['waktu_selesai'])
+                      ->where('waktu_selesai', '>', $validated['waktu_mulai']);
+            })->exists();
+
+        if ($overlap) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Waktu yang diinput bertabrakan dengan jam lain di hari yang sama.'
             ], Response::HTTP_CONFLICT);
         }
 
@@ -176,10 +196,21 @@ class JamSekolahController extends Controller
     {
         $validated = $request->validated();
         $tahunId = $validated['tahun_ajaran_id'] ?? $jamSekolah->tahun_ajaran_id;
+        $hari = $validated['hari'] ?? $jamSekolah->hari;
+        $mulai = $validated['waktu_mulai'] ?? $jamSekolah->waktu_mulai;
+        $selesai = $validated['waktu_selesai'] ?? $jamSekolah->waktu_selesai;
+        $jamKe = $validated['jam_ke'] ?? $jamSekolah->jam_ke;
+
+        if ($selesai <= $mulai) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Waktu selesai harus lebih besar dari waktu mulai.'
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
         $exists = JamSekolah::where('tahun_ajaran_id', $tahunId)
-            ->where('hari', $validated['hari'] ?? $jamSekolah->hari)
-            ->where('jam_ke', $validated['jam_ke'] ?? $jamSekolah->jam_ke)
+            ->where('hari', $hari)
+            ->where('jam_ke', $jamKe)
             ->whereNotNull('jam_ke')
             ->where('id', '!=', $jamSekolah->id)
             ->exists();
@@ -187,7 +218,22 @@ class JamSekolahController extends Controller
         if ($exists) {
             return response()->json([
                 'success' => false, 
-                'message' => 'Konflik jadwal terdeteksi.'
+                'message' => 'Konflik nomor jam terdeteksi.'
+            ], Response::HTTP_CONFLICT);
+        }
+
+        $overlap = JamSekolah::where('tahun_ajaran_id', $tahunId)
+            ->where('hari', $hari)
+            ->where('id', '!=', $jamSekolah->id)
+            ->where(function ($query) use ($mulai, $selesai) {
+                $query->where('waktu_mulai', '<', $selesai)
+                      ->where('waktu_selesai', '>', $mulai);
+            })->exists();
+
+        if ($overlap) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Waktu bertabrakan dengan jadwal lain di hari yang sama.'
             ], Response::HTTP_CONFLICT);
         }
 

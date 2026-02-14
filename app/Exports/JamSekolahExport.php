@@ -82,6 +82,7 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 ];
 
                 $dataPerHari = JamSekolah::where('tahun_ajaran_id', $this->tahunAjaranId)
+                    ->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
                     ->orderBy('waktu_mulai')
                     ->get()
                     ->groupBy('hari');
@@ -96,19 +97,22 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                             $sheet->setCellValue($cols['t'] . $currentRow, $waktu);
                             
                             $label = '';
-                            if ($jam->jenis === 'Pelajaran') {
+                            $jenisTrim = ucfirst(strtolower(trim($jam->jenis)));
+
+                            if ($jenisTrim === 'Pelajaran') {
                                 $label = $jam->jam_ke;
-                            } elseif ($jam->jenis === 'Istirahat') {
+                            } elseif ($jenisTrim === 'Istirahat') {
                                 $label = 'ISTIRAHAT';
                             } else {
                                 $label = strtoupper($jam->keterangan ?? 'KEGIATAN');
                             }
+                            
                             $sheet->setCellValue($cols['l'] . $currentRow, $label);
 
-                            if ($jam->jenis === 'Istirahat') {
+                            if ($jenisTrim === 'Istirahat') {
                                 $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)
                                       ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFFF00');
-                            } elseif ($jam->jenis === 'Kegiatan') {
+                            } elseif ($jenisTrim === 'Kegiatan') {
                                 $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)
                                       ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFC6E0B4');
                             }

@@ -8,11 +8,12 @@ use App\Http\Resources\GuruMapelResource;
 use App\Exports\GuruMapelExport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\{Auth, Log};
+use Illuminate\Support\Facades\{Auth, Log, DB};
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Str;
+use Throwable;
 
 class GuruMapelController extends Controller
 {
@@ -21,6 +22,7 @@ class GuruMapelController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'export']);
         $this->authorizeResource(GuruMapel::class, 'guru_mapel');
     }
 
@@ -39,6 +41,48 @@ class GuruMapelController extends Controller
         ], Response::HTTP_OK);
     }
 
+    public function store(Request $request): JsonResponse
+    {
+        $request->validate([
+            'guru_id'         => 'required|exists:guru_staf,id',
+            'mapel_id'        => 'required|exists:mapel,id',
+            'kelas_id'        => 'required|exists:kelas,id',
+            'tahun_ajaran_id' => 'required|exists:tahun_ajaran,id',
+            'hari'            => 'required|string',
+            'jam_mulai'       => 'required',
+            'jam_selesai'     => 'required',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $user = Auth::user();
+            $guruStaf = GuruStaf::where('user_id', $user->id)->first();
+
+            $mapel = \App\Models\Matapelajaran::findOrFail($request->mapel_id);
+            if ($mapel->jurusan_id !== $guruStaf->jurusan_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda hanya bisa menambah penugasan untuk mata pelajaran di jurusan Anda.'
+                ], Response::HTTP_FORBIDDEN);
+            }
+
+            $data = GuruMapel::create($request->all());
+
+            DB::commit();
+            return response()->json([
+                'success' => true,
+                'message' => 'Penugasan guru berhasil ditambahkan.',
+                'data'    => new GuruMapelResource($data->load(['guru', 'mapel', 'kelas']))
+            ], Response::HTTP_CREATED);
+
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('Store GuruMapel Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal menambah data.'], 500);
+        }
+    }
+
     public function show(GuruMapel $guruMapel): JsonResponse
     {
         $this->checkJurusanAccess($guruMapel);
@@ -48,6 +92,46 @@ class GuruMapelController extends Controller
             'success' => true,
             'data'    => new GuruMapelResource($guruMapel)
         ], Response::HTTP_OK);
+    }
+
+    public function update(Request $request, GuruMapel $guruMapel): JsonResponse
+    {
+        $this->checkJurusanAccess($guruMapel);
+
+        $request->validate([
+            'guru_id'         => 'sometimes|exists:guru_staf,id',
+            'mapel_id'        => 'sometimes|exists:mapel,id',
+            'kelas_id'        => 'sometimes|exists:kelas,id',
+            'tahun_ajaran_id' => 'sometimes|exists:tahun_ajaran,id',
+        ]);
+
+        try {
+            $guruMapel->update($request->all());
+            return response()->json([
+                'success' => true,
+                'message' => 'Penugasan guru berhasil diperbarui.',
+                'data'    => new GuruMapelResource($guruMapel->load(['guru', 'mapel', 'kelas']))
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Update GuruMapel Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal memperbarui data.'], 500);
+        }
+    }
+
+    public function destroy(GuruMapel $guruMapel): JsonResponse
+    {
+        $this->checkJurusanAccess($guruMapel);
+
+        try {
+            $guruMapel->delete();
+            return response()->json([
+                'success' => true,
+                'message' => 'Penugasan guru berhasil dihapus.'
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Delete GuruMapel Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus data.'], 500);
+        }
     }
 
     public function export(Request $request)
@@ -113,7 +197,7 @@ class GuruMapelController extends Controller
         $guruStaf = GuruStaf::where('user_id', $user->id)->first();
         
         if (!$guruStaf || $guruMapel->mapel->jurusan_id !== $guruStaf->jurusan_id) {
-            abort(Response::HTTP_FORBIDDEN, 'Anda tidak diizinkan melihat data dari jurusan lain.');
+            abort(Response::HTTP_FORBIDDEN, 'Anda tidak diizinkan memodifikasi data dari jurusan lain.');
         }
     }
 }

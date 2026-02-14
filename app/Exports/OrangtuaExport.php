@@ -20,26 +20,30 @@ use Illuminate\Support\Facades\DB;
 
 class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
 {
-    protected $queryBuilder, $profil, $kontak, $kelasData, $filters, $tahunAjaranText, $tahunAjaranId;
+    // Tambahkan properti $jurusanData
+    protected $queryBuilder, $profil, $kontak, $kelasData, $jurusanData, $filters, $tahunAjaranText, $tahunAjaranId;
 
-    public function __construct($queryBuilder, $profil, $kontak, $kelasData = null, $filters = [])
+    // Tambahkan $jurusanData ke parameter constructor (default null)
+    public function __construct($queryBuilder, $profil, $kontak, $kelasData = null, $filters = [], $jurusanData = null)
     {
         $this->queryBuilder = $queryBuilder;
         $this->profil = $profil;
         $this->kontak = $kontak;
         $this->kelasData = $kelasData;
+        $this->jurusanData = $jurusanData; // Simpan data jurusan
         $this->filters = $filters;
 
         $taId = $filters['tahun_ajaran_id'] ?? null;
         
         if ($taId) {
             $ta = DB::table('tahun_ajaran')->where('id', $taId)->first();
-            $this->tahunAjaranText = $ta ? $ta->nama . ' ' . $ta->semester : '-';
+            // Langsung dibuat uppercase dan rapi di sini
+            $this->tahunAjaranText = $ta ? strtoupper($ta->nama . ' ' . $ta->semester) : '-';
             $this->tahunAjaranId = $taId;
         } else {
             $ta = DB::table('tahun_ajaran')->where('is_active', 1)->first();
-            $namaTa = $ta ? $ta->nama . ' ' . $ta->semester : '-';
-            $this->tahunAjaranText = $namaTa . ' (Aktif)';
+            // Hilangkan teks (Aktif) agar judul utama tetap formal
+            $this->tahunAjaranText = $ta ? strtoupper($ta->nama . ' ' . $ta->semester) : '-';
             $this->tahunAjaranId = $ta?->id;
         }
     }
@@ -67,6 +71,10 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
         $daftarAnak = $orangtua->anak->filter(function($anak) {
             if ($this->kelasData) {
                 return $anak->kelas_id == $this->kelasData->id;
+            }
+            // Tambahkan filter mapping jika hanya jurusan yang dipilih
+            if ($this->jurusanData) {
+                return $anak->kelas->jurusan_id == $this->jurusanData->id;
             }
             return $anak->kelas->tahun_ajaran_id == $this->tahunAjaranId;
         })->map(function($anak) {
@@ -113,6 +121,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $sheet = $event->sheet;
                 $lastCol = 'E';
 
+                // Header Sekolah
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
@@ -124,21 +133,28 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $sheet->getStyle("A4:{$lastCol}5")->getFont()->setName('Arial')->setSize(9);
                 $sheet->getStyle("A5:{$lastCol}5")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
+                // Judul
                 $sheet->mergeCells("A7:{$lastCol}7"); 
                 $sheet->setCellValue('A7', 'DATA ORANG TUA / WALI MURID');
                 $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12)->setName('Arial');
                 $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+                // Tahun Pelajaran - Sekarang lebih bersih
                 $sheet->mergeCells("A8:{$lastCol}8");
-                $taClean = strtoupper(str_replace(['(Aktif)', '  '], [' ', ' '], $this->tahunAjaranText));
-                $sheet->setCellValue('A8', "TAHUN PELAJARAN " . trim($taClean));
+                $sheet->setCellValue('A8', "TAHUN PELAJARAN " . $this->tahunAjaranText);
                 $sheet->getStyle('A8')->getFont()->setBold(true)->setSize(11)->setName('Arial');
                 $sheet->getStyle("A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+                // Baris Info Filter (A9)
                 $filterInfo = [];
+                // Info Jurusan
+                $filterInfo[] = "Jurusan: " . ($this->jurusanData ? $this->jurusanData->nama_jurusan : 'Semua Jurusan');
+                // Info Kelas
                 $filterInfo[] = "Kelas: " . ($this->kelasData ? $this->kelasData->nama_kelas : 'Semua Kelas');
+                // Info Status
                 $activeStatus = $this->filters['is_active'] ?? '1';
                 $filterInfo[] = "Status: " . ($activeStatus == '1' ? 'Aktif' : 'Non-Aktif');
+                
                 if (!empty($this->filters['q'])) { $filterInfo[] = "Pencarian: " . $this->filters['q']; }
 
                 $sheet->mergeCells("A9:{$lastCol}9");

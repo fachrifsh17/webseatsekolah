@@ -131,7 +131,7 @@ class KalenderController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Kalender akademik berhasil diperbarui.',
-                'data'    => new KalenderAkademikResource($kalender),
+                'data'    => new KalenderAkademikResource($kalender->fresh()),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
