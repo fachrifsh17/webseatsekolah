@@ -27,7 +27,6 @@ class MapelController extends Controller
 
     private function getJurusanId()
     {
-        /** @var \App\Models\User $user */
         $user = Auth::user();
         $guruStaf = GuruStaf::where('user_id', $user->id)->first();
         return $guruStaf?->jurusan_id;
@@ -35,7 +34,7 @@ class MapelController extends Controller
 
     private function applyFilters(Request $request, $query, $jurusanId)
     {
-        if (!$request->has('show_all')) {
+        if (!$request->boolean('include_inactive')) {
             $query->where('is_active', 1);
         }
 
@@ -208,6 +207,7 @@ class MapelController extends Controller
                 'search'         => $request->query('search'),
                 'tipe_mapel'     => $request->query('tipe_mapel'),
                 'kategori_mapel' => $request->query('kategori_mapel'),
+                'include_inactive' => $request->boolean('include_inactive'),
             ];
 
             $profil = ProfilSekolah::first() ?? new ProfilSekolah();

@@ -9,12 +9,13 @@ class KelasPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->authorize($user, ['Admin'], ['waka-kesiswaan']);
+        // Admin, Waka Kesiswaan, dan Ketua Jurusan bisa melihat daftar kelas
+        return $this->authorize($user, ['Admin'], ['waka-kesiswaan', 'ketua-jurusan']);
     }
 
     public function view(User $user, Kelas $kelas): bool
     {
-        return $this->authorize($user, ['Admin'], ['waka-kesiswaan']);
+        return $this->authorize($user, ['Admin'], ['waka-kesiswaan', 'ketua-jurusan']);
     }
 
     public function create(User $user): bool
@@ -28,16 +29,6 @@ class KelasPolicy
     }
 
     public function delete(User $user, Kelas $kelas): bool
-    {
-        return $this->authorize($user, ['Admin']);
-    }
-
-    public function restore(User $user, Kelas $kelas): bool
-    {
-        return $this->authorize($user, ['Admin']);
-    }
-
-    public function forceDelete(User $user, Kelas $kelas): bool
     {
         return $this->authorize($user, ['Admin']);
     }

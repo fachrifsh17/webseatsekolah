@@ -16,7 +16,7 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException; // Tambahkan ini
+use Illuminate\Validation\ValidationException;
 
 class SiswaController extends Controller
 {
@@ -163,7 +163,6 @@ class SiswaController extends Controller
 
         try {
             $siswa = DB::transaction(function() use ($data) {
-                // Check if username already exists
                 if (User::where('username', $data['nis'])->exists()) {
                     throw ValidationException::withMessages([
                         'nis' => ["NIS {$data['nis']} sudah terdaftar sebagai pengguna lain."]
@@ -240,7 +239,6 @@ class SiswaController extends Controller
 
         try {
             DB::transaction(function() use ($siswa, $data) {
-                // Check if new NIS is used by another user
                 if (isset($data['nis']) && $siswa->user_id) {
                     $isTaken = User::where('username', $data['nis'])
                                    ->where('id', '!=', $siswa->user_id)
@@ -276,7 +274,6 @@ class SiswaController extends Controller
             ], Response::HTTP_OK);
 
         } catch (ValidationException $e) {
-            // Hapus foto baru jika validasi gagal
             if ($request->hasFile('foto') && isset($data['foto'])) Storage::disk('public')->delete($data['foto']);
             return response()->json([
                 'success' => false,

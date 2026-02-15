@@ -44,6 +44,10 @@ class GuruMapelController extends Controller
             });
         }
 
+        $query->when($request->tipe_mapel, function ($q, $tipe) {
+            return $q->whereHas('mapel', fn($m) => $m->where('tipe_mapel', $tipe));
+        });
+
         $tahunAktif = TahunAjaran::where('is_active', 1)->first();
         $tahunAjaranId = $request->get('tahun_ajaran_id', optional($tahunAktif)->id);
 
@@ -62,8 +66,8 @@ class GuruMapelController extends Controller
               ->when($request->kelas_id, fn($q, $id) => $q->where('kelas_id', $id))
               ->when($request->hari, fn($q, $hari) => $q->where('hari', $hari));
 
-        return $query->orderBy('guru_staf_id')
-                     ->orderBy(DB::raw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')"));
+        return $query->orderBy(DB::raw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')"))
+                     ->orderBy('jam_mulai_id');
     }
 
     public function index(Request $request): JsonResponse
@@ -85,47 +89,86 @@ class GuruMapelController extends Controller
     }
 
     public function export(Request $request)
-    {
-        $this->authorize('viewAny', GuruMapel::class);
+{
+    $this->authorize('viewAny', GuruMapel::class);
 
-        try {
-            $query = $this->applyFilters($request);
-            
-            $filters = [
-                'q'            => $request->get('q'),
-                'hari'         => $request->get('hari'),
-                'tahun_ajaran' => 'Semua',
-                'guru'         => 'Semua Guru',
-                'mapel'        => 'Semua Mapel',
-                'kelas'        => 'Semua Kelas',
-                'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Hanya Mapel Aktif'
-            ];
+    try {
+        $query = $this->applyFilters($request);
+        
+        // Menangani alias filter (agar sinkron dengan filter kelas/guru)
+        $kelasId = $request->get('kelas_id') ?? $request->get('klas_id');
+        $guruId = $request->get('guru_staf_id') ?? $request->get('guru_id');
 
-            if ($request->filled('tahun_ajaran_id')) {
-                $filters['tahun_ajaran'] = TahunAjaran::find($request->tahun_ajaran_id)->nama ?? 'Semua';
-            }
-            if ($request->filled('guru_staf_id')) {
-                $filters['guru'] = GuruStaf::find($request->guru_staf_id)->nama ?? 'Semua Guru';
-            }
-            if ($request->filled('mata_pelajaran_id')) {
-                $filters['mapel'] = MataPelajaran::find($request->mata_pelajaran_id)->nama_mapel ?? 'Semua Mapel';
-            }
-            if ($request->filled('kelas_id')) {
-                $filters['kelas'] = Kelas::find($request->kelas_id)->nama_kelas ?? 'Semua Kelas';
-            }
+        $filters = [
+            'q'            => $request->get('q'),
+            'hari'         => $request->get('hari'),
+            'tahun_ajaran' => 'Semua',
+            'guru'         => 'Semua Guru',
+            'mapel'        => 'Semua Mapel',
+            'kelas'        => 'Semua Kelas',
+            'tipe_mapel'   => $request->get('tipe_mapel', 'Semua Tipe'),
+            'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Hanya Mapel Aktif'
+        ];
 
-            $profil = ProfilSekolah::first();
-            $kontak = DataKontak::first();
+        // 1. Inisialisasi komponen nama file
+        $nameParts = ['Jadwal_Admin'];
 
-            $cleanName = $request->filled('guru_staf_id') ? Str::slug($filters['guru']) : 'Semua_Guru';
-            $fileName = 'Jadwal_Mengajar_' . $cleanName . '_' . now()->format('Ymd_His') . '.xlsx';
-            
-            return Excel::download(new GuruMapelExport($query, $profil, $kontak, $filters), $fileName);
-        } catch (Throwable $e) {
-            Log::error('Export Guru Mapel Error', ['error' => $e->getMessage()]);
-            return response()->json(['message' => 'Gagal mengekspor data penugasan.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        // 2. Tambahkan Tahun Ajaran jika difilter
+        if ($request->filled('tahun_ajaran_id')) {
+            $tahun = TahunAjaran::find($request->tahun_ajaran_id);
+            $filters['tahun_ajaran'] = $tahun->nama ?? 'Semua';
+            $nameParts[] = $filters['tahun_ajaran'];
         }
+
+        // 3. TAMBAHKAN TIPE MAPEL KE NAMA FILE
+        if ($request->filled('tipe_mapel')) {
+            $nameParts[] = $request->tipe_mapel; // Contoh: "Muatan Kejuruan"
+        }
+
+        // 4. Tambahkan Guru jika difilter
+        if ($guruId) {
+            $guru = GuruStaf::find($guruId);
+            if ($guru) {
+                $filters['guru'] = $guru->nama;
+                $nameParts[] = $guru->nama;
+            }
+        }
+
+        // 5. Tambahkan Mapel jika difilter
+        if ($request->filled('mata_pelajaran_id')) {
+            $mapel = MataPelajaran::find($request->mata_pelajaran_id);
+            if ($mapel) {
+                $filters['mapel'] = $mapel->nama_mapel;
+                $nameParts[] = $mapel->nama_mapel;
+            }
+        }
+
+        // 6. Tambahkan Kelas jika difilter
+        if ($kelasId) {
+            $kelas = Kelas::find($kelasId);
+            if ($kelas) {
+                $filters['kelas'] = $kelas->nama_kelas;
+                $nameParts[] = $kelas->nama_kelas;
+            }
+        }
+
+        // 7. Tambahkan Hari jika difilter
+        if ($request->filled('hari')) {
+            $nameParts[] = $request->hari;
+        }
+
+        $profil = ProfilSekolah::first();
+        $kontak = DataKontak::first();
+
+        // Menggabungkan semua bagian menjadi satu nama file yang bersih (slug)
+        $fileName = Str::slug(implode('_', $nameParts), '_') . '_' . now()->format('Ymd_His') . '.xlsx';
+        
+        return Excel::download(new GuruMapelExport($query, $profil, $kontak, $filters), $fileName);
+    } catch (Throwable $e) {
+        Log::error('Export Guru Mapel Error', ['error' => $e->getMessage()]);
+        return response()->json(['message' => 'Gagal mengekspor data penugasan.'], Response::HTTP_INTERNAL_SERVER_ERROR);
     }
+}
 
     public function import(Request $request): JsonResponse
     {

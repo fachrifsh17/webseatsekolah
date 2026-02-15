@@ -12,7 +12,7 @@ class PpdbLinkPolicy
         return $this->authorize($user, ['Admin'], ['Waka Humas']);
     }
 
-    public function view(User $user, PpdbLink $ppdbLink): bool
+    public function view(User $user, ?PpdbLink $ppdbLink = null): bool
     {
         return $this->authorize($user, ['Admin'], ['Waka Humas']);
     }
@@ -22,22 +22,22 @@ class PpdbLinkPolicy
         return false;
     }
 
-    public function update(User $user, PpdbLink $ppdbLink): bool
+    public function update(User $user, ?PpdbLink $ppdbLink = null): bool
     {
         return $this->authorize($user, ['Admin'], ['Waka Humas']);
     }
 
-    public function delete(User $user, PpdbLink $ppdbLink): bool
+    public function delete(User $user, ?PpdbLink $ppdbLink = null): bool
     {
         return false;
     }
 
-    public function restore(User $user, PpdbLink $ppdbLink): bool
+    public function restore(User $user, ?PpdbLink $ppdbLink = null): bool
     {
         return false;
     }
 
-    public function forceDelete(User $user, PpdbLink $ppdbLink): bool
+    public function forceDelete(User $user, ?PpdbLink $ppdbLink = null): bool
     {
         return false;
     }

@@ -33,7 +33,6 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
 
     public function query()
     {
-        // Eager load relasi jamMulai dan jamSelesai untuk mengambil kolom 'jam_ke'
         return $this->query->with(['guru', 'mapel', 'kelas', 'tahunAjaran', 'jamMulai', 'jamSelesai']);
     }
 
@@ -44,9 +43,10 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
             'Nama Guru',
             'NIP',
             'Mata Pelajaran',
+            'Tipe Mapel', // Tambahan kolom baru
             'Kelas',
             'Hari',
-            'Urutan Jam Pelajaran', // Header lebih relevan
+            'Urutan Jam Pelajaran',
             'Tahun Ajaran',
             'Status'
         ];
@@ -54,23 +54,26 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
 
     public function map($item): array
     {
-        // Mengambil nilai jam_ke dari relasi tabel jam_sekolah
         $jamKeMulai = $item->jamMulai->jam_ke ?? '-';
         $jamKeSelesai = $item->jamSelesai->jam_ke ?? '-';
 
-        // Format: Jam Ke 1 - 3
         $jamFormatted = ($jamKeMulai !== '-' && $jamKeSelesai !== '-') 
             ? "Jam Ke {$jamKeMulai} - {$jamKeSelesai}"
             : "Jam Ke {$jamKeMulai}";
+
+        // Mapping Tipe Mapel (Umum/Khusus)
+        $tipeMapel = $item->mapel->tipe_mapel ?? '-';
+        $tipeFormatted = ($tipeMapel === 'khusus') ? 'Produktif (Khusus)' : (($tipeMapel === 'umum') ? 'Normatif/Adaptif (Umum)' : $tipeMapel);
 
         return [
             $item->guru->id ?? '-',
             $item->guru->nama ?? '-',
             "'" . ($item->guru->nip ?? '-'),
             $item->mapel->nama_mapel ?? '-',
+            $tipeFormatted, // Data tipe mapel
             $item->kelas->nama_kelas ?? '-',
             $item->hari ?? '-',
-            $jamFormatted, // Hasil: Jam Ke 1 - 3
+            $jamFormatted,
             $item->tahunAjaran->nama ?? '-', 
             'Aktif'
         ];
@@ -79,7 +82,7 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
     public function styles(Worksheet $sheet)
     {
         $lastRow = $sheet->getHighestRow();
-        $lastCol = 'I';
+        $lastCol = 'J'; // Berubah dari I ke J karena ada tambahan 1 kolom
 
         $sheet->getStyle("A11:{$lastCol}11")->applyFromArray([
             'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_WHITE]],
@@ -98,9 +101,8 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
             ]
         ]);
 
-        // Tengahkan kolom ID, Hari, Jam, dan Status agar rapi
         $sheet->getStyle("A12:A{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("F12:I{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("E12:J{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER); // E sekarang Tipe Mapel, J adalah Status
     }
 
     public function registerEvents(): array
@@ -108,7 +110,7 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
-                $lastCol = 'I';
+                $lastCol = 'J'; // Berubah ke J
 
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
@@ -127,6 +129,7 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
 
                 $filterInfo = [];
                 if (!empty($this->filters['q'])) { $filterInfo[] = "Pencarian: " . $this->filters['q']; }
+                $filterInfo[] = "Tipe: " . ($this->filters['tipe_mapel'] ?? 'Semua'); // Info filter tipe
                 $filterInfo[] = "Guru: " . ($this->filters['guru'] ?? 'Semua');
                 $filterInfo[] = "Kelas: " . ($this->filters['kelas'] ?? 'Semua');
                 $filterInfo[] = "Mapel: " . ($this->filters['mapel'] ?? 'Semua');

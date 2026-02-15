@@ -16,9 +16,13 @@ class MapelResource extends JsonResource
             'tipe_mapel' => $this->tipe_mapel,
             'kategori_mapel' => $this->kategori_mapel,
             'is_active' => (bool) $this->is_active, 
+            
+            // Menggunakan whenLoaded agar tidak error jika relasi tidak dipanggil
             'jurusan' => new JurusanResource($this->whenLoaded('jurusan')),
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+
+            // Format tanggal rapi: 15-02-2026 18:49
+            'created_at' => $this->created_at ? $this->created_at->format('d-m-Y H:i') : null,
+            'updated_at' => $this->updated_at ? $this->updated_at->format('d-m-Y H:i') : null,
         ];
     }
 }

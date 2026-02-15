@@ -15,7 +15,6 @@ class LogAktivitasController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Kepala Sekolah');
         $this->authorizeResource(LogAktivitas::class, 'log');
     }
 

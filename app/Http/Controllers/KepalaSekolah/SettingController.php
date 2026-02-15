@@ -19,7 +19,7 @@ class SettingController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('Log.aktivitas')->only('updateGeneral');
+        $this->middleware('log.aktivitas')->only('updateGeneral');
     }
 
     public function index(): JsonResponse

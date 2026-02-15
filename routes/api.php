@@ -79,7 +79,8 @@ use App\Http\Controllers\KetuaJurusan\{
     GuruMapelController as JurusanGuruMapel,
     JadwalProduktifController as JurusanJadwal,
     MapelController as JurusanMapel,
-    SiswaController as JurusanSiswa
+    SiswaController as JurusanSiswa,
+    KelasController as JurusanKelas
 };
 
 // --- Kurikulum ---
@@ -376,6 +377,8 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         Route::get('mapel/{id}', [JurusanMapel::class, 'show']);
         Route::get('guru-mapel/export', [JurusanGuruMapel::class, 'export']);
         Route::get('guru_mapel', [JurusanGuruMapel::class, 'index']);
+        Route::get('kelas/export', [JurusanKelas::class, 'export']);
+        Route::apiResource('kelas', JurusanKelas::class);
         Route::apiResource('jadwal_produktif', JurusanJadwal::class);
     });
 
