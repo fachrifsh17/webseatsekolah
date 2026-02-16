@@ -16,6 +16,7 @@ class AuthController extends Controller
 {
     public function __construct()
     {
+        // Hanya logout dan me yang butuh middleware auth.token
         $this->middleware('auth.token')->only(['logout', 'me']);
     }
 
@@ -23,20 +24,31 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
+        // Eager loading relasi agar tidak lambat (N+1 Problem)
+        $user->load([
+            'roles',
+            'guruStaf.strukturJabatan.jabatan',
+            'guruStaf.kelas',
+            'siswa',
+            'orangtua'
+        ]);
+        $fotoPath = null;
+        if ($user->guruStaf && $user->guruStaf->foto) {
+            $fotoPath = $user->guruStaf->foto;
+        } elseif ($user->siswa && $user->siswa->foto) {
+            $fotoPath = $user->siswa->foto;
+        }
+
+        // Tambahkan atribut foto_url secara dinamis agar bisa ditangkap UserResource
+        $user->foto_url = $fotoPath 
+            ? asset('storage/' . $fotoPath) 
+            : asset('images/default-avatar.png'); // Pastikan file ini ada di public/images/
+
         return response()->json([
             'success' => true,
-            'data' => new UserResource(
-                $user->load([
-                    'roles',
-                    'guruStaf.strukturJabatan.jabatan',
-                    'guruStaf.kelas',
-                    'siswa',
-                    'orangtua'
-                ])
-            )
+            'data' => new UserResource($user)
         ], Response::HTTP_OK);
     }
-
     public function refresh(Request $request): JsonResponse
     {
         $request->validate([

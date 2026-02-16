@@ -11,15 +11,18 @@ use Illuminate\Support\Facades\DB;
 
 class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings
 {
-    protected $query, $namaKelas, $labelWaktu, $profil, $kontak;
+    // Menambahkan $namaTA di properti agar bisa digunakan
+    protected $query, $namaKelas, $labelWaktu, $profil, $kontak, $namaTA;
     private $rowNumber = 0;
     private $totalsPeriode = [];
 
-    public function __construct($query, $namaKelas, $labelWaktu, $profil, $kontak)
+    // Tambahkan $namaTA = null sebagai default agar tidak Error 500 jika lupa dikirim dari Controller
+    public function __construct($query, $namaKelas, $labelWaktu, $profil, $kontak, $namaTA = null)
     {
         $this->query = $query;
         $this->namaKelas = $namaKelas;
         $this->labelWaktu = $labelWaktu;
+        $this->namaTA = $namaTA; 
         $this->profil = is_array($profil) ? (object)$profil : $profil;
         $this->kontak = is_array($kontak) ? (object)$kontak : $kontak;
     }
@@ -113,6 +116,10 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
 
                 $sheet->setCellValue('A8', "Kelas: {$this->namaKelas}");
                 $sheet->setCellValue('A9', "Periode: " . $this->labelWaktu);
+                
+                // MENAMPILKAN TAHUN AJARAN DI ATAS TABEL
+                $sheet->setCellValue('A10', "Tahun Ajaran: " . ($this->namaTA ?? '-'));
+                $sheet->getStyle('A8:A10')->getFont()->setBold(true);
 
                 $isFiltered = (stripos($this->labelWaktu, 'Kumulatif') === false);
                 $summaryRow = $dataLastRow + 2;
@@ -143,12 +150,11 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                         ->groupBy('siswa_id')->get()->keyBy('siswa_id');
                 }
 
-                uasort($this->totalsPeriode, function($a, $b) use ($akumulasiGlobal, $siswaIds) {
-                    $idA = array_search($a['nama'], array_column($this->totalsPeriode, 'nama', 'id')); 
-                    $idB = array_search($b['nama'], array_column($this->totalsPeriode, 'nama', 'id'));
-                    
-                    $valA = $akumulasiGlobal[array_search($a, $this->totalsPeriode)]->tot_n ?? 0;
-                    $valB = $akumulasiGlobal[array_search($b, $this->totalsPeriode)]->tot_n ?? 0;
+                uasort($this->totalsPeriode, function($a, $b) use ($akumulasiGlobal) {
+                    $idA = array_search($a, $this->totalsPeriode); 
+                    $idB = array_search($b, $this->totalsPeriode);
+                    $valA = $akumulasiGlobal[$idA]->tot_n ?? 0;
+                    $valB = $akumulasiGlobal[$idB]->tot_n ?? 0;
                     return $valB <=> $valA;
                 });
 

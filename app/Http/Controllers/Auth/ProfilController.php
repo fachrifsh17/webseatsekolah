@@ -1,7 +1,7 @@
 <?php
 
-namespace App\Http\Controllers;
-
+namespace App\Http\Controllers\Auth;
+use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Hash, Storage};
@@ -34,7 +34,7 @@ class ProfilController extends Controller
         ]);
     }
 
-    public function updateProfile(UpdateProfileRequest $request): JsonResponse
+    public function updateFoto(UpdateProfileRequest $request): JsonResponse
     {
         $user = $request->user();
    

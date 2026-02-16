@@ -19,7 +19,7 @@ class PoinSiswaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin'); // Menambahkan Guru jika mereka boleh mencatat poin
+        $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
         $this->authorizeResource(PoinSiswa::class, 'poin_siswa');
     }
@@ -208,6 +208,13 @@ class PoinSiswaController extends Controller
 
             $profil = DB::table('profil_sekolah')->first();
             $kontak = DB::table('data_kontak')->first();
+
+            // Mendapatkan Nama Tahun Ajaran (Sesuai filter atau yang aktif)
+            $taActive = $request->filled('tahun_ajaran_id') 
+                ? TahunAjaran::find($request->tahun_ajaran_id) 
+                : TahunAjaran::where('is_active', true)->first();
+            
+            $namaTA = $taActive ? $taActive->nama . " " . $taActive->semester : "-";
             
             $namaKelas = $request->nama_kelas ?? 'Seluruh_Siswa';
             $namaKelasFile = str_replace([' ', '/', '\\'], '_', $namaKelas);
@@ -234,7 +241,14 @@ class PoinSiswaController extends Controller
             $fileName = "Rekap_Poin_{$namaKelasFile}_{$bulanFile}_" . date('His') . ".xlsx";
 
             return Excel::download(
-                new PoinSiswaExport($query->orderBy('tanggal', 'asc'), $namaKelas, $labelWaktu, $profil, $kontak),
+                new PoinSiswaExport(
+                    $query->orderBy('tanggal', 'asc'), 
+                    $namaKelas, 
+                    $labelWaktu, 
+                    $profil, 
+                    $kontak, 
+                    $namaTA // Menambahkan argumen ke-6 ke Export Class
+                ),
                 $fileName
             );
         } catch (Throwable $e) {

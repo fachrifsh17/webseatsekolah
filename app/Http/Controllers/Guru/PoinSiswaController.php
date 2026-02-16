@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\{PoinSiswa, TahunAjaran, Siswa};
 use App\Http\Requests\{StorePoinSiswaRequest, UpdatePoinSiswaRequest};
 use App\Http\Resources\PoinSiswaResource;
+use App\Exports\PoinSiswaExport; // Import Export Class
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB, Log};
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Maatwebsite\Excel\Facades\Excel; // Import Excel Facade
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -203,6 +205,61 @@ class PoinSiswaController extends Controller
         } catch (Throwable $e) {
             Log::error('Guru Poin Destroy Error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Gagal menghapus data.'], 500);
+        }
+    }
+
+    public function export(Request $request)
+    {
+        try {
+            $guruStafId = $this->getGuruStafId();
+            
+            $profil = DB::table('profil_sekolah')->first();
+            $kontak = DB::table('data_kontak')->first();
+
+            // Mendapatkan Nama Tahun Ajaran (Aktif)
+            $taActive = TahunAjaran::where('is_active', true)->first();
+            $namaTA = $taActive ? $taActive->nama . " " . $taActive->semester : "-";
+
+            $namaKelas = $request->nama_kelas ?? 'Catatan_Pribadi_Guru';
+            $namaKelasFile = str_replace([' ', '/', '\\'], '_', $namaKelas);
+            
+            $labelWaktu = $request->filled('bulan') ? date('F Y', strtotime($request->bulan)) : "Kumulatif";
+            $bulanFile = $request->filled('bulan') ? date('M_Y', strtotime($request->bulan)) : "Semua_Waktu";
+
+            // Query: Hanya data milik Guru yang sedang login
+            $query = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
+                ->where('guru_staf_id', $guruStafId)
+                ->whereHas('siswa', function($q) {
+                    $q->where('is_active', true)
+                      ->whereHas('kelas', fn($qk) => $qk->where('is_active', true));
+                });
+
+            if ($request->filled('kelas_id')) {
+                $query->whereHas('siswa', fn($q) => $q->where('kelas_id', $request->kelas_id));
+            }
+
+            if ($request->filled('bulan')) {
+                $time = strtotime($request->bulan);
+                $query->whereMonth('tanggal', date('m', $time))
+                      ->whereYear('tanggal', date('Y', $time));
+            }
+
+            $fileName = "Rekap_Poin_Guru_{$namaKelasFile}_{$bulanFile}_" . date('His') . ".xlsx";
+
+            return Excel::download(
+                new PoinSiswaExport(
+                    $query->orderBy('tanggal', 'asc'), 
+                    $namaKelas, 
+                    $labelWaktu, 
+                    $profil, 
+                    $kontak, 
+                    $namaTA
+                ),
+                $fileName
+            );
+        } catch (Throwable $e) {
+            Log::error('Guru Export Poin Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal mengunduh laporan.'], 500);
         }
     }
 }

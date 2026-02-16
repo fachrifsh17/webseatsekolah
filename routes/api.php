@@ -18,11 +18,12 @@ use App\Http\Controllers\Api\{
     FasilitasApiController, EkstrakurikulerApiController,
     PesanApiController, DataKontakApiController,
     PrestasiApiController, PortalApiController, PPDBLinkApiController,
-    AuthApiController as ApiAuth, GuruApiController,
+    LoginApiController as ApiAuth, GuruApiController,
     SettingApiController,
     StrukturJabatanApiController, ProfilApiController, JamSekolahApiController,
 };
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\ProfilController;
 
 // --- Admin & Shared Controllers ---
 use App\Http\Controllers\Admin\{
@@ -172,6 +173,8 @@ Route::prefix('public')->group(function () {
 Route::middleware(['auth.token'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('me', [AuthController::class, 'me']);
+    Route::post('update-foto', [ProfilController::class, 'updateFoto']);
+    Route::post('change-password', [ProfilController::class, 'changePassword']);
 });
 
 /*
@@ -182,8 +185,7 @@ Route::middleware(['auth.token'])->group(function () {
 
 Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function () {
     // Profil Self-Service Admin
-    Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);
-    Route::post('change-password', [ProfilApiController::class, 'changePassword']);
+     
 
     Route::get('dashboard',[AdminDashboard::class,'index']);
     Route::get('log', [LogAktivitasController::class, 'index']);
@@ -271,8 +273,7 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
 Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function () {
     
     // --- Guru General ---
-    Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);
-    Route::post('change-password', [ProfilApiController::class, 'changePassword']);
+     
     Route::get('dashboard', [GuruDashboard::class, 'index']);
     Route::get('poin-siswa', [GuruPoin::class, 'index']); 
     Route::get('jam-sekolah/export', [GuruJamSekolah::class, 'export']);
@@ -356,16 +357,17 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         Route::put('profil-sekolah', [KepsekProfil::class, 'update']);
         Route::get('log', [KepsekLog::class, 'index']);
         Route::put('setting/general', [KepsekSetting::class, 'updateGeneral']);
-        Route::get('monitoring-presensi-harian', [KepsekPresensi::class, 'rekapHarianKepsek']);
         Route::get('list-kelas', [KepsekPresensi::class, 'listKelas']);
         Route::get('list-siswa', [KepsekPresensi::class, 'listSiswaPresensi']);
-        Route::get('monitoring-presensi-mapel', [KepsekPresensiMapel::class, 'index']);
         Route::get('jadwal-hari-ini', [KepsekPresensiMapel::class, 'listJadwalHariIni']);
         Route::get('siswa-by-jadwal/{id}', [KepsekPresensiMapel::class, 'getSiswaByJadwal']);
         Route::get('monitoring-poin-siswa', [KepsekPoin::class, 'index']); 
         Route::get('presensi-mapel/export', [KepsekPresensiMapel::class, 'export']);
         Route::get('presensi/export', [KepsekPresensi::class, 'export']); 
         Route::get('poin-siswa/export', [KepsekPoin::class, 'export']);
+        Route::apiResource('poin_siswa', KepsekPoin::class);
+        Route::apiResource('monitoring-presensi-harian', KepsekPresensi::class);
+        Route::apiResource('monitoring-presensi-mapel', KepsekPresensiMapel::class);
     });
 
     // --- Jabatan: Ketua Jurusan ---
@@ -415,8 +417,7 @@ Route::prefix('siswa')->middleware(['auth.token', 'role:siswa'])->group(function
     Route::get('jadwal_produktif', [SiswaJadwal::class, 'index']);
     Route::get('jam-sekolah', [SiswaJamSekolah::class, 'index']);
     Route::get('jam-sekolah/export', [SiswaJamSekolah::class, 'export']);
-    Route::post('update-foto', [ProfilApiController::class, 'updateFoto']);
-    Route::post('change-password', [ProfilApiController::class, 'changePassword']);
+     
 });
 
 // --- Role: Orang Tua ---
@@ -425,5 +426,5 @@ Route::prefix('ortu')->middleware(['auth.token', 'role:orangtua'])->group(functi
     Route::get('list-anak', [OrtuPresensi::class, 'listAnak']);
     Route::get('presensi-anak', [OrtuPresensi::class, 'index']);
     Route::get('poin-anak', [OrtuPoin::class, 'index']); 
-    Route::post('change-password', [ProfilApiController::class, 'changePassword']);
+     
 });

@@ -9,18 +9,20 @@ class SiswaPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas']);
+        // Tambahkan 'Kepala Sekolah' di sini
+        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas', 'Kepala Sekolah']);
     }
 
     public function view(User $user, Siswa $siswa): bool
     {
-        if ($this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas'])) {
+        // Tambahkan 'Kepala Sekolah' di sini
+        if ($this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas', 'Kepala Sekolah'])) {
             return true;
         }
 
-        $roleNames = $user->roles->pluck('role_name')->toArray();
-
-        if (in_array('Siswa', $roleNames)) {
+        // Logic untuk Siswa melihat dirinya sendiri
+        $userRoles = $user->roles->pluck('role_name');
+        if ($userRoles->contains('Siswa')) {
             return $user->id === $siswa->user_id;
         }
 
@@ -29,7 +31,8 @@ class SiswaPolicy
 
     public function create(User $user): bool
     {
-        return $this->authorizeRoute($user, ['Admin']);
+        // Admin bisa buat di mana saja, Waka Kesiswaan juga diberi izin (opsional)
+        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan']);
     }
 
     public function update(User $user, Siswa $siswa): bool
@@ -39,56 +42,51 @@ class SiswaPolicy
 
     public function delete(User $user, Siswa $siswa): bool
     {
-        return $this->authorizeRoute($user, ['Admin']);
+        return $this->authorize($user, ['Admin'], []);
     }
 
     public function restore(User $user, Siswa $siswa): bool
     {
-        return $this->authorizeRoute($user, ['Admin']);
+        return $this->authorize($user, ['Admin'], []);
     }
 
     public function forceDelete(User $user, Siswa $siswa): bool
     {
-        return $this->authorizeRoute($user, ['Admin']);
+        return $this->authorize($user, ['Admin'], []);
     }
 
     public function export(User $user): bool
     {
-        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas']);
+        // Tambahkan 'Kepala Sekolah' agar bisa download laporan siswa
+        return $this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas', 'Kepala Sekolah']);
     }
 
     public function import(User $user): bool
     {
-        return $this->authorizeRoute($user, ['Admin']);
+        return $this->authorize($user, ['Admin'], []);
     }
 
+    /**
+     * Helper authorize yang diseragamkan (contains)
+     */
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        // Gunakan contains() untuk mengecek string di dalam collection, bukan intersect()
-        $userRoles = $user->roles->pluck('role_name');
-        $hasRole = $userRoles->ensure('string')->some(fn($role) => in_array($role, $allowedRoles));
+        // 1. Cek Role
+        $hasRole = $user->roles->pluck('role_name')->contains(function ($role) use ($allowedRoles) {
+            return in_array($role, $allowedRoles);
+        });
 
+        // 2. Cek Jabatan
         $hasJabatan = false;
         if ($user->guruStaf) {
-            $userJabatans = $user->guruStaf->strukturJabatan
+            $hasJabatan = $user->guruStaf->strukturJabatan
                 ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
-                ->filter();
-            
-            $hasJabatan = $userJabatans->some(fn($jabatan) => in_array($jabatan, $allowedJabatans));
+                ->filter()
+                ->contains(function ($jabatan) use ($allowedJabatans) {
+                    return in_array($jabatan, $allowedJabatans);
+                });
         }
 
         return $hasRole || $hasJabatan;
-    }
-
-    protected function authorizeRoute(User $user, array $allowedRoles = []): bool
-    {
-        $userRoles = $user->roles->pluck('role_name');
-        $hasRole = $userRoles->some(fn($role) => in_array($role, $allowedRoles));
-
-        if ($hasRole && request()->is('api/admin/*')) {
-            return true;
-        }
-
-        return false;
     }
 }
