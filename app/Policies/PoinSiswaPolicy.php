@@ -24,42 +24,42 @@ class PoinSiswaPolicy
 
     public function update(User $user, PoinSiswa $poinSiswa): bool
     {
-        return $this->authorizeRoute($user, ['Admin']) || $this->authorize($user, [], ['Waka Kesiswaan']);
+        // Izinkan jika Admin ATAU jika dia Guru yang menginput poin tersebut
+        if ($this->authorizeRoute($user, ['Admin'])) return true;
+        
+        return $user->guru_staf_id === $poinSiswa->guru_staf_id || $this->authorize($user, [], ['Waka Kesiswaan']);
     }
 
     public function delete(User $user, PoinSiswa $poinSiswa): bool
     {
-        return $this->authorizeRoute($user, ['Admin']) || $this->authorize($user, [], ['Waka Kesiswaan']);
+        if ($this->authorizeRoute($user, ['Admin'])) return true;
+
+        return $user->guru_staf_id === $poinSiswa->guru_staf_id || $this->authorize($user, [], ['Waka Kesiswaan']);
     }
 
     public function export(User $user): bool
     {
-        return $this->authorizeRoute($user, ['Admin']) || $this->authorize($user, [], ['Waka Kesiswaan']);
+        return $this->authorizeRoute($user, ['Admin']) || $this->authorize($user, ['Waka Kesiswaan']);
     }
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // Menggunakan contains: mengecek apakah ada salah satu role yang diizinkan
+        $hasRole = $user->roles->pluck('role_name')->contains(fn($role) => in_array($role, $allowedRoles));
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
-                ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
-                ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+        $hasJabatan = false;
+        if ($user->guruStaf) {
+            $jabatans = $user->guruStaf->strukturJabatan->map(fn($sj) => $sj->jabatan?->nama_jabatan)->filter();
+            $hasJabatan = $jabatans->contains(fn($jabatan) => in_array($jabatan, $allowedJabatans));
+        }
 
         return $hasRole || $hasJabatan;
     }
 
     protected function authorizeRoute(User $user, array $allowedRoles = []): bool
     {
-        $isAdmin = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        $hasRole = $user->roles->pluck('role_name')->contains(fn($role) => in_array($role, $allowedRoles));
 
-        if ($isAdmin && request()->is('api/admin/*')) {
-            return true;
-        }
-
-        return false;
+        return $hasRole && request()->is('api/admin/*');
     }
 }
