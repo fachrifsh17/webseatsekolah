@@ -23,20 +23,27 @@ class OrangtuaResource extends JsonResource
             'is_active'    => $this->is_active !== null ? (int) $this->is_active : null,
 
             'anak' => $this->relationLoaded('anak') ? $this->anak->map(function ($a) {
-                return [
+                // 1. Buat data dasar anak
+                $res = [
                     'id'       => $a->id,
                     'nis'      => $a->nis,
                     'nama'     => $a->nama_lengkap,
                     'hubungan' => $a->pivot?->hubungan,
-                    'kelas'    => $a->relationLoaded('kelas') && $a->kelas ? [
+                ];
+
+                // 2. Kondisi manual: Hanya tambahkan key 'kelas' jika relasi loaded
+                if ($a->relationLoaded('kelas') && $a->kelas) {
+                    $res['kelas'] = [
                         'id'   => $a->kelas->id,
                         'nama' => $a->kelas->nama_kelas,
                         'jurusan' => $a->kelas->relationLoaded('jurusan') && $a->kelas->jurusan ? [
                             'id'   => $a->kelas->jurusan->id,
                             'nama' => $a->kelas->jurusan->nama_jurusan,
                         ] : null,
-                    ] : null,
-                ];
+                    ];
+                }
+
+                return $res;
             })->values() : [],
 
             'created_at'   => $this->created_at?->format('Y-m-d H:i:s'),

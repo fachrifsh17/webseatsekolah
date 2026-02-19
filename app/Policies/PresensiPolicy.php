@@ -45,22 +45,33 @@ class PresensiPolicy
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // Menggunakan contains untuk mengecek role
+        $hasRole = $user->roles->pluck('role_name')->contains(function ($value) use ($allowedRoles) {
+            return in_array($value, $allowedRoles);
+        });
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
+        if ($hasRole) return true;
+
+        // Cek Jabatan menggunakan contains pada relasi guruStaf
+        $hasJabatan = false;
+        if ($user->guruStaf) {
+            $hasJabatan = $user->guruStaf->strukturJabatan
                 ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
                 ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+                ->contains(function ($value) use ($allowedJabatans) {
+                    return in_array($value, $allowedJabatans);
+                });
+        }
 
-        return $hasRole || $hasJabatan;
+        return $hasJabatan;
     }
 
     protected function authorizeRoute(User $user, array $allowedRoles = []): bool
     {
-        $isAdmin = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // Menggunakan contains untuk mengecek Admin
+        $isAdmin = $user->roles->pluck('role_name')->contains(function ($value) use ($allowedRoles) {
+            return in_array($value, $allowedRoles);
+        });
 
         if ($isAdmin && request()->is('api/admin/*')) {
             return true;

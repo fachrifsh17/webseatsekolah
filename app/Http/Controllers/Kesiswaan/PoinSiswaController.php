@@ -109,7 +109,8 @@ class PoinSiswaController extends Controller
     {
         try {
             $ta = TahunAjaran::where('is_active', true)->firstOrFail();
-            $user = Auth::user();
+            // Ambil user dan muat relasi guruStaf-nya
+            $user = Auth::user()->load('guruStaf');
 
             $siswa = Siswa::where('id', $request->siswa_id)
                 ->where('is_active', true)
@@ -124,9 +125,12 @@ class PoinSiswaController extends Controller
             }
 
             $poin = DB::transaction(function () use ($request, $ta, $user) {
+              
+                $guruStafId = $request->guru_staf_id ?? ($user->guruStaf ? $user->guruStaf->id : null);
+
                 return PoinSiswa::create(array_merge($request->validated(), [
                     'tahun_ajaran_id' => $ta->id,
-                    'guru_staf_id' => $request->guru_staf_id ?? $user->guru_staf_id
+                    'guru_staf_id' => $guruStafId
                 ]));
             });
 
@@ -143,7 +147,6 @@ class PoinSiswaController extends Controller
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-
     public function show(PoinSiswa $poinSiswa): JsonResponse
     {
         return response()->json([

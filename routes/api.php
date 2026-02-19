@@ -386,12 +386,12 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
 
     // --- Jabatan: Wali Kelas ---
     Route::prefix('walikelas')->group(function () {
+        Route::get('siswa/export', [WaliSiswa::class, 'export']); 
+        Route::get('orangtua/export', [WaliOrtu::class, 'export']); 
+        Route::get('presensi/export', [WaliPresensi::class, 'export']);
         Route::apiResource('siswa', WaliSiswa::class);
         Route::apiResource('orangtua', WaliOrtu::class);
         Route::apiResource('presensi', WaliPresensi::class);
-        Route::get('siswa-export', [WaliSiswa::class, 'export']); 
-        Route::get('orangtua-export', [WaliOrtu::class, 'export']); 
-        Route::get('presensi-export', [WaliPresensi::class, 'export']);
     });
 
     // --- Guru Mapel General ---

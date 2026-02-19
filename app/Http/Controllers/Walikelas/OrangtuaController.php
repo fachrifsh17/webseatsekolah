@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Walikelas;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Orangtua, Kelas, User, Siswa};
+use App\Models\{Orangtua, Kelas, User, Siswa, TahunAjaran};
 use App\Http\Resources\OrangtuaResource;
 use App\Exports\OrangtuaExport;
 use Maatwebsite\Excel\Facades\Excel;
@@ -19,16 +19,22 @@ class OrangtuaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
+        $this->middleware('role:Guru');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'export']);
     }
 
     private function getKelasPerwalian()
     {
-        $guruStafId = Auth::user()->guruStaf?->id;
+        $guruId = Auth::user()->guruStaf?->id;
+        if (!$guruId) return null;
+
+        $taAktif = TahunAjaran::where('is_active', true)->first();
+        if (!$taAktif) return null;
 
         return Kelas::with('jurusan')
-            ->where('wali_kelas_id', $guruStafId)
-            ->where('is_active', true)
+            ->where('wali_kelas_id', $guruId)
+            ->where('tahun_ajaran_id', $taAktif->id)
+            ->where('is_active', 1)
             ->first();
     }
 
@@ -45,7 +51,7 @@ class OrangtuaController extends Controller
             }
 
             $query = Orangtua::with(['user', 'anak' => function($q) use ($kelas) {
-                    $q->where('kelas_id', $kelas->id)->with('kelas.jurusan');
+                    $q->where('kelas_id', $kelas->id);
                 }])
                 ->whereHas('anak', function ($q) use ($kelas) {
                     $q->where('kelas_id', $kelas->id);
@@ -62,22 +68,27 @@ class OrangtuaController extends Controller
             }
 
             $perPage = min((int) $request->get('per_page', 20), 100);
-            $data = $query->latest()->paginate($perPage);
+            $paginatedData = $query->latest()->paginate($perPage);
 
             return response()->json([
                 'success' => true,
                 'message' => "Daftar orang tua siswa kelas {$kelas->nama_kelas} berhasil diambil.",
-                'data'    => OrangtuaResource::collection($data),
+                'kelas'   => [
+                    'id'      => $kelas->id,
+                    'nama'    => $kelas->nama_kelas,
+                    'jurusan' => $kelas->jurusan?->nama_jurusan
+                ],
+                'data'    => OrangtuaResource::collection($paginatedData),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => (int) $data->perPage(),
-                    'total'        => $data->total(),
+                    'current_page' => $paginatedData->currentPage(),
+                    'last_page'    => $paginatedData->lastPage(),
+                    'per_page'     => $paginatedData->perPage(),
+                    'total'        => $paginatedData->total(),
                 ]
             ], Response::HTTP_OK);
 
         } catch (Throwable $e) {
-            Log::error('Gagal mengambil daftar orang tua: ' . $e->getMessage());
+            Log::error('Walikelas Orangtua Index Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil data orang tua.',
@@ -99,7 +110,7 @@ class OrangtuaController extends Controller
 
         $siswa = Siswa::where('id', $request->siswa_id)->where('kelas_id', $kelas->id)->first();
         if (!$siswa) {
-            return response()->json(['success' => false, 'message' => 'Siswa tidak ditemukan di kelas perwalian Anda.'], Response::HTTP_FORBIDDEN);
+            return response()->json(['success' => false, 'message' => 'Siswa tidak ditemukan di kelas Anda.'], Response::HTTP_FORBIDDEN);
         }
 
         try {
@@ -118,6 +129,7 @@ class OrangtuaController extends Controller
                 'no_telp'      => $request->no_telp,
                 'pekerjaan'    => $request->pekerjaan,
                 'alamat'       => $request->alamat,
+                'is_active'    => 1
             ]);
 
             $siswa->update(['orangtua_id' => $ortu->id]);
@@ -125,7 +137,7 @@ class OrangtuaController extends Controller
             DB::commit();
             return response()->json([
                 'success' => true,
-                'message' => 'Data orang tua berhasil ditambahkan dan ditautkan ke siswa.',
+                'message' => 'Data orang tua berhasil ditambahkan.',
                 'data'    => new OrangtuaResource($ortu->load('user', 'anak'))
             ], Response::HTTP_CREATED);
 
@@ -139,19 +151,18 @@ class OrangtuaController extends Controller
     public function show(Orangtua $orangtua): JsonResponse
     {
         $kelas = $this->getKelasPerwalian();
-        $isWali = $orangtua->anak()->where('kelas_id', $kelas?->id)->exists();
-
-        if (!$isWali) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Akses ditolak. Orang tua ini bukan bagian dari kelas perwalian Anda.'
-            ], Response::HTTP_FORBIDDEN);
+        if (!$kelas || !$orangtua->anak()->where('kelas_id', $kelas->id)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
         }
 
         return response()->json([
             'success' => true,
+            'kelas'   => [
+                'id'   => $kelas->id,
+                'nama' => $kelas->nama_kelas,
+            ],
             'data'    => new OrangtuaResource($orangtua->load(['user', 'anak' => function($q) use ($kelas) {
-                $q->where('kelas_id', $kelas->id)->with('kelas.jurusan');
+                $q->where('kelas_id', $kelas->id);
             }]))
         ], Response::HTTP_OK);
     }
@@ -159,9 +170,9 @@ class OrangtuaController extends Controller
     public function update(Request $request, Orangtua $orangtua): JsonResponse
     {
         $kelas = $this->getKelasPerwalian();
-        $isWali = $orangtua->anak()->where('kelas_id', $kelas?->id)->exists();
-
-        if (!$isWali) return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
+        if (!$kelas || !$orangtua->anak()->where('kelas_id', $kelas->id)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
+        }
 
         $request->validate([
             'nama_lengkap' => 'sometimes|string|max:255',
@@ -170,12 +181,15 @@ class OrangtuaController extends Controller
 
         try {
             DB::beginTransaction();
-            $orangtua->update($request->all());
+            
+            $updateData = $request->only(['nama_lengkap', 'no_telp', 'pekerjaan', 'alamat', 'is_active']);
+            $orangtua->update($updateData);
+
             if ($request->filled('nama_lengkap')) {
                 $orangtua->user->update(['name' => $request->nama_lengkap]);
             }
-            DB::commit();
 
+            DB::commit();
             return response()->json([
                 'success' => true,
                 'message' => 'Data orang tua berhasil diperbarui.',
@@ -190,18 +204,22 @@ class OrangtuaController extends Controller
     public function destroy(Orangtua $orangtua): JsonResponse
     {
         $kelas = $this->getKelasPerwalian();
-        $isWali = $orangtua->anak()->where('kelas_id', $kelas?->id)->exists();
-
-        if (!$isWali) return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
+        if (!$kelas || !$orangtua->anak()->where('kelas_id', $kelas->id)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
+        }
 
         try {
             DB::beginTransaction();
             $user = $orangtua->user;
-            Siswa::where('orangtua_id', $orangtua->id)->update(['orangtua_id' => null]);
+            
+            Siswa::where('orangtua_id', $orangtua->id)
+                 ->where('kelas_id', $kelas->id)
+                 ->update(['orangtua_id' => null]);
+
             $orangtua->delete();
             if ($user) $user->delete();
-            DB::commit();
 
+            DB::commit();
             return response()->json(['success' => true, 'message' => 'Data orang tua berhasil dihapus.'], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
@@ -213,19 +231,13 @@ class OrangtuaController extends Controller
     {
         try {
             $kelas = $this->getKelasPerwalian();
-
             if (!$kelas) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Gagal ekspor: Kelas perwalian tidak ditemukan.'
-                ], Response::HTTP_FORBIDDEN);
+                return response()->json(['success' => false, 'message' => 'Gagal ekspor: Kelas tidak ditemukan.'], Response::HTTP_FORBIDDEN);
             }
-
-            $jurusanData = $kelas->jurusan;
 
             $query = Orangtua::query()
                 ->with(['anak' => function($q) use ($kelas) {
-                    $q->where('kelas_id', $kelas->id)->with('kelas.jurusan');
+                    $q->where('kelas_id', $kelas->id);
                 }])
                 ->whereHas('anak', function ($q) use ($kelas) {
                     $q->where('kelas_id', $kelas->id);
@@ -241,28 +253,25 @@ class OrangtuaController extends Controller
                 });
             }
 
-            $filename = 'Data_Orangtua_' . Str::slug($kelas->nama_kelas) . '_' . now()->format('Ymd_His') . '.xlsx';
-            $profil = DB::table('profil_sekolah')->first();
-            $kontak = DB::table('data_kontak')->first();
-
+            // Perubahan di sini: Mengganti Str::slug agar huruf besar tetap terjaga
+            $cleanNamaKelas = str_replace(' ', '_', $kelas->nama_kelas);
+            $filename = 'Data_Orangtua_' . $cleanNamaKelas . '_' . now()->format('Ymd_His') . '.xlsx';
+            
             return Excel::download(
                 new OrangtuaExport(
                     $query, 
-                    $profil, 
-                    $kontak, 
+                    DB::table('profil_sekolah')->first(), 
+                    DB::table('data_kontak')->first(), 
                     $kelas, 
                     $request->all(), 
-                    $jurusanData
+                    $kelas->jurusan
                 ), 
                 $filename
             );
 
         } catch (Throwable $e) {
-            Log::error('Gagal ekspor data orang tua: ' . $e->getMessage());
-            return response()->json([
-                'success' => false, 
-                'message' => 'Gagal mengekspor data.'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            Log::error('Export Orangtua Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal mengekspor data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }
