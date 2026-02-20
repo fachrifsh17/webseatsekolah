@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Orangtua;
 
 use App\Http\Controllers\Controller;
-use App\Models\{PoinSiswa, TahunAjaran};
-use App\Http\Resources\PoinSiswaResource;
-use Illuminate\Http\{JsonResponse, Request};
-use Illuminate\Support\Facades\{DB, Auth};
+use App\Models\{PoinSiswa, TahunAjaran, Siswa};
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\{Auth, DB, Log};
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Symfony\Component\HttpFoundation\Response;
+use Carbon\Carbon;
+use Throwable;
 
 class PoinSiswaController extends Controller
 {
@@ -17,108 +19,179 @@ class PoinSiswaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
+        $this->middleware('role:Orangtua');
     }
 
     public function index(Request $request): JsonResponse
     {
-        $this->authorize('viewAny', PoinSiswa::class);
+        try {
+            $user = Auth::user();
+            $tahunAktif = TahunAjaran::where('is_active', true)->first();
+            $tahunAjaranId = $request->get('tahun_ajaran_id', $tahunAktif?->id);
 
-        $user = Auth::user();
-        
-        $childrenIds = DB::table('orangtua_siswa')
-            ->join('orangtua', 'orangtua_siswa.orangtua_id', '=', 'orangtua.id')
-            ->join('siswa', 'orangtua_siswa.siswa_id', '=', 'siswa.id')
-            ->where('orangtua.user_id', $user->id)
-            ->where('siswa.is_active', true)
-            ->pluck('orangtua_siswa.siswa_id')
-            ->toArray();
+            // Filter: Hanya ambil anak yang terdaftar di KELAS AKTIF pada TAHUN AJARAN tersebut
+            $children = Siswa::whereHas('orangtua', function($q) use ($user) {
+                $q->where('user_id', $user->id);
+            })
+            ->where('is_active', true)
+            ->whereHas('kelas', function($q) use ($tahunAjaranId) {
+                $q->where('is_active', true)
+                  ->where('tahun_ajaran_id', $tahunAjaranId);
+            })
+            ->with('kelas:id,nama_kelas')
+            ->get(['id', 'nama_lengkap', 'kelas_id', 'nis']);
 
-        if (empty($childrenIds)) {
-            return response()->json([
-                'success' => true,
-                'summary' => null,
-                'data'    => [],
-                'meta'    => null
-            ], Response::HTTP_OK);
-        }
+            $childrenIds = $children->pluck('id')->toArray();
 
-        $tahunAktif = TahunAjaran::where('is_active', true)->first();
-
-        $query = PoinSiswa::query()->whereIn('siswa_id', $childrenIds);
-
-        if ($request->filled('siswa_id')) {
-            $query->where('siswa_id', $request->siswa_id);
-        }
-
-        if ($request->filled('mulai_tanggal') && $request->filled('sampai_tanggal')) {
-            $query->whereBetween('tanggal', [$request->mulai_tanggal, $request->sampai_tanggal]);
-        }
-
-        if ($request->filled('jenis')) {
-            if ($request->jenis == 'negatif') {
-                $query->where('poin_negatif', '>', 0);
-            } elseif ($request->jenis == 'positif') {
-                $query->where('poin_positif', '>', 0);
+            if (empty($childrenIds)) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Data anak pada tahun ajaran aktif tidak ditemukan.',
+                    'header'  => [
+                        'tahun_ajaran' => $tahunAktif?->nama,
+                        'semester'     => $tahunAktif?->semester,
+                    ],
+                    'summary' => null,
+                    'list_anak' => [],
+                    'data'    => []
+                ], Response::HTTP_OK);
             }
-        }
 
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('keterangan', 'like', "%{$search}%")
-                  ->orWhereHas('siswa', function($qs) use ($search) {
-                      $qs->where('nama_lengkap', 'like', "%{$search}%");
-                  });
-            });
-        }
+            $query = PoinSiswa::query()->whereIn('siswa_id', $childrenIds);
 
-        $summary = (clone $query)->select(
+            if ($tahunAjaranId) {
+                $query->where('tahun_ajaran_id', $tahunAjaranId);
+            }
+
+            if ($request->filled('siswa_id')) {
+                if (!in_array($request->siswa_id, $childrenIds)) {
+                    return response()->json([
+                        'success' => false, 
+                        'message' => 'Akses ditolak atau siswa tidak aktif di periode ini.'
+                    ], Response::HTTP_FORBIDDEN);
+                }
+                $query->where('siswa_id', $request->siswa_id);
+            }
+
+            if ($request->filled('search')) {
+                $search = $request->search;
+                $query->where(function($q) use ($search) {
+                    $q->where('keterangan', 'like', "%{$search}%")
+                      ->orWhereHas('siswa', fn($qs) => $qs->where('nama_lengkap', 'like', "%{$search}%"));
+                });
+            }
+
+            if ($request->filled('jenis')) {
+                if ($request->jenis === 'negatif') {
+                    $query->where('poin_negatif', '>', 0);
+                } elseif ($request->jenis === 'positif') {
+                    $query->where('poin_positif', '>', 0);
+                }
+            }
+
+            $summaryData = (clone $query)->select(
                 DB::raw('CAST(SUM(poin_positif) AS SIGNED) as total_plus'),
                 DB::raw('CAST(SUM(poin_negatif) AS SIGNED) as total_minus'),
-                DB::raw('CAST(SUM(poin_positif - poin_negatif) AS SIGNED) as saldo_akumulasi'),
                 DB::raw('COUNT(*) as total_catatan')
-            )
-            ->first();
+            )->first();
 
-        $data = $query->with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
-            ->latest()
-            ->paginate($request->get('per_page', 20));
+            $tahunTampil = $tahunAjaranId ? TahunAjaran::find($tahunAjaranId) : $tahunAktif;
+            $perPage = min((int) $request->get('per_page', 10), 100);
+            
+            $data = $query->with(['siswa.kelas', 'guruStaf'])
+                          ->latest()
+                          ->paginate($perPage);
 
-        return response()->json([
-            'success' => true,
-            'summary_kumulatif' => $summary,
-            'tahun_ajaran_aktif' => $tahunAktif,
-            'data'    => PoinSiswaResource::collection($data),
-            'meta'    => [
-                'current_page' => $data->currentPage(),
-                'last_page'    => $data->lastPage(),
-                'per_page'     => (int) $data->perPage(),
-                'total'        => $data->total(),
-            ],
-        ], Response::HTTP_OK);
-    }
+            return response()->json([
+                'success' => true,
+                'message' => 'Data poin berhasil diambil.',
+                'header' => [
+                    'tahun_ajaran' => $tahunTampil?->nama,
+                    'semester'     => $tahunTampil?->semester,
+                ],
+                'summary' => [
+                    'total_positif' => $summaryData->total_plus ?? 0,
+                    'total_negatif' => $summaryData->total_minus ?? 0,
+                    'total_catatan' => $summaryData->total_catatan ?? 0,
+                ],
+                'list_anak' => $children->map(fn($item) => [
+                    'id'    => $item->id,
+                    'nama'  => $item->nama_lengkap,
+                    'kelas' => $item->kelas?->nama_kelas,
+                    'nis'   => $item->nis
+                ]),
+                'data' => collect($data->items())->map(function($item) {
+                    return [
+                        'id'         => $item->id,
+                        'nama_siswa' => $item->siswa?->nama_lengkap,
+                        'kelas'      => $item->siswa?->kelas?->nama_kelas,
+                        'tanggal'    => Carbon::parse($item->tanggal)->format('d-m-Y'),
+                        'positif'    => (int)$item->poin_positif,
+                        'negatif'    => (int)$item->poin_negatif,
+                        'keterangan' => $item->keterangan ?? $item->indikator,
+                        'pelapor'    => $item->guruStaf?->nama ?? 'Sistem',
+                    ];
+                }),
+                'pagination' => [
+                    'current_page' => $data->currentPage(),
+                    'last_page'    => $data->lastPage(),
+                    'total'        => $data->total(),
+                ],
+            ], Response::HTTP_OK);
 
-    public function show(PoinSiswa $poinSiswa): JsonResponse
-    {
-        $this->authorize('view', $poinSiswa);
-
-        $user = Auth::user();
-        $isOwnChild = DB::table('orangtua_siswa')
-            ->join('orangtua', 'orangtua_siswa.orangtua_id', '=', 'orangtua.id')
-            ->where('orangtua.user_id', $user->id)
-            ->where('orangtua_siswa.siswa_id', $poinSiswa->siswa_id)
-            ->exists();
-
-        if (!$isOwnChild) {
+        } catch (Throwable $e) {
+            Log::error('Gagal mengambil poin orangtua: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Akses dilarang.'
-            ], Response::HTTP_FORBIDDEN);
+                'message' => 'Gagal memuat data poin.',
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
 
-        return response()->json([
-            'success' => true,
-            'data'    => new PoinSiswaResource($poinSiswa->load(['siswa.kelas', 'guruStaf', 'tahunAjaran'])),
-        ], Response::HTTP_OK);
+    public function show($id): JsonResponse
+    {
+        try {
+            $user = Auth::user();
+            $poinSiswa = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])->findOrFail($id);
+
+            // Validasi: Siswa harus milik orang tua dan berada di kelas yang sesuai dengan tahun ajaran poin tersebut
+            $isValid = Siswa::where('id', $poinSiswa->siswa_id)
+                ->whereHas('orangtua', function($q) use ($user) {
+                    $q->where('user_id', $user->id);
+                })
+                ->whereHas('kelas', function($q) use ($poinSiswa) {
+                    $q->where('tahun_ajaran_id', $poinSiswa->tahun_ajaran_id);
+                })
+                ->exists();
+
+            if (!$isValid) {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Akses dilarang atau data tidak relevan dengan periode aktif.'
+                ], Response::HTTP_FORBIDDEN);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id'           => $poinSiswa->id,
+                    'nama_siswa'   => $poinSiswa->siswa?->nama_lengkap,
+                    'tanggal'      => Carbon::parse($poinSiswa->tanggal)->format('d-m-Y'),
+                    'poin_positif' => (int)$poinSiswa->poin_positif,
+                    'poin_negatif' => (int)$poinSiswa->poin_negatif,
+                    'keterangan'   => $poinSiswa->keterangan,
+                    'pelapor'      => $poinSiswa->guruStaf?->nama,
+                    'tahun_ajaran' => $poinSiswa->tahunAjaran?->nama,
+                    'semester'     => $poinSiswa->tahunAjaran?->semester,
+                    'created_at'   => $poinSiswa->created_at->format('d-m-Y H:i'),
+                ],
+            ], Response::HTTP_OK);
+            
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Detail poin tidak ditemukan.'
+            ], Response::HTTP_NOT_FOUND);
+        }
     }
 }

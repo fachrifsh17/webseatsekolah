@@ -11,7 +11,7 @@ class Pesan extends Model
 
     protected $table = 'pesan_masuk';
 
-    public $timestamps = false;
+    public $timestamps = true;
 
     protected $fillable = [
         'nama_lengkap',

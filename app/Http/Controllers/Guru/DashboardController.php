@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Guru;
 
 use App\Http\Controllers\Controller;
 use App\Models\{
-    Berita, Pengumuman, Siswa, Presensi, KalenderAkademik, Kelas, GuruMapel
+    Berita, Pengumuman, Siswa, Presensi, KalenderAkademik, Kelas, GuruMapel, TahunAjaran, GuruStaf, JadwalProduktif
 };
 use App\Http\Resources\BeritaResource;
 use Illuminate\Http\Request;
@@ -35,20 +35,21 @@ class DashboardController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
+            $activeTaIds = TahunAjaran::where('is_active', 1)->pluck('id');
             $guruStafId = $guruStaf->id;
+
+            // Kelas Wali & Siswa Binaan (Filter TA Aktif)
             $kelasWaliIds = Kelas::where('wali_kelas_id', $guruStafId)
                 ->where('is_active', 1)
-                ->whereHas('tahunAjaran', function($q) {
-                    $q->where('is_active', 1);
-                })
+                ->whereIn('tahun_ajaran_id', $activeTaIds)
                 ->pluck('id');
 
-            $siswaBinaanIds = Siswa::whereIn('kelas_id', $kelasWaliIds)->pluck('id');
+            $siswaBinaanIds = Siswa::whereIn('kelas_id', $kelasWaliIds)
+                ->where('is_active', 1)
+                ->pluck('id');
 
-            // 1. Ambil data statistik dasar guru
             $stats = $this->getStats($guruStafId, $siswaBinaanIds);
 
-            // 2. Identifikasi Jabatan
             $struktur = $guruStaf->strukturJabatan->first();
             $jabatanNama = $struktur && $struktur->jabatan 
                 ? $struktur->jabatan->nama_jabatan 
@@ -56,23 +57,17 @@ class DashboardController extends Controller
 
             $manajerial = [];
             if (!empty($jabatanNama)) {
-                // Ambil data spesifik jabatan (Waka, Kaprog, dll)
-                $manajerialData = $this->getManajerialData($guruStaf, $jabatanNama);
+                $manajerialData = $this->getManajerialData($guruStaf, $jabatanNama, $activeTaIds);
                 
-                // 3. LOGIKA MERGE: Pindahkan isi 'summary' ke dalam 'statistics'
                 if (isset($manajerialData['summary'])) {
                     $stats = array_merge($stats, $manajerialData['summary']);
                 }
 
-                // Simpan role_jabatan saja untuk bagian manajerial
-                $manajerial = [
-                    'role_jabatan' => $manajerialData['role_jabatan']
-                ];
+                $manajerial = ['role_jabatan' => $manajerialData['role_jabatan']];
             }
 
-            // 4. Susun Data Final
             $data = [
-                'statistics' => $stats, // Gabungan stats guru & summary jabatan
+                'statistics' => $stats,
                 'kalender_akademik' => $this->getKalender(),
                 'common' => [
                     'recent_pengumuman' => $this->getPengumuman(),
@@ -115,49 +110,54 @@ class DashboardController extends Controller
         ];
     }
 
-    private function getManajerialData($guruStaf, $jabatan): array
+    private function getManajerialData($guruStaf, $jabatan, $activeTaIds): array
     {
         $res = ['role_jabatan' => $jabatan];
         $today = today();
-        $filterAktif = function($q) {
-            $q->where('is_active', 1)->whereHas('tahunAjaran', function($sq) {
-                $sq->where('is_active', 1);
-            });
+        
+        $filterAktif = function($q) use ($activeTaIds) {
+            $q->where('is_active', 1)->whereIn('tahun_ajaran_id', $activeTaIds);
         };
 
         switch ($jabatan) {
             case 'Kepala Sekolah':
                 $res['summary'] = [
-                    'total_siswa_global' => Siswa::whereHas('kelas', $filterAktif)->count(),
-                    'presensi_siswa_hari_ini' => Presensi::whereDate('created_at', $today)->count(),
-                    'total_guru_aktif' => GuruMapel::distinct('guru_staf_id')->count(),
+                    'total_siswa_global' => Siswa::whereHas('kelas', $filterAktif)->where('is_active', 1)->count(),
+                    'presensi_siswa_hari_ini' => Presensi::whereDate('created_at', $today)
+                        ->whereHas('siswa', function($q) use ($filterAktif) {
+                            $q->whereHas('kelas', $filterAktif)->where('is_active', 1);
+                        })->count(),
+                    'total_guru_staf' => GuruStaf::where('is_active', 1)->count(),
                 ];
                 break;
 
             case 'Waka Kurikulum':
                 $res['summary'] = [
-                    'total_mapel' => \App\Models\Matapelajaran::count(),
-                    'total_guru_mapel' => GuruMapel::count(),
-                    'jadwal_produktif' => \App\Models\JadwalProduktif::count(),
+                    'total_mapel' => \App\Models\Matapelajaran::where('is_active', 1)->count(),
+                    'total_guru_mapel' => GuruMapel::whereHas('kelas', $filterAktif)->distinct('guru_staf_id')->count(),
+                    // Perbaikan: Langsung cek tahun_ajaran_id di tabel jadwal
+                    'jadwal_produktif' => JadwalProduktif::whereIn('tahun_ajaran_id', $activeTaIds)->count(),
                     'agenda_akademik' => KalenderAkademik::whereDate('tanggal_mulai', '>=', $today)->count()
                 ];
                 break;
 
             case 'Waka Kesiswaan':
                 $res['summary'] = [
-                    'total_siswa' => Siswa::whereHas('kelas', $filterAktif)->count(),
+                    'total_siswa' => Siswa::whereHas('kelas', $filterAktif)->where('is_active', 1)->count(),
                     'pelanggaran_hari_ini' => \App\Models\PoinSiswa::whereDate('created_at', $today)
-                        ->where('poin_negatif', '>', 0)
-                        ->count(),
+                        ->where('poin_negatif', '>', 0)->count(),
                     'total_ekstrakurikuler' => \App\Models\Ekstrakurikuler::count(),
-                    'siswa_mangkir' => Presensi::whereDate('created_at', $today)->where('status', 'Alpa')->count()
+                    'siswa_mangkir' => Presensi::whereDate('created_at', $today)->where('status', 'Alpa')
+                        ->whereHas('siswa', function($q) use ($filterAktif) {
+                            $q->whereHas('kelas', $filterAktif)->where('is_active', 1);
+                        })->count()
                 ];
                 break;
 
             case 'Waka Sarpras':
                 $res['summary'] = [
                     'total_fasilitas' => \App\Models\Fasilitas::count(),
-                    'total_ruangan' => Kelas::where('is_active', 1)->count(),
+                    'total_ruangan' => Kelas::where('is_active', 1)->whereIn('tahun_ajaran_id', $activeTaIds)->count(),
                     'media_sarpras' => \App\Models\Media::count()
                 ];
                 break;
@@ -167,16 +167,23 @@ class DashboardController extends Controller
                     'berita_sekolah' => Berita::count(),
                     'total_pengumuman' => Pengumuman::count(),
                     'prestasi_siswa' => \App\Models\Prestasi::count(),
-                    'pesan_masuk' => \App\Models\Pesan::where('status', 'Unread')->count()
+                    'pesan_masuk' => \App\Models\Pesan::where('status', 'belum_dibaca')->count()
                 ];
                 break;
 
             case 'Ketua Jurusan':
                 $jurusanId = $guruStaf->jurusan_id;
                 $res['summary'] = [
-                    'siswa_jurusan' => Siswa::where('jurusan_id', $jurusanId)->whereHas('kelas', $filterAktif)->count(),
-                    'kelas_jurusan' => Kelas::where('jurusan_id', $jurusanId)->where('is_active', 1)->count(),
-                    'guru_produktif' => GuruMapel::where('jurusan_id', $jurusanId)->distinct('guru_staf_id')->count()
+                    'siswa_jurusan' => Siswa::whereHas('kelas', function($q) use ($jurusanId, $activeTaIds) {
+                        $q->where('jurusan_id', $jurusanId)->whereIn('tahun_ajaran_id', $activeTaIds)->where('is_active', 1);
+                    })->where('is_active', 1)->count(),
+                    'kelas_jurusan' => Kelas::where('jurusan_id', $jurusanId)->whereIn('tahun_ajaran_id', $activeTaIds)->where('is_active', 1)->count(),
+                    'guru_jurusan' => GuruMapel::whereHas('mapel', function($q) use ($jurusanId) {
+                        $q->where('jurusan_id', $jurusanId);
+                    })->distinct('guru_staf_id')->count(),
+                    // Perbaikan: Langsung cek jurusan_id dan tahun_ajaran_id di tabel jadwal
+                    'jadwal_jurusan' => JadwalProduktif::where('jurusan_id', $jurusanId)
+                        ->whereIn('tahun_ajaran_id', $activeTaIds)->count()
                 ];
                 break;
         }
@@ -203,16 +210,12 @@ class DashboardController extends Controller
                 $mulai = Carbon::parse($item->tanggal_mulai);
                 $selesai = Carbon::parse($item->tanggal_selesai);
                 
-                $status = $hariIni->between($mulai, $selesai) 
-                    ? "Sedang Berlangsung" 
-                    : "H-" . $hariIni->diffInDays($mulai);
-
                 return [
                     'kegiatan' => $item->kegiatan,
                     'tanggal_mulai' => $mulai->format('Y-m-d'),
                     'tanggal_selesai' => $selesai->format('Y-m-d'),
                     'kategori' => $item->kategori,
-                    'status' => $status
+                    'status' => $hariIni->between($mulai, $selesai) ? "Sedang Berlangsung" : "H-" . $hariIni->diffInDays($mulai)
                 ];
             })->toArray();
     }

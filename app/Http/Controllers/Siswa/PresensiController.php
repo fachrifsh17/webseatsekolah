@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
 use App\Models\{Presensi, TahunAjaran};
-use App\Http\Resources\PresensiResource;
 use Illuminate\Http\{JsonResponse, Request};
 use Illuminate\Support\Facades\{Auth, Log};
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Symfony\Component\HttpFoundation\Response;
+use Carbon\Carbon;
 use Throwable;
 
 class PresensiController extends Controller
@@ -25,7 +25,8 @@ class PresensiController extends Controller
     {
         try {
             $user = Auth::user();
-            $siswaId = $user->siswa_id ?? $user->siswa?->id;
+            $siswa = $user->siswa;
+            $siswaId = $user->siswa_id ?? $siswa?->id;
 
             if (!$siswaId) {
                 return response()->json([
@@ -34,11 +35,19 @@ class PresensiController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            $query = Presensi::where('siswa_id', $siswaId)
-                ->with(['siswa.kelas', 'guruStaf', 'tahunAjaran']);
+            $tahunAjaranId = $request->tahun_ajaran_id;
+            
+            if (!$tahunAjaranId) {
+                $tahunAktif = TahunAjaran::where('is_active', 1)->first();
+                $tahunAjaranId = $tahunAktif?->id;
+            } else {
+                $tahunAktif = TahunAjaran::find($tahunAjaranId);
+            }
 
-            if ($request->filled('tahun_ajaran_id')) {
-                $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
+            $query = Presensi::where('siswa_id', $siswaId);
+
+            if ($tahunAjaranId) {
+                $query->where('tahun_ajaran_id', $tahunAjaranId);
             }
 
             if ($request->filled('search')) {
@@ -54,60 +63,40 @@ class PresensiController extends Controller
                 $query->whereDate('tanggal', $request->tanggal);
             }
 
-            $perPage = min((int) $request->get('per_page', 15), 50);
-            
+            $perPage = $request->integer('per_page', 10);
             $data = $query->orderBy('tanggal', 'desc')
-                          ->orderBy('created_at', 'desc')
+                          ->orderBy('id', 'desc')
                           ->paginate($perPage);
 
-            return PresensiResource::collection($data)
-                ->additional([
-                    'success' => true,
-                    'message' => 'Data presensi berhasil diambil.'
-                ])
-                ->response()
-                ->setStatusCode(Response::HTTP_OK);
+            return response()->json([
+                'success' => true,
+                'message' => 'Data presensi berhasil diambil.',
+                'header' => [
+                    'nama' => $siswa?->nama_lengkap,
+                    'kelas' => $siswa?->kelas?->nama_kelas,
+                    'tahun_ajaran' => $tahunAktif?->nama?? 'Tidak Diketahui',
+                    'semester' => $tahunAktif?->semester ?? '-',
+                ],
+                'data' => $data->getCollection()->map(function($item) {
+                    return [
+                        'id' => $item->id,
+                        'tanggal' => Carbon::parse($item->tanggal)->format('Y-m-d'),
+                        'status' => $item->status,
+                        'keterangan' => $item->keterangan,
+                    ];
+                }),
+                'pagination' => [
+                    'current_page' => $data->currentPage(),
+                    'last_page' => $data->lastPage(),
+                    'total' => $data->total(),
+                ]
+            ], Response::HTTP_OK);
 
         } catch (Throwable $e) {
             Log::error('Gagal mengambil daftar presensi: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil data presensi.',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    public function show($id): JsonResponse
-    {
-        try {
-            $user = Auth::user();
-            $siswaId = $user->siswa_id ?? $user->siswa?->id;
-
-            $presensi = Presensi::where('id', $id)
-                ->where('siswa_id', $siswaId)
-                ->first();
-
-            if (!$presensi) {
-                return response()->json([
-                    'success' => false, 
-                    'message' => 'Data tidak ditemukan atau akses dilarang.'
-                ], Response::HTTP_FORBIDDEN);
-            }
-
-            return (new PresensiResource($presensi->load(['siswa.kelas', 'guruStaf', 'tahunAjaran'])))
-                ->additional([
-                    'success' => true,
-                    'message' => 'Detail presensi berhasil diambil.'
-                ])
-                ->response()
-                ->setStatusCode(Response::HTTP_OK);
-
-        } catch (Throwable $e) {
-            Log::error('Gagal mengambil detail presensi: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail presensi.',
                 'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }

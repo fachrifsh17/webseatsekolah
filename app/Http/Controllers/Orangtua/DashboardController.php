@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Orangtua;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Berita, Pengumuman, Siswa, Presensi, PoinSiswa, Orangtua, KalenderAkademik};
+use App\Models\{Berita, Pengumuman, Siswa, Presensi, PoinSiswa, Orangtua, KalenderAkademik, TahunAjaran};
 use App\Http\Resources\{BeritaResource};
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\{Log, DB};
 use Symfony\Component\HttpFoundation\Response;
+use Carbon\Carbon;
 use Throwable;
 
 class DashboardController extends Controller
@@ -24,29 +24,47 @@ class DashboardController extends Controller
     {
         try {
             $user = $request->user();
+            $hariIni = today();
+            $tigaHariLagi = today()->addDays(3);
             
-            // Ambil data orang tua untuk mendapatkan nama asli dari table orangtua
-            $orangtuaData = Orangtua::where('user_id', $user->id)->first();
-            
-            // Ambil data setting sekolah
             $setting = DB::table('sekolah_setting')->first();
+            $tahunAktif = TahunAjaran::where('is_active', true)->first();
 
             $data = [
-                'user_info' => [
-                    // Prioritas: nama dari table orangtua, lalu nama di table users
-                    'nama' => $orangtuaData->nama_lengkap ?? $orangtuaData->nama ?? $user->name,
-                    'role' => 'Orang Tua',
+                'header' => [
+                    'tahun_ajaran' => $tahunAktif?->nama ?? '-',
+                    'semester' => $tahunAktif?->semester ?? '-',
                 ],
                 'sekolah' => [
                     'buku_poin' => $setting->buku_poin_path ? asset('storage/' . $setting->buku_poin_path) : null,
                     'wa_kesiswaan' => $setting->no_wa_kesiswaan ?? null,
                 ],
-                'anak_statistics' => $this->getDataAnak($user->id),
+                'anak_statistics' => $this->getDataAnak($user->id, $tahunAktif?->id),
                 'akademik' => [
-                    'kalender' => KalenderAkademik::whereDate('tanggal_mulai', '>=', today())
+                    'kalender' => KalenderAkademik::where(function ($q) use ($hariIni, $tigaHariLagi) {
+                            $q->whereBetween('tanggal_mulai', [$hariIni, $tigaHariLagi])
+                              ->orWhere(function ($sub) use ($hariIni) {
+                                  $sub->where('tanggal_mulai', '<=', $hariIni)
+                                      ->where('tanggal_selesai', '>=', $hariIni);
+                              });
+                        })
                         ->orderBy('tanggal_mulai', 'asc')
-                        ->take(3)
-                        ->get(),
+                        ->take(5)
+                        ->get()
+                        ->map(function ($item) use ($hariIni) {
+                            $mulai = Carbon::parse($item->tanggal_mulai);
+                            $selesai = Carbon::parse($item->tanggal_selesai);
+                            
+                            return [
+                                'kegiatan' => $item->kegiatan,
+                                'tanggal_mulai' => $mulai->format('Y-m-d'),
+                                'tanggal_selesai' => $selesai->format('Y-m-d'),
+                                'kategori' => $item->kategori,
+                                'status' => $hariIni->between($mulai, $selesai) 
+                                    ? "Sedang Berlangsung" 
+                                    : "H-" . $hariIni->diffInDays($mulai)
+                            ];
+                        }),
                     'pengumuman_terbaru' => Pengumuman::latest()->first(),
                     'berita_terbaru' => BeritaResource::collection(Berita::latest()->take(1)->get()),
                 ]
@@ -67,38 +85,52 @@ class DashboardController extends Controller
         }
     }
 
-    private function getDataAnak($userId)
+    private function getDataAnak($userId, $tahunAjaranId)
     {
-        $orangtua = Orangtua::with(['anak.kelas.waliKelas'])->where('user_id', $userId)->first();
+        $orangtua = Orangtua::with(['anak' => function($query) use ($tahunAjaranId) {
+            $query->where('is_active', true)
+                  ->whereHas('kelas', function($q) use ($tahunAjaranId) {
+                      $q->where('is_active', true)
+                        ->where('tahun_ajaran_id', $tahunAjaranId);
+                  });
+        }, 'anak.kelas.waliKelas'])->where('user_id', $userId)->first();
 
         if (!$orangtua || !$orangtua->anak) {
             return [];
         }
 
-        return $orangtua->anak->map(function ($siswa) {
-            $statsPresensi = Presensi::where('siswa_id', $siswa->id)
-                ->select('status', DB::raw('count(*) as total'))
+        return $orangtua->anak->map(function ($siswa) use ($tahunAjaranId) {
+            $queryPresensi = Presensi::where('siswa_id', $siswa->id);
+            if ($tahunAjaranId) {
+                $queryPresensi->where('tahun_ajaran_id', $tahunAjaranId);
+            }
+            $statsPresensi = $queryPresensi->select('status', DB::raw('count(*) as total'))
                 ->groupBy('status')
                 ->pluck('total', 'status');
 
-            $poinPositif = (int) PoinSiswa::where('siswa_id', $siswa->id)->sum('poin_positif');
-            $poinNegatif = (int) PoinSiswa::where('siswa_id', $siswa->id)->sum('poin_negatif');
+            $queryPoin = PoinSiswa::where('siswa_id', $siswa->id);
+            if ($tahunAjaranId) {
+                $queryPoin->where('tahun_ajaran_id', $tahunAjaranId);
+            }
+            
+            $poinPositif = (int) (clone $queryPoin)->sum('poin_positif');
+            $poinNegatif = (int) (clone $queryPoin)->sum('poin_negatif');
 
             return [
-                'nama_anak' => $siswa->nama_lengkap ?? $siswa->nama,
-                'kelas' => $siswa->kelas->nama_kelas ?? '-',
+                'nama_anak'  => $siswa->nama_lengkap ?? $siswa->nama,
+                'kelas'      => $siswa->kelas->nama_kelas ?? '-',
                 'wali_kelas' => $siswa->kelas->waliKelas->nama ?? '-',
                 'statistics' => [
                     'presensi' => [
                         'hadir' => $statsPresensi['Hadir'] ?? 0,
-                        'izin' => $statsPresensi['Izin'] ?? 0,
+                        'izin'  => $statsPresensi['Izin'] ?? 0,
                         'sakit' => $statsPresensi['Sakit'] ?? 0,
-                        'alpa' => $statsPresensi['Alpa'] ?? 0,
+                        'alpa'  => $statsPresensi['Alpa'] ?? 0,
                     ],
                     'poin' => [
                         'total_positif' => $poinPositif,
                         'total_negatif' => $poinNegatif,
-                        'akumulasi' => $poinPositif - $poinNegatif,
+                        'akumulasi'     => $poinPositif - $poinNegatif,
                     ]
                 ]
             ];

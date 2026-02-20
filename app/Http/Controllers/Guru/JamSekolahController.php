@@ -75,21 +75,21 @@ class JamSekolahController extends Controller
         $this->authorize('viewAny', JamSekolah::class);
 
         try {
-            $tahunAjaranId = $this->resolveTahunAjaranId($request);
+            $taAktif = TahunAjaran::where('is_active', true)->first();
             
-            if (!$tahunAjaranId) {
+            if (!$taAktif) {
                 return response()->json([
                     'success' => false, 
-                    'message' => 'Tahun ajaran tidak ditentukan.'
+                    'message' => 'Tahun ajaran aktif tidak ditemukan.'
                 ], Response::HTTP_BAD_REQUEST);
             }
 
-            $ta = TahunAjaran::find($tahunAjaranId);
-            $namaTA = $ta ? str_replace(['/', '\\', ' '], '-', $ta->nama) : date('Ymd_His');
+            $tahunAjaranId = $taAktif->id;
+            $namaTA = str_replace(['/', '\\', ' '], '-', $taAktif->nama);
 
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
-            $fileName = 'jam_sekolah_' . $namaTA . '.xlsx';
+            $fileName = 'jam_sekolah_aktif_' . $namaTA . '.xlsx';
 
             return Excel::download(new JamSekolahExport($profil, $kontak, $tahunAjaranId), $fileName);
         } catch (Throwable $e) {

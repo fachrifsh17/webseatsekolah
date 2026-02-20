@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
+use Carbon\Carbon;
 use Throwable;
 
 class DashboardController extends Controller
@@ -24,8 +25,9 @@ class DashboardController extends Controller
     {
         try {
             $user = $request->user();
+            $hariIni = today();
+            $tigaHariLagi = today()->addDays(3);
             
-            // Ambil data siswa berdasarkan user_id yang login
             $siswa = Siswa::with(['kelas.waliKelas'])
                 ->where('user_id', $user->id)
                 ->first();
@@ -37,22 +39,18 @@ class DashboardController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            // Hitung poin menggunakan kolom sesuai gambar: poin_positif & poin_negatif
             $poinPositif = (int) PoinSiswa::where('siswa_id', $siswa->id)->sum('poin_positif');
             $poinNegatif = (int) PoinSiswa::where('siswa_id', $siswa->id)->sum('poin_negatif');
 
-            // Hitung statistik kehadiran
             $statsPresensi = Presensi::where('siswa_id', $siswa->id)
                 ->select('status', DB::raw('count(*) as total'))
                 ->groupBy('status')
                 ->pluck('total', 'status');
 
-            // Ambil setting sekolah (Buku Poin & WA Kesiswaan)
             $setting = DB::table('sekolah_setting')->first();
 
             $data = [
                 'user_info' => [
-                    // Diambil dari tabel siswa kolom nama_lengkap sesuai gambar
                     'nama' => $siswa->nama_lengkap ?? 'Tanpa Nama',
                     'kelas' => $siswa->kelas->nama_kelas ?? '-',
                     'wali_kelas' => $siswa->kelas->waliKelas->nama ?? '-',
@@ -67,7 +65,6 @@ class DashboardController extends Controller
                     'poin' => [
                         'total_positif' => $poinPositif,
                         'total_negatif' => $poinNegatif,
-                        'akumulasi'     => $poinPositif - $poinNegatif,
                     ]
                 ],
                 'sekolah' => [
@@ -75,10 +72,30 @@ class DashboardController extends Controller
                     'wa_kesiswaan' => $setting->no_wa_kesiswaan ?? null,
                 ],
                 'akademik' => [
-                    'kalender' => KalenderAkademik::whereDate('tanggal_mulai', '>=', today())
+                    'kalender' => KalenderAkademik::where(function ($q) use ($hariIni, $tigaHariLagi) {
+                            $q->whereBetween('tanggal_mulai', [$hariIni, $tigaHariLagi])
+                              ->orWhere(function ($sub) use ($hariIni) {
+                                  $sub->where('tanggal_mulai', '<=', $hariIni)
+                                      ->where('tanggal_selesai', '>=', $hariIni);
+                              });
+                        })
                         ->orderBy('tanggal_mulai', 'asc')
-                        ->take(3)
-                        ->get(),
+                        ->take(5)
+                        ->get()
+                        ->map(function ($item) use ($hariIni) {
+                            $mulai = Carbon::parse($item->tanggal_mulai);
+                            $selesai = Carbon::parse($item->tanggal_selesai);
+                            
+                            return [
+                                'kegiatan' => $item->kegiatan,
+                                'tanggal_mulai' => $mulai->format('Y-m-d'),
+                                'tanggal_selesai' => $selesai->format('Y-m-d'),
+                                'kategori' => $item->kategori,
+                                'status' => $hariIni->between($mulai, $selesai) 
+                                    ? "Sedang Berlangsung" 
+                                    : "H-" . $hariIni->diffInDays($mulai)
+                            ];
+                        }),
                     'pengumuman_terbaru' => Pengumuman::latest()->first(),
                     'berita_terbaru' => BeritaResource::collection(Berita::latest()->take(1)->get()),
                 ]

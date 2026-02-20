@@ -41,7 +41,8 @@ class JamSekolahController extends Controller
                 'success' => true,
                 'data'    => JamSekolahResource::collection($data),
                 'meta'    => [
-                    'tahun_ajaran' => $tahunAktif->nama
+                    'tahun_ajaran' => $tahunAktif->nama,
+                    'status'       => 'Aktif'
                 ]
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -69,7 +70,7 @@ class JamSekolahController extends Controller
             $kontak = DataKontak::first();
             
             $namaTA = str_replace(['/', '\\', ' '], '-', $tahunAktif->nama);
-            $fileName = 'jam_sekolah_' . $namaTA . '.xlsx';
+            $fileName = 'jam_sekolah_' . $namaTA . '-aktif.xlsx';
 
             return Excel::download(new JamSekolahExport($profil, $kontak, $tahunAktif->id), $fileName);
         } catch (Throwable $e) {
@@ -86,8 +87,15 @@ class JamSekolahController extends Controller
         try {
             $tahunAktif = TahunAjaran::where('is_active', true)->first();
 
+            if (!$tahunAktif) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akses ditolak: Tidak ada tahun ajaran aktif.'
+                ], Response::HTTP_FORBIDDEN);
+            }
+
             $jamSekolah = JamSekolah::with('tahunAjaran')
-                ->where('tahun_ajaran_id', $tahunAktif->id ?? 0)
+                ->where('tahun_ajaran_id', $tahunAktif->id)
                 ->findOrFail($id);
 
             return response()->json([
@@ -97,7 +105,7 @@ class JamSekolahController extends Controller
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Data jam sekolah tidak ditemukan atau tidak aktif.',
+                'message' => 'Data jam sekolah tidak ditemukan atau berada di luar tahun ajaran aktif.',
                 'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_NOT_FOUND);
         }

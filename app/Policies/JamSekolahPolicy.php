@@ -54,16 +54,23 @@ class JamSekolahPolicy
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        $hasRole = $user->roles->pluck('role_name')->contains(function ($value) use ($allowedRoles) {
+            return in_array($value, $allowedRoles);
+        });
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
+        if ($hasRole) {
+            return true;
+        }
+
+        if ($user->relationLoaded('guruStaf') && $user->guruStaf) {
+            return $user->guruStaf->strukturJabatan
                 ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
                 ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+                ->contains(function ($value) use ($allowedJabatans) {
+                    return in_array(trim($value), $allowedJabatans);
+                });
+        }
 
-        return $hasRole || $hasJabatan;
+        return false;
     }
 }

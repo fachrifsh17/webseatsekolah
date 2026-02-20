@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
 use App\Models\{PoinSiswa, TahunAjaran};
-use App\Http\Resources\PoinSiswaResource;
 use Illuminate\Http\{JsonResponse, Request};
 use Illuminate\Support\Facades\{Auth, DB, Log};
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Symfony\Component\HttpFoundation\Response;
+use Carbon\Carbon;
 use Throwable;
 
 class PoinSiswaController extends Controller
@@ -35,23 +35,24 @@ class PoinSiswaController extends Controller
 
             $query = PoinSiswa::query()->where('siswa_id', $siswa->id);
 
-            // Filter Pencarian
+            if ($request->filled('tahun_ajaran_id')) {
+                $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
+            }
+
             if ($request->filled('search')) {
                 $search = $request->search;
                 $query->where(function($q) use ($search) {
                     $q->where('keterangan', 'like', "%{$search}%")
                       ->orWhereHas('guruStaf', function($qg) use ($search) {
-                          $qg->where('nama_lengkap', 'like', "%{$search}%");
+                          $qg->where('nama', 'like', "%{$search}%");
                       });
                 });
             }
 
-            // Filter Tanggal
             if ($request->filled('mulai_tanggal') && $request->filled('sampai_tanggal')) {
                 $query->whereBetween('tanggal', [$request->mulai_tanggal, $request->sampai_tanggal]);
             }
 
-            // Filter Jenis Poin
             if ($request->filled('jenis')) {
                 if ($request->jenis === 'negatif') {
                     $query->where('poin_negatif', '>', 0);
@@ -60,29 +61,50 @@ class PoinSiswaController extends Controller
                 }
             }
 
-            // Kalkulasi Summary
-            $summary = (clone $query)->select(
+            $summaryData = (clone $query)->select(
                 DB::raw('CAST(SUM(poin_positif) AS SIGNED) as total_plus'),
                 DB::raw('CAST(SUM(poin_negatif) AS SIGNED) as total_minus'),
-                DB::raw('CAST(SUM(poin_positif - poin_negatif) AS SIGNED) as saldo_akumulasi'),
                 DB::raw('COUNT(*) as total_catatan')
             )->first();
 
-            $tahunAktif = TahunAjaran::where('is_active', true)->first();
-            $data = $query->with(['guruStaf', 'tahunAjaran', 'siswa.kelas'])
+            $tahunTampil = $request->filled('tahun_ajaran_id') 
+                ? TahunAjaran::find($request->tahun_ajaran_id) 
+                : TahunAjaran::where('is_active', true)->first();
+            
+            $perPage = min((int) $request->get('per_page', 10), 100);
+            $data = $query->with(['guruStaf', 'tahunAjaran'])
                           ->latest()
-                          ->paginate(min((int) $request->get('per_page', 10), 100));
+                          ->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'summary_kumulatif' => $summary,
-                'tahun_ajaran_aktif' => $tahunAktif,
-                'data'    => PoinSiswaResource::collection($data),
-                'meta'    => [
+                'message' => 'Data poin berhasil diambil.',
+                'header' => [
+                    'nama' => $siswa->nama_lengkap,
+                    'nis' => $siswa->nis,
+                    'kelas' => $siswa->kelas?->nama_kelas,
+                    'tahun_ajaran' => $tahunTampil?->nama,
+                    'semester' => $tahunTampil?->semester,
+                ],
+                'summary' => [
+                    'total_positif' => $summaryData->total_plus ?? 0,
+                    'total_negatif' => $summaryData->total_minus ?? 0,
+                    'total_catatan' => $summaryData->total_catatan ?? 0,
+                ],
+                'data' => $data->getCollection()->map(function($item) {
+                    return [
+                        'id' => $item->id,
+                        'tanggal' => Carbon::parse($item->tanggal)->format('d-m-Y'),
+                        'positif' => (int)$item->poin_positif,
+                        'negatif' => (int)$item->poin_negatif,
+                        'keterangan' => $item->indikator,
+                        'pelapor' => $item->guruStaf?->nama,
+                    ];
+                }),
+                'pagination' => [
                     'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => (int) $data->perPage(),
-                    'total'        => $data->total(),
+                    'last_page' => $data->lastPage(),
+                    'total' => $data->total(),
                 ],
             ], Response::HTTP_OK);
 
@@ -103,7 +125,16 @@ class PoinSiswaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => new PoinSiswaResource($poinSiswa->load(['guruStaf', 'tahunAjaran', 'siswa.kelas'])),
+                'data' => [
+                    'id' => $poinSiswa->id,
+                    'tanggal' => Carbon::parse($poinSiswa->tanggal)->format('d-m-Y'),
+                    'poin_positif' => (int)$poinSiswa->poin_positif,
+                    'poin_negatif' => (int)$poinSiswa->poin_negatif,
+                    'pelapor' => $poinSiswa->guruStaf?->nama_lengkap ?? $poinSiswa->guruStaf?->nama,
+                    'tahun_ajaran' => $poinSiswa->tahunAjaran?->nama,
+                    'semester' => $poinSiswa->tahunAjaran?->semester,
+                    'created_at' => $poinSiswa->created_at->format('d-m-Y H:i'),
+                ],
             ], Response::HTTP_OK);
             
         } catch (Throwable $e) {
