@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
 use App\Models\KalenderAkademik;
+use App\Models\TahunAjaran;
 use App\Http\Resources\KalenderAkademikResource;
 use App\Http\Requests\{StoreKalenderAkademikRequest, UpdateKalenderAkademikRequest};
 use Illuminate\Support\Facades\{DB, Log};
@@ -28,7 +29,20 @@ class KalenderController extends Controller
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-            $data = KalenderAkademik::orderBy('tanggal_mulai', 'desc')->paginate($perPage);
+            
+            // LOGIKA OTOMATIS: Cari ID Tahun Ajaran yang Aktif jika tidak ada filter
+            $tahunAjaranId = request()->get('tahun_ajaran_id');
+            if (!$tahunAjaranId) {
+                $tahunAjaranId = TahunAjaran::where('is_active', true)->value('id');
+            }
+
+            $query = KalenderAkademik::query();
+
+            if ($tahunAjaranId) {
+                $query->where('tahun_ajaran_id', $tahunAjaranId);
+            }
+
+            $data = $query->orderBy('tanggal_mulai', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -38,6 +52,7 @@ class KalenderController extends Controller
                     'last_page'    => $data->lastPage(),
                     'per_page'     => $data->perPage(),
                     'total'        => $data->total(),
+                    'tahun_ajaran_id' => $tahunAjaranId,
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -53,6 +68,7 @@ class KalenderController extends Controller
     public function show(KalenderAkademik $kalender): JsonResponse
     {
         try {
+            $kalender->load('tahunAjaran');
             return response()->json([
                 'success' => true,
                 'data'    => new KalenderAkademikResource($kalender),
@@ -71,14 +87,28 @@ class KalenderController extends Controller
     {
         $validated = $request->validated();
 
+        // OTOMATIS: Cari tahun ajaran aktif jika input kosong
+        if (empty($validated['tahun_ajaran_id'])) {
+            $validated['tahun_ajaran_id'] = TahunAjaran::where('is_active', true)->value('id');
+            
+            if (!$validated['tahun_ajaran_id']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal: Tidak ada Tahun Ajaran yang aktif di sistem.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+
+        // Cek Duplikat
         $isDuplicate = KalenderAkademik::where('kegiatan', $validated['kegiatan'])
             ->where('tanggal_mulai', $validated['tanggal_mulai'])
+            ->where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
             ->exists();
 
         if ($isDuplicate) {
             return response()->json([
                 'success' => false,
-                'message' => 'Kegiatan serupa sudah terdaftar pada tanggal tersebut.',
+                'message' => 'Kegiatan serupa sudah terdaftar pada tanggal tersebut di tahun ajaran ini.',
                 'errors'  => ['conflict' => ['Data duplikat terdeteksi.']]
             ], Response::HTTP_CONFLICT);
         }
@@ -90,7 +120,7 @@ class KalenderController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Kalender akademik berhasil ditambahkan oleh Kurikulum.',
+                'message' => 'Kalender akademik berhasil ditambahkan.',
                 'data'    => new KalenderAkademikResource($item),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
@@ -108,18 +138,27 @@ class KalenderController extends Controller
     {
         $validated = $request->validated();
 
+        // OTOMATIS: Tetap gunakan tahun ajaran aktif jika tidak diubah
+        $tahunAjaranId = $validated['tahun_ajaran_id'] ?? $kalender->tahun_ajaran_id;
+        if (empty($tahunAjaranId)) {
+            $tahunAjaranId = TahunAjaran::where('is_active', true)->value('id');
+        }
+        $validated['tahun_ajaran_id'] = $tahunAjaranId;
+
         $kegiatan = $validated['kegiatan'] ?? $kalender->kegiatan;
         $tanggalMulai = $validated['tanggal_mulai'] ?? $kalender->tanggal_mulai;
 
+        // Cek Duplikat (Kecuali ID sendiri)
         $isDuplicate = KalenderAkademik::where('id', '!=', $kalender->id)
             ->where('kegiatan', $kegiatan)
             ->where('tanggal_mulai', $tanggalMulai)
+            ->where('tahun_ajaran_id', $tahunAjaranId)
             ->exists();
 
         if ($isDuplicate) {
             return response()->json([
                 'success' => false,
-                'message' => 'Perubahan gagal: Nama kegiatan sudah ada di tanggal tersebut.',
+                'message' => 'Perubahan gagal: Nama kegiatan sudah ada di tanggal dan tahun ajaran tersebut.',
                 'errors'  => ['conflict' => ['Data duplikat terdeteksi.']]
             ], Response::HTTP_CONFLICT);
         }

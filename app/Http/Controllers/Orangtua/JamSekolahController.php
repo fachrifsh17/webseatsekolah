@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Siswa;
+namespace App\Http\Controllers\Orangtua;
 
 use App\Http\Controllers\Controller;
 use App\Models\{JamSekolah, TahunAjaran, ProfilSekolah, DataKontak};
@@ -15,7 +15,7 @@ class JamSekolahController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Siswa');
+        $this->middleware('role:Orangtua');
         $this->authorizeResource(JamSekolah::class, 'jam_sekolah');
     }
 

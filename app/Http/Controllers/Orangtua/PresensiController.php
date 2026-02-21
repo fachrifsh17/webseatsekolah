@@ -22,105 +22,120 @@ class PresensiController extends Controller
     {
         try {
             $user = Auth::user();
-            
-            // 1. Tentukan Tahun Ajaran Aktif
             $tahunAktif = TahunAjaran::where('is_active', true)->first();
             $tahunAjaranId = $request->get('tahun_ajaran_id', $tahunAktif?->id);
 
-            // 2. Filter: Hanya ambil anak yang terhubung & memiliki KELAS AKTIF di tahun ajaran tersebut
-            $children = Siswa::whereHas('orangtua', function($q) use ($user) {
-                $q->where('user_id', $user->id);
-            })
-            ->where('is_active', true)
-            ->whereHas('kelas', function($q) use ($tahunAjaranId) {
-                $q->where('is_active', true)
-                  ->where('tahun_ajaran_id', $tahunAjaranId);
-            })
-            ->get(['id']);
-
-            $siswaIds = $children->pluck('id')->toArray();
+            $siswaIds = $this->getSiswaIds($user, $tahunAjaranId);
 
             if (empty($siswaIds)) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Data presensi tidak ditemukan untuk periode ini.',
-                    'info' => [
-                        'tahun_ajaran' => $tahunAktif?->nama,
-                        'semester' => $tahunAktif?->semester,
-                    ],
-                    'summary' => null,
-                    'data' => []
-                ], Response::HTTP_OK);
+                return $this->emptyResponse($tahunAktif);
             }
 
-            $query = Presensi::whereIn('siswa_id', $siswaIds);
-
-            if ($tahunAjaranId) {
-                $query->where('tahun_ajaran_id', $tahunAjaranId);
+            $query = $this->buildQuery($siswaIds, $tahunAjaranId, $request);
+            if ($query instanceof JsonResponse) {
+                return $query;
             }
 
-            if ($request->filled('siswa_id')) {
-                if (!in_array($request->siswa_id, $siswaIds)) {
-                    return response()->json([
-                        'success' => false, 
-                        'message' => 'Akses ditolak atau siswa tidak aktif di kelas ini'
-                    ], Response::HTTP_FORBIDDEN);
-                }
-                $query->where('siswa_id', $request->siswa_id);
-            }
-
-            // 3. Hitung Summary
-            $summary = (clone $query)->select(
-                DB::raw("SUM(CASE WHEN status = 'Hadir' THEN 1 ELSE 0 END) as hadir"),
-                DB::raw("SUM(CASE WHEN status = 'Izin' THEN 1 ELSE 0 END) as izin"),
-                DB::raw("SUM(CASE WHEN status = 'Sakit' THEN 1 ELSE 0 END) as sakit"),
-                DB::raw("SUM(CASE WHEN status = 'Alpa' THEN 1 ELSE 0 END) as alpa"),
-                DB::raw("COUNT(*) as total_hari")
-            )->first();
-
+            $summary = $this->getSummary($query);
             $perPage = $request->integer('per_page', 10);
-            $data = $query->with(['siswa.kelas'])
-                          ->orderBy('tanggal', 'desc')
-                          ->paginate($perPage);
-
+            $data = $query->with(['siswa.kelas'])->orderBy('tanggal', 'desc')->paginate($perPage);
             $tahunTampil = $tahunAjaranId ? TahunAjaran::find($tahunAjaranId) : $tahunAktif;
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Data presensi berhasil diambil.',
-                'info' => [
-                    'tahun_ajaran' => $tahunTampil?->nama,
-                    'semester' => $tahunTampil?->semester,
-                ],
-                'summary' => [
-                    'hadir' => (int)($summary->hadir ?? 0),
-                    'izin'  => (int)($summary->izin ?? 0),
-                    'sakit' => (int)($summary->sakit ?? 0),
-                    'alpa'  => (int)($summary->alpa ?? 0),
-                    'total_hari' => (int)($summary->total_hari ?? 0)
-                ],
-                'data' => collect($data->items())->map(fn($item) => [
-                    'id' => $item->id,
-                    'nama_siswa' => $item->siswa?->nama_lengkap,
-                    'kelas' => $item->siswa?->kelas?->nama_kelas,
-                    'tanggal' => Carbon::parse($item->tanggal)->format('d-m-Y'),
-                    'status' => $item->status,
-                    'keterangan' => $item->keterangan,
-                ]),
-                'pagination' => [
-                    'current_page' => $data->currentPage(),
-                    'last_page' => $data->lastPage(),
-                    'total' => $data->total(),
-                ]
-            ], Response::HTTP_OK);
-
+            return $this->formatResponse($data, $summary, $tahunTampil);
         } catch (Throwable $e) {
             Log::error('Presensi Orangtua Error: ' . $e->getMessage());
             return response()->json([
-                'success' => false, 
+                'success' => false,
                 'message' => 'Gagal memuat data presensi'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private function getSiswaIds($user, $tahunAjaranId)
+    {
+        return Siswa::whereHas('orangtua', fn($q) => $q->where('user_id', $user->id))
+            ->where('is_active', true)
+            ->whereHas('kelas', fn($q) => $q->where('is_active', true)->where('tahun_ajaran_id', $tahunAjaranId))
+            ->pluck('id')
+            ->toArray();
+    }
+
+    private function emptyResponse($tahunAktif)
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Data presensi tidak ditemukan untuk periode ini.',
+            'info' => [
+                'tahun_ajaran' => $tahunAktif?->nama,
+                'semester' => $tahunAktif?->semester,
+            ],
+            'summary' => null,
+            'data' => []
+        ], Response::HTTP_OK);
+    }
+
+    private function buildQuery(array $siswaIds, $tahunAjaranId, Request $request)
+    {
+        $query = Presensi::whereIn('siswa_id', $siswaIds);
+
+        if ($tahunAjaranId) {
+            $query->where('tahun_ajaran_id', $tahunAjaranId);
+        }
+
+        if ($request->filled('siswa_id')) {
+            if (!in_array($request->siswa_id, $siswaIds)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akses ditolak atau siswa tidak aktif di kelas ini'
+                ], Response::HTTP_FORBIDDEN);
+            }
+            $query->where('siswa_id', $request->siswa_id);
+        }
+
+        return $query;
+    }
+
+    private function getSummary($query)
+    {
+        return (clone $query)->select(
+            DB::raw("SUM(CASE WHEN status = 'Hadir' THEN 1 ELSE 0 END) as hadir"),
+            DB::raw("SUM(CASE WHEN status = 'Izin' THEN 1 ELSE 0 END) as izin"),
+            DB::raw("SUM(CASE WHEN status = 'Sakit' THEN 1 ELSE 0 END) as sakit"),
+            DB::raw("SUM(CASE WHEN status = 'Alpa' THEN 1 ELSE 0 END) as alpa"),
+            DB::raw("COUNT(*) as total_hari")
+        )->first();
+    }
+
+    private function formatResponse($data, $summary, $tahunTampil)
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Data presensi berhasil diambil.',
+            'info' => [
+                'tahun_ajaran' => $tahunTampil?->nama,
+                'semester' => $tahunTampil?->semester,
+            ],
+            'summary' => [
+                'hadir' => (int)($summary->hadir ?? 0),
+                'izin'  => (int)($summary->izin ?? 0),
+                'sakit' => (int)($summary->sakit ?? 0),
+                'alpa'  => (int)($summary->alpa ?? 0),
+                'total_hari' => (int)($summary->total_hari ?? 0)
+            ],
+            'data' => collect($data->items())->map(fn($item) => [
+                'id' => $item->id,
+                'nama_siswa' => $item->siswa?->nama_lengkap,
+                'kelas' => $item->siswa?->kelas?->nama_kelas,
+                'tanggal' => Carbon::parse($item->tanggal)->format('d-m-Y'),
+                'status' => $item->status,
+                'keterangan' => $item->keterangan,
+            ]),
+            'pagination' => [
+                'current_page' => $data->currentPage(),
+                'last_page' => $data->lastPage(),
+                'total' => $data->total(),
+            ]
+        ], Response::HTTP_OK);
     }
 
     public function listAnak(Request $request): JsonResponse

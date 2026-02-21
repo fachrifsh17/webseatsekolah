@@ -71,4 +71,8 @@ class TahunAjaran extends Model
     {
         return $this->hasMany(JamSekolah::class, 'tahun_ajaran_id');
     }
+    public function kalenderAkademik(): HasMany
+    {
+        return $this->hasMany(KalenderAkademik::class, 'tahun_ajaran_id', 'id');
+    }
 }

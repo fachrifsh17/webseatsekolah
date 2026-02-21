@@ -3,22 +3,18 @@
 namespace App\Http\Controllers\Guru;
 
 use App\Http\Controllers\Controller;
-use App\Models\JamSekolah;
-use App\Models\TahunAjaran;
-use App\Models\ProfilSekolah;
-use App\Models\DataKontak;
+use App\Models\{JamSekolah, TahunAjaran, ProfilSekolah, DataKontak};
 use App\Http\Resources\JamSekolahResource;
 use App\Http\Requests\StoreJamSekolahRequest;
 use App\Http\Requests\UpdateJamSekolahRequest;
-use App\Exports\JamSekolahExport;
 use App\Imports\JamSekolahImport;
-use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class JamSekolahController extends Controller
 {
@@ -86,17 +82,30 @@ class JamSekolahController extends Controller
 
             $tahunAjaranId = $taAktif->id;
             $namaTA = str_replace(['/', '\\', ' '], '-', $taAktif->nama);
-
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
-            $fileName = 'jam_sekolah_aktif_' . $namaTA . '.xlsx';
+            $fileName = 'jam_sekolah_aktif_' . $namaTA . '.pdf';
 
-            return Excel::download(new JamSekolahExport($profil, $kontak, $tahunAjaranId), $fileName);
+            $dataPerHari = JamSekolah::where('tahun_ajaran_id', $tahunAjaranId)
+                ->orderByRaw("FIELD(hari, 'Senin','Selasa','Rabu','Kamis','Jumat')")
+                ->orderBy('waktu_mulai')
+                ->get()
+                ->groupBy('hari');
+
+            $pdf = Pdf::loadView('exports.jam_sekolah_pdf', [
+                'profil' => $profil,
+                'kontak' => $kontak,
+                'ta' => $taAktif,
+                'dataPerHari' => $dataPerHari,
+                'hariList' => ['Senin','Selasa','Rabu','Kamis','Jumat']
+            ])->setPaper('a4', 'landscape');
+
+            return $pdf->download($fileName);
         } catch (Throwable $e) {
-            Log::error('Export Error: ' . $e->getMessage());
+            Log::error('Export PDF Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false, 
-                'message' => 'Gagal ekspor.'
+                'message' => 'Gagal ekspor ke PDF.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -109,7 +118,7 @@ class JamSekolahController extends Controller
 
         try {
             $import = new JamSekolahImport();
-            DB::transaction(fn() => Excel::import($import, $request->file('file')));
+            DB::transaction(fn() => \Maatwebsite\Excel\Facades\Excel::import($import, $request->file('file')));
 
             return response()->json([
                 'success'   => true,

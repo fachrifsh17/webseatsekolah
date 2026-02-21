@@ -130,7 +130,8 @@ use App\Http\Controllers\Siswa\{
 use App\Http\Controllers\Orangtua\{
     PresensiController as OrtuPresensi,
     PoinSiswaController as OrtuPoin,
-    DashboardController as OrtuDashboard
+    DashboardController as OrtuDashboard,
+    JamSekolahController as OrtuJamSekolah
 };
 
 /*
@@ -415,8 +416,8 @@ Route::prefix('siswa')->middleware(['auth.token', 'role:siswa'])->group(function
     Route::get('presensi-saya', [SiswaPresensi::class, 'index']);
     Route::get('poin-saya', [SiswaPoin::class, 'index']); 
     Route::get('jadwal_produktif', [SiswaJadwal::class, 'index']);
-    Route::get('jam-sekolah', [SiswaJamSekolah::class, 'index']);
     Route::get('jam-sekolah/export', [SiswaJamSekolah::class, 'export']);
+    Route::apiResource('jam_sekolah', SiswaJamSekolah::class);
      
 });
 
@@ -426,5 +427,7 @@ Route::prefix('ortu')->middleware(['auth.token', 'role:orangtua'])->group(functi
     Route::get('list-anak', [OrtuPresensi::class, 'listAnak']);
     Route::get('presensi-anak', [OrtuPresensi::class, 'index']);
     Route::get('poin-anak', [OrtuPoin::class, 'index']); 
+    Route::get('jam-sekolah/export', [OrtuJamSekolah::class, 'export']);
+    Route::apiResource('jam_sekolah', OrtuJamSekolah::class);
      
 });

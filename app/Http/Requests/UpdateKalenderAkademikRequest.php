@@ -14,16 +14,23 @@ class UpdateKalenderAkademikRequest extends FormRequest
 
     public function rules(): array
     {
+        // Mendapatkan ID kalender dari route parameter
         $kalenderId = $this->route('kalender')->id;
 
         return [
+            'tahun_ajaran_id' => [
+                'required', 
+                'string', 
+                'exists:tahun_ajaran,id'
+            ],
             'kegiatan' => [
                 'required', 
                 'string', 
                 'max:255',
-             
+                // Validasi unique yang mengabaikan ID data yang sedang diupdate
                 Rule::unique('kalender_akademik')->where(function ($query) {
-                    return $query->where('tanggal_mulai', $this->tanggal_mulai);
+                    return $query->where('tanggal_mulai', $this->tanggal_mulai)
+                                 ->where('tahun_ajaran_id', $this->tahun_ajaran_id);
                 })->ignore($kalenderId)
             ],
             'tanggal_mulai'   => ['required', 'date'],
@@ -35,8 +42,10 @@ class UpdateKalenderAkademikRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'tahun_ajaran_id.required' => 'Tahun ajaran wajib dipilih.',
+            'tahun_ajaran_id.exists'   => 'Tahun ajaran tidak valid.',
             'kegiatan.required'        => 'Nama kegiatan wajib diisi.',
-            'kegiatan.unique'          => 'Kegiatan dengan nama yang sama sudah ada di tanggal mulai tersebut.',
+            'kegiatan.unique'          => 'Kegiatan dengan nama yang sama sudah ada di tanggal dan tahun ajaran tersebut.',
             'kegiatan.max'             => 'Nama kegiatan maksimal 255 karakter.',
             'tanggal_mulai.required'   => 'Tanggal mulai wajib diisi.',
             'tanggal_selesai.after_or_equal' => 'Tanggal selesai tidak boleh sebelum tanggal mulai.',
@@ -48,6 +57,7 @@ class UpdateKalenderAkademikRequest extends FormRequest
     public function attributes(): array
     {
         return [
+            'tahun_ajaran_id' => 'Tahun ajaran',
             'kegiatan'        => 'Nama kegiatan',
             'tanggal_mulai'   => 'Tanggal mulai',
             'tanggal_selesai' => 'Tanggal selesai',

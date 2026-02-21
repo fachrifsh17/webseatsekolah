@@ -9,12 +9,12 @@ class JamSekolahPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->authorize($user, ['Admin', 'Guru', 'Siswa'], ['Waka Kurikulum']);
+        return $this->authorize($user, ['Admin', 'Guru', 'Siswa', 'Orangtua'], ['Waka Kurikulum']);
     }
 
     public function view(User $user, JamSekolah $jamSekolah): bool
     {
-        return $this->authorize($user, ['Admin', 'Guru', 'Siswa'], ['Waka Kurikulum']);
+        return $this->authorize($user, ['Admin', 'Guru', 'Siswa', 'Orangtua'], ['Waka Kurikulum']);
     }
 
     public function create(User $user): bool
@@ -44,7 +44,7 @@ class JamSekolahPolicy
 
     public function export(User $user): bool
     {
-        return $this->authorize($user, ['Admin', 'Guru', 'Siswa'], ['Waka Kurikulum']);
+        return $this->authorize($user, ['Admin', 'Guru', 'Siswa', 'Orangtua'], ['Waka Kurikulum']);
     }
 
     public function import(User $user): bool

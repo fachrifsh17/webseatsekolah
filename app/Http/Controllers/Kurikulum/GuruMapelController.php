@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\kurikulum;
+namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
 use App\Models\GuruMapel;
