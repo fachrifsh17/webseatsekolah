@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\{DB, Log, Auth};
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 use Carbon\Carbon;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class PresensiController extends Controller
 {
@@ -54,14 +55,24 @@ class PresensiController extends Controller
 
             $perPage = min((int) $request->get('per_page', 50), 100);
             $data = $query->paginate($perPage);
+            
+            // Mengambil array paginasi lengkap
+            $pagination = $data->toArray();
 
             return response()->json([
                 'success' => true,
                 'data'    => PresensiResource::collection($data),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'total'        => $data->total(),
+                    'current_page' => $pagination['current_page'],
+                    'last_page'    => $pagination['last_page'],
+                    'per_page'     => $pagination['per_page'],
+                    'total'        => $pagination['total'],
+                    'from'         => $pagination['from'],
+                    'to'           => $pagination['to'],
+                    'path'         => $pagination['path'],
+                    'next_page_url'=> $pagination['next_page_url'],
+                    'prev_page_url'=> $pagination['prev_page_url'],
+                    'links'        => $pagination['links'],
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -115,8 +126,13 @@ class PresensiController extends Controller
             $kontak = DB::table('data_kontak')->first();
             
             $labelWaktu = "Bulan-{$bulan}-Tahun-{$tahun}";
-            $taClean = str_replace(['/', ' '], '-', $ta->nama);
-            $fileName = "Presensi_{$kelas->nama_kelas}_{$labelWaktu}_TA_{$taClean}.xlsx";
+            
+            $taClean = str_replace(['/', ' '], '_', $ta->nama);
+            $fileName = "Rekap_Presensi_" . 
+                        str_replace([' ', '/'], '_', $kelas->nama_kelas) . "_" . 
+                        $labelWaktu . "_TA_" . 
+                        $taClean . "_" . 
+                        $ta->semester . ".xlsx";
 
             return Excel::download(
                 new PresensiExport(
@@ -137,61 +153,127 @@ class PresensiController extends Controller
         }
     }
 
-    public function listKelas(Request $request): JsonResponse
-    {
-        try {
-            $taActive = $request->filled('tahun_ajaran_id') 
-                ? TahunAjaran::find($request->tahun_ajaran_id) 
-                : TahunAjaran::where('is_active', true)->first();
-
-            if (!$taActive) {
-                return response()->json(['success' => false, 'message' => 'Tahun Ajaran tidak ditemukan.'], Response::HTTP_NOT_FOUND);
-            }
-
-            $tanggal = $request->get('tanggal', date('Y-m-d'));
-
-            $kelas = Kelas::where('tahun_ajaran_id', $taActive->id)
-                ->select('id', 'nama_kelas', 'tahun_ajaran_id')
-                ->withCount(['siswa' => fn($q) => $q->where('is_active', true)])
-                ->orderBy('nama_kelas', 'asc')
-                ->get();
-
-            $dataWithStatus = $kelas->map(function ($item) use ($tanggal, $taActive) {
-                $sudahAbsen = Presensi::where('tanggal', $tanggal)
-                    ->where('tahun_ajaran_id', $taActive->id)
-                    ->whereHas('siswa', fn($q) => $q->where('kelas_id', $item->id))
-                    ->exists();
-
-                return [
-                    'id' => $item->id,
-                    'nama_kelas' => $item->nama_kelas,
-                    'tahun_ajaran_id' => $item->tahun_ajaran_id,
-                    'siswa_count' => $item->siswa_count,
-                    'status_presensi' => $sudahAbsen ? 'Sudah Absen' : 'Belum Absen'
-                ];
-            });
-
-            if ($request->filled('status')) {
-                $dataWithStatus = $dataWithStatus->filter(function($val) use ($request) {
-                    return $val['status_presensi'] == $request->status;
-                })->values();
-            }
-
-            return response()->json([
-                'success' => true,
-                'info' => [
-                    'tanggal' => $tanggal,
-                    'hari' => Carbon::parse($tanggal)->locale('id')->dayName,
-                    'tahun_ajaran' => $taActive->nama . ' ' . $taActive->semester
-                ],
-                'data' => $dataWithStatus
-            ], Response::HTTP_OK);
-
-        } catch (Throwable $e) {
-            Log::error('Admin List Kelas Presensi Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal memuat daftar kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+   public function listKelas(Request $request): JsonResponse
+{
+    try {
+        $context = $this->applyContext($request);
+        
+        if (!$context['ta']) {
+            return response()->json(['success' => false, 'message' => 'Tahun Ajaran tidak ditemukan.'], Response::HTTP_NOT_FOUND);
         }
+
+        if ($this->isDayOff($context['tanggal'], $context['ta']->id)) {
+            return $this->applyLiburResponse($context);
+        }
+
+        $rawData = $this->processKelasStatus($context, $request->status);
+
+        return $this->applyPaginationResponse($rawData, $request, $context);
+
+    } catch (Throwable $e) {
+        Log::error('Admin List Kelas Error: ' . $e->getMessage());
+        return response()->json(['success' => false, 'message' => 'Gagal memuat daftar kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
     }
+}
+
+private function applyContext(Request $request): array
+{
+    $ta = $request->filled('tahun_ajaran_id') 
+        ? TahunAjaran::find($request->tahun_ajaran_id) 
+        : TahunAjaran::where('is_active', true)->first();
+
+    $tanggal = $request->get('tanggal', date('Y-m-d'));
+
+    return [
+        'ta' => $ta,
+        'tanggal' => $tanggal,
+        'hari' => Carbon::parse($tanggal)->locale('id')->dayName
+    ];
+}
+
+private function processKelasStatus(array $context, $statusFilter)
+{
+    $kelas = Kelas::where('tahun_ajaran_id', $context['ta']->id)
+        ->select('id', 'nama_kelas', 'tahun_ajaran_id')
+        ->withCount(['siswa' => fn($q) => $q->where('is_active', true)])
+        ->orderBy('nama_kelas', 'asc')
+        ->get();
+
+    $data = $kelas->map(function ($item) use ($context) {
+        $sudahAbsen = Presensi::where('tanggal', $context['tanggal'])
+            ->where('tahun_ajaran_id', $context['ta']->id)
+            ->whereHas('siswa', fn($q) => $q->where('kelas_id', $item->id))
+            ->exists();
+
+        return [
+            'id' => $item->id,
+            'nama_kelas' => $item->nama_kelas,
+            'tahun_ajaran_id' => $item->tahun_ajaran_id,
+            'siswa_count' => $item->siswa_count,
+            'status_presensi' => $sudahAbsen ? 'Sudah Absen' : 'Belum Absen'
+        ];
+    });
+
+    if ($statusFilter) {
+        return $data->filter(fn($val) => $val['status_presensi'] == $statusFilter)->values();
+    }
+
+    return $data;
+}
+
+private function applyLiburResponse(array $context): JsonResponse
+{
+    return response()->json([
+        'success' => true,
+        'info' => [
+            'tanggal' => $context['tanggal'],
+            'hari' => $context['hari'],
+            'tahun_ajaran' => $context['ta']->nama . ' ' . $context['ta']->semester,
+            'is_libur' => true
+        ],
+        'data' => [],
+        'message' => 'Hari libur atau akhir pekan.'
+    ], Response::HTTP_OK);
+}
+
+private function applyPaginationResponse($collection, Request $request, array $context): JsonResponse
+{
+    $perPage = (int) $request->get('per_page', 20);
+    $currentPage = (int) $request->get('page', 1);
+    
+    $paginator = new LengthAwarePaginator(
+        $collection->forPage($currentPage, $perPage)->values(),
+        $collection->count(),
+        $perPage,
+        $currentPage,
+        ['path' => $request->url(), 'query' => $request->query()]
+    );
+
+    $meta = $paginator->toArray();
+
+    return response()->json([
+        'success' => true,
+        'info' => [
+            'tanggal' => $context['tanggal'],
+            'hari' => $context['hari'],
+            'tahun_ajaran' => $context['ta']->nama . ' ' . $context['ta']->semester,
+            'is_libur' => false
+        ],
+        'data' => $meta['data'],
+        'meta' => [
+            'current_page' => $meta['current_page'],
+            'last_page'    => $meta['last_page'],
+            'per_page'     => $meta['per_page'],
+            'total'        => $meta['total'],
+            'from'         => $meta['from'],
+            'to'           => $meta['to'],
+            'path'         => $meta['path'],
+            'next_page_url'=> $meta['next_page_url'],
+            'prev_page_url'=> $meta['prev_page_url'],
+            'links'        => $meta['links'],
+        ]
+    ], Response::HTTP_OK);
+}
 
     public function listSiswaPresensi(Request $request): JsonResponse
     {
@@ -208,6 +290,20 @@ class PresensiController extends Controller
                 : TahunAjaran::where('is_active', true)->first();
 
             if (!$ta) return response()->json(['success' => false, 'message' => 'Tahun Ajaran tidak ditemukan.'], Response::HTTP_NOT_FOUND);
+
+            if ($this->isDayOff($tanggal, $ta->id)) {
+                return response()->json([
+                    'success' => true, 
+                    'info'    => [
+                        'kelas'            => Kelas::find($request->kelas_id)?->nama_kelas,
+                        'tanggal'          => $tanggal,
+                        'is_libur'         => true,
+                        'sudah_isi_absen'  => false
+                    ],
+                    'data'    => [],
+                    'message' => 'Pemuatan daftar siswa dihentikan karena hari libur.'
+                ], Response::HTTP_OK);
+            }
 
             $siswa = Siswa::where('kelas_id', $request->kelas_id)
                 ->where('is_active', true)
@@ -235,6 +331,7 @@ class PresensiController extends Controller
                     'presensi_id'      => $siswa->first()?->presensi->first()?->id ?? null,
                     'kelas'            => Kelas::find($request->kelas_id)?->nama_kelas,
                     'tanggal'          => $tanggal,
+                    'is_libur'         => false,
                     'sudah_isi_absen'  => $adaData
                 ],
                 'data'    => $collection
@@ -249,15 +346,15 @@ class PresensiController extends Controller
     {
         $this->authorize('create', Presensi::class);
 
-        $tanggalInput = $request->get('tanggal', date('Y-m-d'));
-        $requestKelasId = $request->input('kelas_id');
-
-        if ($this->isDayOff($tanggalInput)) {
-            return response()->json(['success' => false, 'message' => 'Input ditolak pada hari libur.'], Response::HTTP_BAD_REQUEST);
-        }
-
         try {
             $taActive = TahunAjaran::where('is_active', true)->firstOrFail();
+            $tanggalInput = $request->get('tanggal', date('Y-m-d'));
+            $requestKelasId = $request->input('kelas_id');
+
+            if ($this->isDayOff($tanggalInput, $taActive->id)) {
+                return response()->json(['success' => false, 'message' => 'Input ditolak pada hari libur atau akhir pekan.'], Response::HTTP_BAD_REQUEST);
+            }
+
             $dataInput = $request->has('data_presensi') ? $request->input('data_presensi') : [$request->all()];
 
             $results = DB::transaction(function () use ($dataInput, $tanggalInput, $taActive, $requestKelasId) {
@@ -408,11 +505,15 @@ class PresensiController extends Controller
         return $query->with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])->orderBy('tanggal', 'desc');
     }
 
-    private function isDayOff($date): bool
+    private function isDayOff($date, $tahunAjaranId): bool
     {
-        $libur = DB::table('kalender_akademik')->where('kategori', 'Libur')
+        $libur = DB::table('kalender_akademik')
+            ->where('kategori', 'Libur')
+            ->where('tahun_ajaran_id', $tahunAjaranId)
             ->whereDate('tanggal_mulai', '<=', $date)
-            ->whereDate('tanggal_selesai', '>=', $date)->exists();
+            ->whereDate('tanggal_selesai', '>=', $date)
+            ->exists();
+
         return $libur || date('N', strtotime($date)) >= 6;
     }
 }

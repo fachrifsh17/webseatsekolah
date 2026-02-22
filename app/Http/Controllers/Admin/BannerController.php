@@ -33,10 +33,16 @@ class BannerController extends Controller
                 'success' => true,
                 'data'    => BannerResource::collection($data),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => $data->perPage(),
-                    'total'        => $data->total(),
+                    'current_page'  => $data->currentPage(),
+                    'last_page'     => $data->lastPage(),
+                    'per_page'      => $data->perPage(),
+                    'total'         => $data->total(),
+                    'from'          => $data->firstItem(),
+                    'to'            => $data->lastItem(),
+                    'next_page_url' => $data->nextPageUrl(),
+                    'prev_page_url' => $data->previousPageUrl(),
+                    'path'          => $data->path(),
+                    'links'         => $data->linkCollection()->toArray(),
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {

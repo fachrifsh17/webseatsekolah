@@ -5,40 +5,47 @@ namespace App\Http\Controllers\Humas;
 use App\Http\Controllers\Controller;
 use App\Models\Pesan;
 use App\Http\Resources\PesanResource;
+use Illuminate\Http\Request; // Pastikan Request diimport
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class PesanController extends Controller
 {
-    use AuthorizesRequests;
-
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('log.aktivitas')->only(['updateStatus', 'destroy']);
 
-        // Mengotomatisasi pengecekan Policy untuk index, show, dan destroy
+        // Menambahkan proteksi Policy
         $this->authorizeResource(Pesan::class, 'pesan');
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         try {
-            $perPage = min((int) request()->get('per_page', 10), 100);
+            $perPage = min((int) $request->get('per_page', 10), 100);
             $pesan   = Pesan::latest()->paginate($perPage);
+            
+            // Konversi ke array untuk mengambil metadata pagination tambahan
+            $paginationData = $pesan->toArray();
 
             return response()->json([
                 'success' => true,
                 'data'    => PesanResource::collection($pesan),
                 'meta'    => [
-                    'current_page' => $pesan->currentPage(),
-                    'last_page'    => $pesan->lastPage(),
-                    'per_page'     => $pesan->perPage(),
-                    'total'        => $pesan->total(),
+                    'current_page'  => $pesan->currentPage(),
+                    'last_page'     => $pesan->lastPage(),
+                    'per_page'      => $pesan->perPage(),
+                    'total'         => $pesan->total(),
+                    'from'          => $pesan->firstItem(),
+                    'to'            => $pesan->lastItem(),
+                    'next_page_url' => $pesan->nextPageUrl(),
+                    'prev_page_url' => $pesan->previousPageUrl(),
+                    'path'          => $paginationData['path'],
+                    'links'         => $paginationData['links'],
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -53,37 +60,14 @@ class PesanController extends Controller
 
     public function show(Pesan $pesan): JsonResponse
     {
-        try {
-            // Otomatis tandai sebagai terbaca saat detail dibuka
-            if (!$pesan->is_read) {
-                $pesan->update(['is_read' => true]);
-            }
-
-            return response()->json([
-                'success' => true,
-                'data'    => new PesanResource($pesan),
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Failed to fetch pesan detail', [
-                'pesan_id' => (string) $pesan->id,
-                'error'    => $e->getMessage()
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengambil detail pesan',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        return response()->json([
+            'success' => true,
+            'data'    => new PesanResource($pesan),
+        ], Response::HTTP_OK);
     }
 
-    /**
-     * Update status pesan secara manual
-     */
     public function updateStatus(Pesan $pesan): JsonResponse
     {
-        // Karena updateStatus bukan method standar, panggil authorize manual
-        $this->authorize('update', $pesan);
-
         DB::beginTransaction();
         try {
             $pesan->update(['is_read' => true]);
@@ -97,13 +81,12 @@ class PesanController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Failed to update pesan status', [
-                'pesan_id' => (string) $pesan->id,
+                'pesan_id' => $pesan->id,
                 'error'    => $e->getMessage()
             ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui status pesan',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -116,21 +99,18 @@ class PesanController extends Controller
             DB::commit();
 
             return response()->json([
-                'success'      => true,
-                'message'      => 'Pesan berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
+                'success' => true,
+                'message' => 'Pesan berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Failed to delete pesan', [
-                'pesan_id' => (string) $pesan->id,
+                'pesan_id' => $pesan->id,
                 'error'    => $e->getMessage()
             ]);
             return response()->json([
-                'success'      => false,
-                'message'      => 'Gagal menghapus pesan',
-                'notification' => 'Gagal dihapus',
-                'errors'       => ['exception' => [$e->getMessage()]]
+                'success' => false,
+                'message' => 'Gagal menghapus pesan',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

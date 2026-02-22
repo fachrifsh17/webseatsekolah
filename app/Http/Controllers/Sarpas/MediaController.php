@@ -39,16 +39,23 @@ class MediaController extends Controller
             }
 
             $data = $query->latest()->paginate($perPage);
+            $paginationData = $data->toArray();
 
             return response()->json([
                 'success' => true,
                 'data'    => MediaResource::collection($data),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => $data->perPage(),
-                    'total'        => $data->total(),
-                    'filter_album' => $albumId ?? 'Semua'
+                    'current_page'  => $data->currentPage(),
+                    'last_page'     => $data->lastPage(),
+                    'per_page'      => $data->perPage(),
+                    'total'         => $data->total(),
+                    'from'          => $data->firstItem(),
+                    'to'            => $data->lastItem(),
+                    'next_page_url' => $data->nextPageUrl(),
+                    'prev_page_url' => $data->previousPageUrl(),
+                    'path'          => $paginationData['path'],
+                    'links'         => $paginationData['links'],
+                    'filter_album'  => $albumId ?? 'Semua'
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {

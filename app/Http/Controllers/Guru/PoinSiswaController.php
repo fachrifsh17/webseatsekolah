@@ -89,14 +89,31 @@ class PoinSiswaController extends Controller
 
             $perPage = min((int) $request->get('per_page', 20), 100);
             $data = $query->orderByDesc('tanggal')->paginate($perPage);
+            
+            // Konversi ke array untuk memproses metadata manual
+            $paginationData = $data->toArray();
 
             return response()->json([
                 'success' => true,
                 'data' => PoinSiswaResource::collection($data),
                 'meta' => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'total'        => $data->total(),
+                    'current_page'  => $paginationData['current_page'],
+                    'last_page'     => $paginationData['last_page'],
+                    'per_page'      => $paginationData['per_page'],
+                    'total'         => $paginationData['total'],
+                    'from'          => $paginationData['from'],
+                    'to'            => $paginationData['to'],
+                    'path'          => $paginationData['path'],
+                    'next_page_url' => $paginationData['next_page_url'],
+                    'prev_page_url' => $paginationData['prev_page_url'],
+                    'links'         => array_map(function ($link) {
+                        return [
+                            'url'    => $link['url'],
+                            'label'  => $link['label'],
+                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                            'active' => $link['active'],
+                        ];
+                    }, $paginationData['links']),
                 ],
             ], Response::HTTP_OK);
 

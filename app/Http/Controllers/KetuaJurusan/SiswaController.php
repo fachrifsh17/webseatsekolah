@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\KetuaJurusan;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Siswa, Kelas, User};
+use App\Models\{Siswa, Kelas, User, TahunAjaran};
 use App\Http\Resources\SiswaResource;
 use App\Exports\SiswaExport;
 use Maatwebsite\Excel\Facades\Excel;
@@ -38,22 +38,24 @@ class SiswaController extends Controller
     public function index(Request $request): JsonResponse
     {
         $jurusan = $this->getJurusanKetua();
+        $taAktif = TahunAjaran::where('is_active', true)->first();
 
-        if (!$jurusan) {
+        if (!$jurusan || !$taAktif) {
             return response()->json([
                 'success' => false, 
-                'message' => 'Akses ditolak.'
+                'message' => 'Akses ditolak atau tahun ajaran aktif tidak ditemukan.'
             ], Response::HTTP_FORBIDDEN);
         }
 
         $query = Siswa::with(['user', 'kelas.jurusan', 'orangtua', 'kelas.tahunAjaran']);
 
-        // Proteksi Jurusan
-        $query->whereHas('kelas', function ($q) use ($jurusan) {
-            $q->where('jurusan_id', $jurusan->id);
+        // Filter: Hanya siswa di jurusan ketua DAN di kelas yang aktif pada tahun ajaran aktif
+        $query->whereHas('kelas', function ($q) use ($jurusan, $taAktif) {
+            $q->where('jurusan_id', $jurusan->id)
+              ->where('tahun_ajaran_id', $taAktif->id)
+              ->where('is_active', true);
         });
 
-        // Filter berdasarkan kelas yang diklik
         if ($request->filled('kelas_id')) {
             $query->where('kelas_id', $request->kelas_id);
         }
@@ -66,17 +68,34 @@ class SiswaController extends Controller
             });
         }
 
-        $perPage = $request->get('per_page', 20);
+        $perPage = (int) $request->get('per_page', 20);
         $data = $query->latest()->paginate($perPage);
+        
+        // Transformasi pagination ke array untuk mengambil links
+        $paginationData = $data->toArray();
 
         return response()->json([
             'success' => true,
             'message' => 'Daftar siswa berhasil diambil.',
             'data'    => SiswaResource::collection($data),
             'meta'    => [
-                'current_page' => $data->currentPage(),
-                'last_page'    => $data->lastPage(),
-                'total'        => $data->total(),
+                'current_page'  => $paginationData['current_page'],
+                'last_page'     => $paginationData['last_page'],
+                'per_page'      => $paginationData['per_page'],
+                'total'         => $paginationData['total'],
+                'from'          => $paginationData['from'],
+                'to'            => $paginationData['to'],
+                'path'          => $paginationData['path'],
+                'next_page_url' => $paginationData['next_page_url'],
+                'prev_page_url' => $paginationData['prev_page_url'],
+                'links'         => array_map(function ($link) {
+                    return [
+                        'url'    => $link['url'],
+                        'label'  => $link['label'],
+                        'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                        'active' => $link['active'],
+                    ];
+                }, $paginationData['links']),
             ],
         ], Response::HTTP_OK);
     }
@@ -84,6 +103,7 @@ class SiswaController extends Controller
     public function store(Request $request): JsonResponse
     {
         $jurusan = $this->getJurusanKetua();
+        $taAktif = TahunAjaran::where('is_active', true)->first();
         
         $request->validate([
             'nama_lengkap' => 'required|string|max:255',
@@ -93,9 +113,11 @@ class SiswaController extends Controller
             'jenis_kelamin'=> 'required|in:L,P',
         ]);
 
-        // Pastikan kelas tersebut memang milik jurusannya
+        // Proteksi: Pastikan kelas yang dipilih milik jurusan ketua, aktif, dan di TA aktif
         $kelas = Kelas::where('id', $request->kelas_id)
             ->where('jurusan_id', $jurusan->id)
+            ->where('tahun_ajaran_id', $taAktif->id)
+            ->where('is_active', true)
             ->firstOrFail();
 
         try {
@@ -108,7 +130,10 @@ class SiswaController extends Controller
                 'role'     => 'Siswa'
             ]);
 
-            $siswa = Siswa::create(array_merge($request->all(), ['user_id' => $user->id]));
+            $siswa = Siswa::create(array_merge($request->all(), [
+                'user_id' => $user->id,
+                'is_active' => true // Siswa baru otomatis aktif
+            ]));
 
             DB::commit();
             return response()->json([
@@ -148,10 +173,7 @@ class SiswaController extends Controller
     {
         $jurusan = $this->getJurusanKetua();
         if (!$jurusan || $siswa->kelas->jurusan_id !== $jurusan->id) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Akses ditolak.'
-            ], Response::HTTP_FORBIDDEN);
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
         }
 
         $request->validate([
@@ -167,16 +189,10 @@ class SiswaController extends Controller
                 $siswa->user->update(['name' => $request->nama_lengkap]);
             }
             DB::commit();
-            return response()->json([
-                'success' => true, 
-                'message' => 'Data berhasil diperbarui.'
-            ], Response::HTTP_OK);
+            return response()->json(['success' => true, 'message' => 'Data berhasil diperbarui.'], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false, 
-                'message' => 'Gagal update data.'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json(['success' => false, 'message' => 'Gagal update data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -184,10 +200,7 @@ class SiswaController extends Controller
     {
         $jurusan = $this->getJurusanKetua();
         if (!$jurusan || $siswa->kelas->jurusan_id !== $jurusan->id) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Akses ditolak.'
-            ], Response::HTTP_FORBIDDEN);
+            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
         }
 
         try {
@@ -196,33 +209,64 @@ class SiswaController extends Controller
             $siswa->delete();
             if ($user) $user->delete();
             DB::commit();
-            return response()->json([
-                'success' => true, 
-                'message' => 'Data berhasil dihapus.'
-            ], Response::HTTP_OK);
+            return response()->json(['success' => true, 'message' => 'Data berhasil dihapus.'], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false, 
-                'message' => 'Gagal menghapus data.'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function export(Request $request)
     {
-        $jurusan = $this->getJurusanKetua();
-        if (!$jurusan) abort(Response::HTTP_FORBIDDEN);
+        try {
+            $jurusan = $this->getJurusanKetua();
+            $taAktif = TahunAjaran::where('is_active', true)->first();
 
-        $query = Siswa::whereHas('kelas', fn($q) => $q->where('jurusan_id', $jurusan->id));
-        
-        if ($request->filled('kelas_id')) {
-            $query->where('kelas_id', $request->kelas_id);
+            if (!$jurusan || !$taAktif) abort(Response::HTTP_FORBIDDEN);
+
+            $query = Siswa::query()->with(['kelas.tahunAjaran'])
+                ->whereHas('kelas', function($q) use ($jurusan, $taAktif) {
+                    $q->where('jurusan_id', $jurusan->id)
+                      ->where('tahun_ajaran_id', $taAktif->id)
+                      ->where('is_active', true);
+                });
+            
+            $nameParts = ['DATA_SISWA'];
+            $nameParts[] = strtoupper(str_replace([' ', '-'], '_', $jurusan->nama_jurusan));
+
+            $kelasData = null;
+            if ($request->filled('kelas_id')) {
+                $kelasData = Kelas::find($request->kelas_id);
+                if ($kelasData) {
+                    $nameParts[] = strtoupper(str_replace([' ', '-'], '_', $kelasData->nama_kelas));
+                    $query->where('kelas_id', $request->kelas_id);
+                }
+            }
+
+            $nameParts[] = strtoupper(str_replace(['/', ' '], '_', $taAktif->nama));
+            $nameParts[] = strtoupper($taAktif->semester);
+
+            $isActive = $request->get('is_active', 1);
+            $nameParts[] = $isActive ? 'AKTIF' : 'TIDAK_AKTIF';
+
+            $filename = implode('_', $nameParts) . '.xlsx';
+
+            if (ob_get_contents()) ob_end_clean();
+
+            return Excel::download(
+                new SiswaExport(
+                    $query, 
+                    DB::table('profil_sekolah')->first(), 
+                    DB::table('data_kontak')->first(), 
+                    $jurusan,
+                    $request->all()
+                ), 
+                $filename
+            );
+
+        } catch (Throwable $e) {
+            Log::error('Export Siswa Kajur Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal ekspor data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        return Excel::download(
-            new SiswaExport($query, DB::table('profil_sekolah')->first(), DB::table('data_kontak')->first(), $jurusan), 
-            'Data_Siswa_' . Str::slug($jurusan->nama_jurusan) . '.xlsx'
-        );
     }
 }

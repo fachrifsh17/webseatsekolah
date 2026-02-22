@@ -3,24 +3,13 @@
 namespace App\Http\Controllers\KetuaJurusan;
 
 use App\Http\Controllers\Controller;
-use App\Models\GuruMapel;
-use App\Models\JamSekolah;
-use App\Models\TahunAjaran;
-use App\Models\GuruStaf;
-use App\Models\MataPelajaran;
-use App\Models\Kelas;
-use App\Models\ProfilSekolah;
-use App\Models\DataKontak;
+use App\Models\{GuruMapel, JamSekolah, TahunAjaran, GuruStaf, MataPelajaran, Kelas, ProfilSekolah, DataKontak};
 use App\Http\Resources\GuruMapelResource;
-use App\Http\Requests\StoreGuruMapelRequest;
-use App\Http\Requests\UpdateGuruMapelRequest;
+use App\Http\Requests\{StoreGuruMapelRequest, UpdateGuruMapelRequest};
 use App\Exports\GuruMapelExport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Support\Facades\{DB, Log, Auth};
 use Illuminate\Support\Str;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
@@ -87,17 +76,32 @@ class GuruMapelController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = $this->applyFilters($request);
-        $perPage = $request->get('per_page', 10);
+        $perPage = (int) $request->get('per_page', 10);
         $assignments = $query->paginate($perPage);
+        
+        $paginationData = $assignments->toArray();
 
         return response()->json([
             'success' => true,
             'data'    => GuruMapelResource::collection($assignments),
             'meta'    => [
-                'current_page' => $assignments->currentPage(),
-                'last_page'    => $assignments->last_page(),
-                'per_page'     => $assignments->perPage(),
-                'total'        => $assignments->total(),
+                'current_page'  => $paginationData['current_page'],
+                'last_page'     => $paginationData['last_page'],
+                'per_page'      => $paginationData['per_page'],
+                'total'         => $paginationData['total'],
+                'from'          => $paginationData['from'],
+                'to'            => $paginationData['to'],
+                'path'          => $paginationData['path'],
+                'next_page_url' => $paginationData['next_page_url'],
+                'prev_page_url' => $paginationData['prev_page_url'],
+                'links'         => array_map(function ($link) {
+                    return [
+                        'url'    => $link['url'],
+                        'label'  => $link['label'],
+                        'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                        'active' => $link['active'],
+                    ];
+                }, $paginationData['links']),
             ],
         ], Response::HTTP_OK);
     }
@@ -107,11 +111,13 @@ class GuruMapelController extends Controller
         try {
             $query = $this->applyFilters($request);
             $namaJurusan = $this->getNamaJurusan();
+            $tahunAktif = TahunAjaran::where('is_active', 1)->first();
             
             $filters = [
                 'q'            => $request->get('q'),
                 'hari'         => $request->get('hari'),
                 'tahun_ajaran' => 'Semua',
+                'semester'     => 'Semua', 
                 'guru'         => 'Semua Guru',
                 'mapel'        => 'Semua Mapel',
                 'kelas'        => 'Semua Kelas',
@@ -119,50 +125,66 @@ class GuruMapelController extends Controller
                 'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Hanya Mapel Aktif'
             ];
 
-            $nameParts = [$namaJurusan];
+            $nameParts = ['JADWAL_GURU_MAPEL'];
 
             if ($request->filled('tahun_ajaran_id')) {
                 $tahun = TahunAjaran::find($request->tahun_ajaran_id);
-                $filters['tahun_ajaran'] = $tahun->nama ?? 'Semua';
-                $nameParts[] = $filters['tahun_ajaran'];
+            } else {
+                $tahun = $tahunAktif;
             }
 
-            if ($request->filled('tipe_mapel')) {
-                $nameParts[] = $request->tipe_mapel;
+            if ($tahun) {
+                $filters['tahun_ajaran'] = $tahun->nama;
+                $filters['semester'] = $tahun->semester; 
+                $taClean = str_replace(['/', ' '], '_', $tahun->nama);
+                $nameParts[] = $taClean . '_' . strtoupper($tahun->semester);
+            }
+
+            if ($namaJurusan) {
+                $nameParts[] = strtoupper(Str::slug($namaJurusan, '_'));
             }
 
             if ($request->filled('guru_staf_id')) {
                 $guru = GuruStaf::find($request->guru_staf_id);
-                $filters['guru'] = $guru->nama ?? 'Semua Guru';
-                $nameParts[] = $filters['guru'];
+                if ($guru) {
+                    $filters['guru'] = $guru->nama;
+                    $nameParts[] = strtoupper(Str::slug($guru->nama, '_'));
+                }
             }
 
             if ($request->filled('mata_pelajaran_id')) {
                 $mapel = MataPelajaran::find($request->mata_pelajaran_id);
-                $filters['mapel'] = $mapel->nama_mapel ?? 'Semua Mapel';
-                $nameParts[] = $filters['mapel'];
+                if ($mapel) {
+                    $filters['mapel'] = $mapel->nama_mapel;
+                    $nameParts[] = strtoupper(Str::slug($mapel->nama_mapel, '_'));
+                }
             }
 
             if ($request->filled('kelas_id')) {
                 $kelas = Kelas::find($request->kelas_id);
-                $filters['kelas'] = $kelas->nama_kelas ?? 'Semua Kelas';
-                $nameParts[] = $filters['kelas'];
+                if ($kelas) {
+                    $filters['kelas'] = $kelas->nama_kelas;
+                    $nameParts[] = strtoupper(Str::slug($kelas->nama_kelas, '_'));
+                }
             }
 
             if ($request->filled('hari')) {
-                $nameParts[] = $request->hari;
+                $nameParts[] = strtoupper($request->hari);
             }
 
             if ($request->filled('q')) {
-                $nameParts[] = 'search_' . $request->q;
+                $nameParts[] = 'SEARCH_' . strtoupper(Str::slug($request->q, '_'));
             }
 
-            $profil = ProfilSekolah::first();
-            $kontak = DataKontak::first();
+            $nameParts[] = 'AKTIF';
 
-            $fullLabel = implode('_', $nameParts);
-            $fileName = 'Jadwal_' . Str::slug($fullLabel, '_') . '_' . now()->format('Ymd_His') . '.xlsx';
+            $profil = ProfilSekolah::first() ?? new ProfilSekolah();
+            $kontak = DataKontak::first() ?? new DataKontak();
+
+            $fileName = implode('_', $nameParts) . '.xlsx';
             
+            if (ob_get_contents()) ob_end_clean();
+
             return Excel::download(new GuruMapelExport($query, $profil, $kontak, $filters), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Guru Mapel Error', ['error' => $e->getMessage()]);

@@ -68,16 +68,19 @@ class PresensiController extends Controller
                           ->orderBy('id', 'desc')
                           ->paginate($perPage);
 
+            // Transformasi data untuk menyertakan meta paginasi mendalam
+            $paginationData = $data->toArray();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Data presensi berhasil diambil.',
                 'header' => [
                     'nama' => $siswa?->nama_lengkap,
                     'kelas' => $siswa?->kelas?->nama_kelas,
-                    'tahun_ajaran' => $tahunAktif?->nama?? 'Tidak Diketahui',
+                    'tahun_ajaran' => $tahunAktif?->nama ?? 'Tidak Diketahui',
                     'semester' => $tahunAktif?->semester ?? '-',
                 ],
-                'data' => $data->getCollection()->map(function($item) {
+                'data' => collect($data->items())->map(function($item) {
                     return [
                         'id' => $item->id,
                         'tanggal' => Carbon::parse($item->tanggal)->format('Y-m-d'),
@@ -85,11 +88,25 @@ class PresensiController extends Controller
                         'keterangan' => $item->keterangan,
                     ];
                 }),
-                'pagination' => [
-                    'current_page' => $data->currentPage(),
-                    'last_page' => $data->lastPage(),
-                    'total' => $data->total(),
-                ]
+                'meta' => [
+                    'current_page'  => $paginationData['current_page'],
+                    'last_page'     => $paginationData['last_page'],
+                    'per_page'      => $paginationData['per_page'],
+                    'total'         => $paginationData['total'],
+                    'from'          => $paginationData['from'],
+                    'to'            => $paginationData['to'],
+                    'path'          => $paginationData['path'],
+                    'next_page_url' => $paginationData['next_page_url'],
+                    'prev_page_url' => $paginationData['prev_page_url'],
+                    'links'         => array_map(function ($link) {
+                        return [
+                            'url'    => $link['url'],
+                            'label'  => $link['label'],
+                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                            'active' => $link['active'],
+                        ];
+                    }, $paginationData['links']),
+                ],
             ], Response::HTTP_OK);
 
         } catch (Throwable $e) {

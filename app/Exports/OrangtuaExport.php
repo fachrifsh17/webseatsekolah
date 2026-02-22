@@ -20,29 +20,25 @@ use Illuminate\Support\Facades\DB;
 
 class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
 {
-    // Tambahkan properti $jurusanData
     protected $queryBuilder, $profil, $kontak, $kelasData, $jurusanData, $filters, $tahunAjaranText, $tahunAjaranId;
 
-    // Tambahkan $jurusanData ke parameter constructor (default null)
     public function __construct($queryBuilder, $profil, $kontak, $kelasData = null, $filters = [], $jurusanData = null)
     {
         $this->queryBuilder = $queryBuilder;
         $this->profil = $profil;
         $this->kontak = $kontak;
         $this->kelasData = $kelasData;
-        $this->jurusanData = $jurusanData; // Simpan data jurusan
+        $this->jurusanData = $jurusanData; 
         $this->filters = $filters;
 
         $taId = $filters['tahun_ajaran_id'] ?? null;
         
         if ($taId) {
             $ta = DB::table('tahun_ajaran')->where('id', $taId)->first();
-            // Langsung dibuat uppercase dan rapi di sini
             $this->tahunAjaranText = $ta ? strtoupper($ta->nama . ' ' . $ta->semester) : '-';
             $this->tahunAjaranId = $taId;
         } else {
             $ta = DB::table('tahun_ajaran')->where('is_active', 1)->first();
-            // Hilangkan teks (Aktif) agar judul utama tetap formal
             $this->tahunAjaranText = $ta ? strtoupper($ta->nama . ' ' . $ta->semester) : '-';
             $this->tahunAjaranId = $ta?->id;
         }
@@ -72,7 +68,6 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
             if ($this->kelasData) {
                 return $anak->kelas_id == $this->kelasData->id;
             }
-            // Tambahkan filter mapping jika hanya jurusan yang dipilih
             if ($this->jurusanData) {
                 return $anak->kelas->jurusan_id == $this->jurusanData->id;
             }
@@ -91,28 +86,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
         ];
     }
 
-    public function styles(Worksheet $sheet)
-    {
-        $lastRow = $sheet->getHighestRow();
-        $lastCol = 'E';
-
-        $sheet->getStyle("A11:{$lastCol}11")->applyFromArray([
-            'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_WHITE], 'name' => 'Arial', 'size' => 10],
-            'fill' => [
-                'fillType' => Fill::FILL_SOLID,
-                'startColor' => ['argb' => 'FF2E75B6']
-            ],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
-        ]);
-
-        $sheet->getStyle("A11:{$lastCol}{$lastRow}")->applyFromArray([
-            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FFCCCCCC']]],
-            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
-            'font' => ['name' => 'Arial', 'size' => 10]
-        ]);
-
-        $sheet->getStyle("D12:D{$lastRow}")->getAlignment()->setWrapText(true);
-    }
+    public function styles(Worksheet $sheet) {}
 
     public function registerEvents(): array
     {
@@ -120,8 +94,9 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
                 $lastCol = 'E';
+                $lastRow = $sheet->getHighestRow();
 
-                // Header Sekolah
+                // Header Sekolah (Kop)
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
@@ -139,33 +114,54 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12)->setName('Arial');
                 $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // Tahun Pelajaran - Sekarang lebih bersih
+                // Tahun Pelajaran
                 $sheet->mergeCells("A8:{$lastCol}8");
                 $sheet->setCellValue('A8', "TAHUN PELAJARAN " . $this->tahunAjaranText);
                 $sheet->getStyle('A8')->getFont()->setBold(true)->setSize(11)->setName('Arial');
                 $sheet->getStyle("A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // Baris Info Filter (A9)
+                // Filter Info (Baris 9)
                 $filterInfo = [];
-                // Info Jurusan
                 $filterInfo[] = "Jurusan: " . ($this->jurusanData ? $this->jurusanData->nama_jurusan : 'Semua Jurusan');
-                // Info Kelas
                 $filterInfo[] = "Kelas: " . ($this->kelasData ? $this->kelasData->nama_kelas : 'Semua Kelas');
-                // Info Status
                 $activeStatus = $this->filters['is_active'] ?? '1';
                 $filterInfo[] = "Status: " . ($activeStatus == '1' ? 'Aktif' : 'Non-Aktif');
-                
                 if (!empty($this->filters['q'])) { $filterInfo[] = "Pencarian: " . $this->filters['q']; }
 
                 $sheet->mergeCells("A9:{$lastCol}9");
                 $sheet->setCellValue('A9', implode(' | ', $filterInfo));
                 $sheet->getStyle('A9')->getFont()->setItalic(true)->setName('Arial')->setSize(9);
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+                // Baris 10 dikosongkan untuk jarak sebelum tabel
                 
-                $sheet->mergeCells("A10:{$lastCol}10");
-                $sheet->setCellValue('A10', "Tanggal Cetak: " . Carbon::now()->format('d/m/Y H:i'));
-                $sheet->getStyle("A10")->getFont()->setName('Arial')->setSize(8);
-                $sheet->getStyle("A10")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                // Header Tabel (Baris 11)
+                $sheet->getStyle("A11:{$lastCol}11")->applyFromArray([
+                    'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_BLACK], 'name' => 'Arial', 'size' => 10],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
+                ]);
+
+                // Border dan Font Tabel
+                $sheet->getStyle("A11:{$lastCol}{$lastRow}")->applyFromArray([
+                    'borders' => [
+                        'allBorders' => [
+                            'borderStyle' => Border::BORDER_THIN,
+                            'color' => ['argb' => Color::COLOR_BLACK]
+                        ]
+                    ],
+                    'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+                    'font' => ['name' => 'Arial', 'size' => 10]
+                ]);
+
+                // Tengah khusus untuk ID dan Status
+                $sheet->getStyle("A12:A{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("E12:E{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("D12:D{$lastRow}")->getAlignment()->setWrapText(true);
+
+                // --- TANGGAL CETAK (DI BAWAH KIRI) ---
+                $footerRow = $lastRow + 2; 
+                $sheet->setCellValue("A{$footerRow}", "Dicetak pada: " . Carbon::now()->format('d/m/Y H:i'));
+                $sheet->getStyle("A{$footerRow}")->getFont()->setItalic(true)->setName('Arial')->setSize(9);
             },
         ];
     }

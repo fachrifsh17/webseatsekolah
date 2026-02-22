@@ -22,7 +22,6 @@ class KurikulumController extends Controller
         $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
         
-        // Proteksi Policy
         $this->authorizeResource(Kurikulum::class, 'kurikulum');
     }
 
@@ -30,23 +29,41 @@ class KurikulumController extends Controller
     {
         try {
             $perPage = min((int) request()->get('per_page', 12), 100);
-            $data = Kurikulum::orderBy('is_active', 'desc')
-                             ->orderBy('created_at', 'desc')
-                             ->paginate($perPage);
+            $items = Kurikulum::orderBy('is_active', 'desc')
+                               ->orderBy('created_at', 'desc')
+                               ->paginate($perPage);
+
+            $paginationData = $items->toArray();
 
             return response()->json([
                 'success' => true,
-                'data'    => KurikulumResource::collection($data),
+                'data'    => KurikulumResource::collection($items),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => $data->perPage(),
-                    'total'        => $data->total(),
+                    'current_page'  => $paginationData['current_page'],
+                    'last_page'     => $paginationData['last_page'],
+                    'per_page'      => $paginationData['per_page'],
+                    'total'         => $paginationData['total'],
+                    'from'          => $paginationData['from'],
+                    'to'            => $paginationData['to'],
+                    'path'          => $paginationData['path'],
+                    'next_page_url' => $paginationData['next_page_url'],
+                    'prev_page_url' => $paginationData['prev_page_url'],
+                    'links'         => array_map(function ($link) {
+                        return [
+                            'url'    => $link['url'],
+                            'label'  => $link['label'],
+                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                            'active' => $link['active'],
+                        ];
+                    }, $paginationData['links']),
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Kurikulum Index Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal mengambil daftar kurikulum'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal mengambil daftar kurikulum'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -67,7 +84,6 @@ class KurikulumController extends Controller
 
         DB::beginTransaction();
         try {
-            // Logika meng-nonaktifkan kurikulum lain saat yang baru dibuat
             Kurikulum::query()->update(['is_active' => 0]);
             $validated['is_active'] = 1;
 
@@ -85,7 +101,10 @@ class KurikulumController extends Controller
                 Storage::disk('public')->delete($validated['file_jadwal_path']);
             }
             Log::error('Kurikulum Store Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal menambahkan kurikulum'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal menambahkan kurikulum'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -136,7 +155,10 @@ class KurikulumController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Kurikulum Update Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal memperbarui kurikulum'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal memperbarui kurikulum'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -155,11 +177,17 @@ class KurikulumController extends Controller
             $kurikulum->delete();
             DB::commit();
             if ($filePath) Storage::disk('public')->delete($filePath);
-            return response()->json(['success' => true, 'message' => 'Kurikulum berhasil dihapus.'], Response::HTTP_OK);
+            return response()->json([
+                'success' => true, 
+                'message' => 'Kurikulum berhasil dihapus.'
+            ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Kurikulum Delete Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal menghapus kurikulum.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal menghapus kurikulum.'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

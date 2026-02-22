@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Berita, Pengumuman, Siswa, Presensi, PoinSiswa, KalenderAkademik};
+use App\Models\{Berita, Pengumuman, Siswa, Presensi, PoinSiswa, KalenderAkademik, TahunAjaran};
 use App\Http\Resources\{BeritaResource};
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -27,6 +27,8 @@ class DashboardController extends Controller
             $user = $request->user();
             $hariIni = today();
             $tigaHariLagi = today()->addDays(3);
+            
+            $activeTaIds = TahunAjaran::where('is_active', 1)->pluck('id');
 
             $siswa = $this->getSiswa($user->id);
 
@@ -40,7 +42,7 @@ class DashboardController extends Controller
             $poin = $this->getPoin($siswa->id);
             $statsPresensi = $this->getPresensiStats($siswa->id);
             $setting = DB::table('sekolah_setting')->first();
-            $akademik = $this->getAkademikData($hariIni, $tigaHariLagi);
+            $akademik = $this->getAkademikData($hariIni, $tigaHariLagi, $activeTaIds);
 
             $data = [
                 'user_info' => [
@@ -102,10 +104,11 @@ class DashboardController extends Controller
             ->pluck('total', 'status');
     }
 
-    private function getAkademikData($hariIni, $tigaHariLagi)
+    private function getAkademikData($hariIni, $tigaHariLagi, $activeTaIds)
     {
         return [
-            'kalender' => KalenderAkademik::where(function ($q) use ($hariIni, $tigaHariLagi) {
+            'kalender' => KalenderAkademik::whereIn('tahun_ajaran_id', $activeTaIds)
+                ->where(function ($q) use ($hariIni, $tigaHariLagi) {
                     $q->whereBetween('tanggal_mulai', [$hariIni, $tigaHariLagi])
                       ->orWhere(function ($sub) use ($hariIni) {
                           $sub->where('tanggal_mulai', '<=', $hariIni)

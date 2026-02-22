@@ -39,7 +39,8 @@ class SiswaResource extends JsonResource
             })->values() : [],
 
             'foto'          => $this->foto,
-            'foto_url'      => $this->foto ? Storage::url($this->foto) : null,
+            // Menggunakan url() untuk memastikan link menjadi absolut (http://...)
+            'foto_url'      => $this->foto ? url(Storage::url($this->foto)) : null,
             'no_telp_siswa' => $this->no_telp_siswa,
             'alamat'        => $this->alamat,
             'is_active'     => $this->is_active !== null ? (int) $this->is_active : null,

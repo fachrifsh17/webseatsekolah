@@ -20,6 +20,7 @@ class StoreJurusanRequest extends FormRequest
             'nama_jurusan' => ['required', 'string', 'max:100'],
             'deskripsi'    => ['nullable', 'string'],
             'foto'         => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'is_active'    => ['nullable', 'boolean'], // <-- Tambahkan validasi boolean
         ];
     }
 
@@ -33,6 +34,7 @@ class StoreJurusanRequest extends FormRequest
             'foto.image'            => 'File harus berupa gambar.',
             'foto.mimes'            => 'Format gambar yang didukung: JPG, JPEG, PNG, dan WEBP.',
             'foto.max'              => 'Ukuran gambar maksimal adalah 5MB.',
+            'is_active.boolean'     => 'Status aktif harus berupa true atau false.', // <-- Pesan error baru
         ];
     }
 
@@ -42,6 +44,7 @@ class StoreJurusanRequest extends FormRequest
             'nama_jurusan' => 'Nama jurusan',
             'deskripsi'    => 'Deskripsi',
             'foto'         => 'Foto jurusan',
+            'is_active'    => 'Status aktif', // <-- Atribut baru
         ];
     }
 

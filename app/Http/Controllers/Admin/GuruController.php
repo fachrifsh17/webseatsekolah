@@ -7,6 +7,7 @@ use App\Models\GuruStaf;
 use App\Models\Jurusan;
 use App\Models\User;
 use App\Models\DataKontak;
+use App\Models\ProfilSekolah;
 use App\Http\Resources\GuruResource;
 use App\Http\Requests\StoreGuruRequest;
 use App\Http\Requests\UpdateGuruRequest;
@@ -60,10 +61,16 @@ class GuruController extends Controller
             'success' => true,
             'data'    => GuruResource::collection($data),
             'meta'    => [
-                'current_page' => $data->currentPage(),
-                'last_page'    => $data->lastPage(),
-                'per_page'     => $data->perPage(),
-                'total'        => $data->total(),
+                'current_page'  => $data->currentPage(),
+                'last_page'     => $data->lastPage(),
+                'per_page'      => $data->perPage(),
+                'total'         => $data->total(),
+                'from'          => $data->firstItem(),
+                'to'            => $data->lastItem(),
+                'next_page_url' => $data->nextPageUrl(),
+                'prev_page_url' => $data->previousPageUrl(),
+                'path'          => $data->path(),
+                'links'         => $data->linkCollection()->toArray(),
             ],
         ], Response::HTTP_OK);
     }
@@ -79,35 +86,40 @@ class GuruController extends Controller
                 $filters['is_active'] = 1;
             }
 
-            $labels = [];
+            $nameParts = ['DATA_GURU_STAF'];
+
+            $tahunAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+            if ($tahunAktif) {
+                $taClean = str_replace(['/', ' '], '_', $tahunAktif->nama);
+                $semester = strtoupper($tahunAktif->semester);
+                $nameParts[] = "{$taClean}_{$semester}";
+            }
 
             if (!empty($filters['q'])) {
-                $labels[] = 'Cari_' . str_replace(' ', '_', $filters['q']);
+                $nameParts[] = strtoupper(str_replace(' ', '_', $filters['q']));
             }
 
             if (!empty($filters['jabatan_fungsional'])) {
-                $labels[] = str_replace(' ', '_', $filters['jabatan_fungsional']);
-            }
-
-            if (!empty($filters['status_kepegawaian'])) {
-                $labels[] = str_replace(' ', '_', $filters['status_kepegawaian']);
+                $nameParts[] = strtoupper(str_replace(' ', '_', $filters['jabatan_fungsional']));
             }
 
             if (!empty($filters['jurusan_id'])) {
                 $jurusan = Jurusan::find($filters['jurusan_id']);
                 if ($jurusan) {
-                    $cleanJurusan = str_replace(' ', '_', preg_replace('/[^A-Za-z0-9 ]/', '', $jurusan->nama_jurusan));
-                    $labels[] = $cleanJurusan;
+                    $cleanJurusan = strtoupper(str_replace(' ', '_', preg_replace('/[^A-Za-z0-9 ]/', '', $jurusan->nama_jurusan)));
+                    $nameParts[] = $cleanJurusan;
                 }
             }
 
-            $suffix = !empty($labels) ? '_' . implode('_', $labels) : '';
+            $nameParts[] = 'AKTIF';
             
-            $profil = DB::table('profil_sekolah')->first();
-            $kontak = DB::table('data_kontak')->first();
+            $profil = ProfilSekolah::first();
+            $kontak = DataKontak::first();
 
-            $fileName = 'Data_Guru_Staf' . $suffix . '_' . now()->format('Ymd_His') . '.xlsx';
+            $fileName = implode('_', $nameParts) . '.xlsx';
             
+            if (ob_get_contents()) ob_end_clean();
+
             return Excel::download(new GuruExport($filters, $profil, $kontak), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Guru Error', ['error' => $e->getMessage()]);
@@ -187,6 +199,17 @@ class GuruController extends Controller
     {
         $validated = $request->validated();
 
+        if (!empty($validated['jurusan_id'])) {
+            $jurusanAktif = Jurusan::where('id', $validated['jurusan_id'])->where('is_active', 1)->exists();
+            if (!$jurusanAktif) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal membuat data guru.',
+                    'errors'  => ['jurusan_id' => ['Jurusan yang dipilih tidak aktif atau tidak ditemukan.']],
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+
         try {
             $guru = DB::transaction(function () use ($request, $validated) {
                 $lastUser = User::where('id', 'like', 'U%')
@@ -206,10 +229,11 @@ class GuruController extends Controller
                 }
 
                 User::create([
-                    'id'        => $newUserId,
-                    'username'  => $finalUsername, 
-                    'password'  => Hash::make($finalUsername),
-                    'is_active' => 1,
+                    'id'           => $newUserId,
+                    'username'     => $finalUsername, 
+                    'password'     => Hash::make($finalUsername),
+                    'current_role' => 'Guru',
+                    'is_active'    => 1,
                 ]);
 
                 DB::table('user_roles')->insert([
@@ -259,6 +283,18 @@ class GuruController extends Controller
         }
 
         $validated = $request->validated();
+
+        if (!empty($validated['jurusan_id'])) {
+            $jurusanAktif = Jurusan::where('id', $validated['jurusan_id'])->where('is_active', 1)->exists();
+            if (!$jurusanAktif) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal memperbarui data guru.',
+                    'errors'  => ['jurusan_id' => ['Jurusan yang dipilih tidak aktif atau tidak ditemukan.']],
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+
         $oldFoto = $guru->foto;
 
         if ($request->hasFile('foto')) {
@@ -275,6 +311,10 @@ class GuruController extends Controller
         try {
             DB::transaction(function () use ($guru, $validated) {
                 $guru->update($validated);
+
+                if (!empty($validated['nip']) && $guru->user) {
+                    $guru->user->update(['username' => trim($validated['nip'])]);
+                }
             });
 
             if ($request->hasFile('foto') && $oldFoto && $oldFoto !== $validated['foto']) {
@@ -312,10 +352,8 @@ class GuruController extends Controller
 
         try {
             DB::transaction(function () use ($guru) {
-                // Nonaktifkan profil guru
                 $guru->update(['is_active' => 0]);
                 
-                // Nonaktifkan akun user terkait agar tidak bisa login
                 if ($guru->user_id) {
                     User::where('id', $guru->user_id)->update(['is_active' => 0]);
                 }

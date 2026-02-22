@@ -20,6 +20,12 @@ class Jurusan extends Model
         'nama_jurusan',
         'deskripsi',
         'foto',
+        'is_active', // <-- Tambahkan ini agar bisa di-input/update
+    ];
+
+    // Opsional: Cast is_active agar otomatis jadi boolean di Laravel
+    protected $casts = [
+        'is_active' => 'boolean',
     ];
 
     protected static function boot()
@@ -31,6 +37,11 @@ class Jurusan extends Model
                 $lastId = static::max('id');
                 $num = $lastId ? (int) substr($lastId, 1) + 1 : 1;
                 $model->id = 'J' . str_pad($num, 3, '0', STR_PAD_LEFT);
+            }
+
+            // Set default true jika saat create tidak diisi
+            if (!isset($model->is_active)) {
+                $model->is_active = true;
             }
         });
     }

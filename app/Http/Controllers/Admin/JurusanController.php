@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -27,16 +28,23 @@ class JurusanController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $data = Jurusan::paginate(12);
+            $data = Jurusan::orderBy('created_at', 'desc')->paginate(12);
+            $paginationData = $data->toArray();
 
             return response()->json([
                 'success' => true,
                 'data'    => JurusanResource::collection($data),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => $data->perPage(),
-                    'total'        => $data->total(),
+                    'current_page'  => $data->currentPage(),
+                    'last_page'     => $data->lastPage(),
+                    'per_page'      => $data->perPage(),
+                    'total'         => $data->total(),
+                    'from'          => $data->firstItem(),
+                    'to'            => $data->lastItem(),
+                    'next_page_url' => $data->nextPageUrl(),
+                    'prev_page_url' => $data->previousPageUrl(),
+                    'path'          => $paginationData['path'],
+                    'links'         => $paginationData['links'],
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {

@@ -3,20 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\MataPelajaran;
-use App\Models\Jurusan;
-use App\Models\ProfilSekolah;
-use App\Models\DataKontak;
+use App\Models\{MataPelajaran, Jurusan, ProfilSekolah, DataKontak};
 use App\Http\Resources\MapelResource;
-use App\Http\Requests\StoreMapelRequest;
-use App\Http\Requests\UpdateMapelRequest;
+use App\Http\Requests\{StoreMapelRequest, UpdateMapelRequest};
 use App\Exports\MapelExport;
 use App\Imports\MapelImport;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\{DB, Log, Auth};
+use Illuminate\Http\{JsonResponse, Request};
 use Maatwebsite\Excel\Facades\Excel;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
@@ -29,7 +22,6 @@ class MapelController extends Controller
         $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
         
-        // Injeksi Policy otomatis
         $this->authorizeResource(MataPelajaran::class, 'mapel');
     }
 
@@ -38,9 +30,8 @@ class MapelController extends Controller
         try {
             $query = MataPelajaran::with('jurusan');
 
-            if (!$request->has('show_all')) {
-                $query->where('is_active', 1);
-            }
+            $isActive = $request->get('is_active', 1);
+            $query->where('is_active', $isActive);
 
             if ($request->filled('jurusan_id')) {
                 $query->where('jurusan_id', $request->jurusan_id);
@@ -60,15 +51,22 @@ class MapelController extends Controller
 
             $perPage = $request->get('per_page', 12);
             $data = $query->latest()->paginate($perPage);
+            $paginationData = $data->toArray();
 
             return response()->json([
                 'success' => true,
                 'data'    => MapelResource::collection($data),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => $data->perPage(),
-                    'total'        => $data->total(),
+                    'current_page'  => $data->currentPage(),
+                    'last_page'     => $data->lastPage(),
+                    'per_page'      => $data->perPage(),
+                    'total'         => $data->total(),
+                    'from'          => $data->firstItem(),
+                    'to'            => $data->lastItem(),
+                    'next_page_url' => $data->nextPageUrl(),
+                    'prev_page_url' => $data->previousPageUrl(),
+                    'path'          => $paginationData['path'],
+                    'links'         => $paginationData['links'],
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -83,26 +81,35 @@ class MapelController extends Controller
 
     public function export(Request $request)
     {
-        // Otorisasi Manual untuk method custom
         $this->authorize('viewAny', MataPelajaran::class);
 
         try {
             $filters = $request->only(['search', 'jurusan_id', 'tipe_mapel', 'kategori_mapel']);
+            $filters['is_active'] = $request->get('is_active', 1);
             
             $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 
             $kontak = DataKontak::first() ?? new DataKontak(); 
 
-            $fileNameParts = ['data_mata_pelajaran'];
+            $filenameParts = ['DATA_MATA_PELAJARAN'];
+
+            if ($filters['is_active'] == 0) {
+                $filenameParts[] = 'NON_AKTIF';
+            }
 
             if ($request->filled('jurusan_id')) {
                 $jurusan = Jurusan::find($request->jurusan_id);
                 if ($jurusan) {
-                    $fileNameParts[] = str_replace(' ', '_', strtolower($jurusan->nama_jurusan));
+                    $filenameParts[] = strtoupper(str_replace([' ', '-'], '_', $jurusan->nama_jurusan));
                 }
             }
 
-            $fileNameParts[] = date('Ymd_His');
-            $fileName = implode('_', $fileNameParts) . '.xlsx';
+            if ($request->filled('tipe_mapel')) {
+                $filenameParts[] = strtoupper($request->tipe_mapel);
+            }
+
+            $fileName = implode('_', $filenameParts) . '.xlsx';
+
+            if (ob_get_contents()) ob_end_clean();
 
             return Excel::download(new MapelExport($filters, $profil, $kontak), $fileName);
         } catch (Throwable $e) {
@@ -148,6 +155,17 @@ class MapelController extends Controller
     {
         $validated = $request->validated();
 
+        if (!empty($validated['jurusan_id'])) {
+            $jurusanAktif = Jurusan::where('id', $validated['jurusan_id'])->where('is_active', 1)->exists();
+            if (!$jurusanAktif) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal menambahkan mata pelajaran.',
+                    'errors'  => ['jurusan_id' => ['Jurusan yang dipilih tidak aktif atau tidak ditemukan.']],
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+
         if (MataPelajaran::where('nama_mapel', $validated['nama_mapel'])
             ->where('jurusan_id', $validated['jurusan_id'] ?? null)
             ->exists()) {
@@ -187,6 +205,17 @@ class MapelController extends Controller
     {
         $validated = $request->validated();
 
+        if (!empty($validated['jurusan_id'])) {
+            $jurusanAktif = Jurusan::where('id', $validated['jurusan_id'])->where('is_active', 1)->exists();
+            if (!$jurusanAktif) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal memperbarui mata pelajaran.',
+                    'errors'  => ['jurusan_id' => ['Jurusan yang dipilih tidak aktif atau tidak ditemukan.']],
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+
         if (!empty($validated['nama_mapel'])) {
             $exists = MataPelajaran::where('nama_mapel', $validated['nama_mapel'])
                 ->where('jurusan_id', $validated['jurusan_id'] ?? $mapel->jurusan_id)
@@ -222,7 +251,6 @@ class MapelController extends Controller
     public function destroy(MataPelajaran $mapel): JsonResponse
     {
         try {
-            // Menggunakan logic update is_active sesuai kodingan awalmu
             DB::transaction(fn() => $mapel->update(['is_active' => 0]));
 
             return response()->json([

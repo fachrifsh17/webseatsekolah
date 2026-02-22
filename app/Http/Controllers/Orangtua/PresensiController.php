@@ -69,8 +69,17 @@ class PresensiController extends Controller
                 'tahun_ajaran' => $tahunAktif?->nama,
                 'semester' => $tahunAktif?->semester,
             ],
-            'summary' => null,
-            'data' => []
+            'summary' => [
+                'hadir' => 0,
+                'izin'  => 0,
+                'sakit' => 0,
+                'alpa'  => 0,
+                'total_hari' => 0
+            ],
+            'data' => [],
+            'meta' => [
+                'total' => 0
+            ]
         ], Response::HTTP_OK);
     }
 
@@ -108,6 +117,8 @@ class PresensiController extends Controller
 
     private function formatResponse($data, $summary, $tahunTampil)
     {
+        $paginationData = $data->toArray();
+
         return response()->json([
             'success' => true,
             'message' => 'Data presensi berhasil diambil.',
@@ -130,11 +141,25 @@ class PresensiController extends Controller
                 'status' => $item->status,
                 'keterangan' => $item->keterangan,
             ]),
-            'pagination' => [
-                'current_page' => $data->currentPage(),
-                'last_page' => $data->lastPage(),
-                'total' => $data->total(),
-            ]
+            'meta' => [
+                'current_page'  => $paginationData['current_page'],
+                'last_page'     => $paginationData['last_page'],
+                'per_page'      => $paginationData['per_page'],
+                'total'         => $paginationData['total'],
+                'from'          => $paginationData['from'],
+                'to'            => $paginationData['to'],
+                'path'          => $paginationData['path'],
+                'next_page_url' => $paginationData['next_page_url'],
+                'prev_page_url' => $paginationData['prev_page_url'],
+                'links'         => array_map(function ($link) {
+                    return [
+                        'url'    => $link['url'],
+                        'label'  => $link['label'],
+                        'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                        'active' => $link['active'],
+                    ];
+                }, $paginationData['links']),
+            ],
         ], Response::HTTP_OK);
     }
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Pesan;
 use App\Http\Resources\PesanResource;
+use Illuminate\Http\Request; // Pastikan Request diimport
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,24 +20,33 @@ class PesanController extends Controller
         $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['updateStatus', 'destroy']);
 
-        // Menambahkan proteksi Policy (Opsional tapi disarankan)
+        // Menambahkan proteksi Policy
         $this->authorizeResource(Pesan::class, 'pesan');
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         try {
-            $perPage = min((int) request()->get('per_page', 10), 100);
+            $perPage = min((int) $request->get('per_page', 10), 100);
             $pesan   = Pesan::latest()->paginate($perPage);
+            
+            // Konversi ke array untuk mengambil metadata pagination tambahan
+            $paginationData = $pesan->toArray();
 
             return response()->json([
                 'success' => true,
                 'data'    => PesanResource::collection($pesan),
                 'meta'    => [
-                    'current_page' => $pesan->currentPage(),
-                    'last_page'    => $pesan->lastPage(),
-                    'per_page'     => $pesan->perPage(),
-                    'total'        => $pesan->total(),
+                    'current_page'  => $pesan->currentPage(),
+                    'last_page'     => $pesan->lastPage(),
+                    'per_page'      => $pesan->perPage(),
+                    'total'         => $pesan->total(),
+                    'from'          => $pesan->firstItem(),
+                    'to'            => $pesan->lastItem(),
+                    'next_page_url' => $pesan->nextPageUrl(),
+                    'prev_page_url' => $pesan->previousPageUrl(),
+                    'path'          => $paginationData['path'],
+                    'links'         => $paginationData['links'],
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -44,6 +54,7 @@ class PesanController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar pesan',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

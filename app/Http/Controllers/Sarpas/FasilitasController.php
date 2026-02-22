@@ -5,22 +5,20 @@ namespace App\Http\Controllers\Sarpas;
 use App\Http\Controllers\Controller;
 use App\Models\Fasilitas;
 use App\Http\Resources\FasilitasResource;
-use App\Http\Requests\{StoreFasilitasRequest, UpdateFasilitasRequest};
-use Illuminate\Support\Facades\{Storage, Log};
+use App\Http\Requests\StoreFasilitasRequest;
+use App\Http\Requests\UpdateFasilitasRequest;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class FasilitasController extends Controller
 {
-    use AuthorizesRequests;
-
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
-
         $this->authorizeResource(Fasilitas::class, 'fasilitas');
     }
 
@@ -34,10 +32,16 @@ class FasilitasController extends Controller
                 'success' => true,
                 'data'    => FasilitasResource::collection($data),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => $data->perPage(),
-                    'total'        => $data->total(),
+                    'current_page'  => $data->currentPage(),
+                    'last_page'     => $data->lastPage(),
+                    'per_page'      => $data->perPage(),
+                    'total'         => $data->total(),
+                    'from'          => $data->firstItem(),
+                    'to'            => $data->lastItem(),
+                    'next_page_url' => $data->nextPageUrl(),
+                    'prev_page_url' => $data->previousPageUrl(),
+                    'path'          => $data->path(),
+                    'links'         => $data->linkCollection()->toArray(),
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -49,7 +53,7 @@ class FasilitasController extends Controller
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-
+    
     public function show(Fasilitas $fasilitas): JsonResponse
     {
         try {
@@ -87,7 +91,7 @@ class FasilitasController extends Controller
                 'data'    => new FasilitasResource($fasilitas),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            if (!empty($validated['foto'])) {
+            if (!empty($validated['foto'] ?? null)) {
                 Storage::disk('public')->delete($validated['foto']);
             }
             Log::error('Failed to create fasilitas', ['payload' => $validated, 'error' => $e->getMessage()]);
@@ -105,12 +109,10 @@ class FasilitasController extends Controller
 
         try {
             if ($request->hasFile('foto')) {
-                $oldFoto = $fasilitas->foto;
-                $validated['foto'] = $request->file('foto')->store('uploads/fasilitas', 'public');
-                
-                if ($oldFoto) {
-                    Storage::disk('public')->delete($oldFoto);
+                if ($fasilitas->foto) {
+                    Storage::disk('public')->delete($fasilitas->foto);
                 }
+                $validated['foto'] = $request->file('foto')->store('uploads/fasilitas', 'public');
             }
 
             $fasilitas->update($validated);
@@ -121,11 +123,12 @@ class FasilitasController extends Controller
                 'data'    => new FasilitasResource($fasilitas),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            if (!empty($validated['foto'])) {
+            if (!empty($validated['foto'] ?? null)) {
                 Storage::disk('public')->delete($validated['foto']);
             }
             Log::error('Failed to update fasilitas', [
                 'fasilitas_id' => (string) $fasilitas->id,
+                'payload'      => $validated,
                 'error'        => $e->getMessage()
             ]);
             return response()->json([
@@ -139,13 +142,11 @@ class FasilitasController extends Controller
     public function destroy(Fasilitas $fasilitas): JsonResponse
     {
         try {
-            $fotoPath = $fasilitas->foto;
+            if ($fasilitas->foto) {
+                Storage::disk('public')->delete($fasilitas->foto);
+            }
 
             $fasilitas->delete();
-
-            if ($fotoPath) {
-                Storage::disk('public')->delete($fotoPath);
-            }
 
             return response()->json([
                 'success'      => true,

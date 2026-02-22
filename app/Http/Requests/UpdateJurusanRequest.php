@@ -17,6 +17,7 @@ class UpdateJurusanRequest extends FormRequest
             'nama_jurusan' => ['required', 'string', 'max:100'],
             'deskripsi'    => ['nullable', 'string'],
             'foto'         => ['nullable', 'file', 'image', 'max:5120'],
+            'is_active'    => ['nullable', 'boolean'], // <-- Tambahkan validasi boolean
         ];
     }
 
@@ -30,6 +31,7 @@ class UpdateJurusanRequest extends FormRequest
             'foto.file'             => 'Foto harus berupa file.',
             'foto.image'            => 'Foto harus berupa gambar.',
             'foto.max'              => 'Ukuran foto maksimal 5MB.',
+            'is_active.boolean'     => 'Status aktif harus berupa true atau false.', // <-- Pesan error baru
         ];
     }
 
@@ -39,7 +41,7 @@ class UpdateJurusanRequest extends FormRequest
             'nama_jurusan' => 'Nama jurusan',
             'deskripsi'    => 'Deskripsi',
             'foto'         => 'Foto jurusan',
+            'is_active'    => 'Status aktif', // <-- Atribut baru
         ];
     }
 }
-    

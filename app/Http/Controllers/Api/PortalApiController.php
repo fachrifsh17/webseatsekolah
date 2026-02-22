@@ -4,24 +4,49 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\PortalSosmed;
+use App\Http\Resources\PortalSosmedResource;
+use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class PortalApiController extends Controller
 {
-    public function index()
+    /**
+     * Menampilkan daftar portal untuk Landing Page / Footer.
+     */
+    public function index(Request $request)
     {
-        $data = PortalSosmed::orderBy('nama_platform')->get();
-        return response()->json([
+        $query = PortalSosmed::query();
+
+        // Filter Publik: Hanya izinkan filter berdasarkan tipe yang valid (Enum)
+        if ($request->has('tipe') && in_array($request->tipe, ['Sosial Media', 'Portal Khusus'])) {
+            $query->where('tipe', $request->tipe);
+        }
+
+        // Urutkan berdasarkan nama agar enak dilihat di UI
+        $data = $query->orderBy('nama_platform', 'asc')->get();
+
+        return PortalSosmedResource::collection($data)->additional([
             'success' => true,
-            'data' => $data
-        ], Response::HTTP_OK);
+            'message' => 'Portal informasi publik berhasil dimuat.'
+        ]);
     }
 
-    public function show(PortalSosmed $portal)
+    /**
+     * Jika publik klik salah satu link (jarang dipakai tapi tetap aman).
+     */
+    public function show($id)
     {
-        return response()->json([
-            'success' => true,
-            'data' => $portal
-        ], Response::HTTP_OK);
+        $portal = PortalSosmed::find($id);
+
+        if (!$portal) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data tidak ditemukan.'
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        return (new PortalSosmedResource($portal))->additional([
+            'success' => true
+        ]);
     }
 }

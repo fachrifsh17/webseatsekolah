@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Str;
 use Throwable;
 
 class MapelController extends Controller
@@ -30,6 +31,12 @@ class MapelController extends Controller
         $user = Auth::user();
         $guruStaf = GuruStaf::where('user_id', $user->id)->first();
         return $guruStaf?->jurusan_id;
+    }
+
+    private function getNamaJurusan()
+    {
+        $user = Auth::user();
+        return $user->guruStaf?->jurusan?->nama_jurusan;
     }
 
     private function applyFilters(Request $request, $query, $jurusanId)
@@ -67,18 +74,33 @@ class MapelController extends Controller
             $query = MataPelajaran::with('jurusan');
             $query = $this->applyFilters($request, $query, $jurusanId);
 
-            $perPage = $request->query('per_page', 12);
+            $perPage = (int) $request->query('per_page', 12);
             $data = $query->latest()->paginate($perPage);
+            
+            $paginationData = $data->toArray();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Daftar mata pelajaran jurusan berhasil dimuat',
                 'data'    => MapelResource::collection($data),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => $data->perPage(),
-                    'total'        => $data->total(),
+                    'current_page'  => $paginationData['current_page'],
+                    'last_page'     => $paginationData['last_page'],
+                    'per_page'      => $paginationData['per_page'],
+                    'total'         => $paginationData['total'],
+                    'from'          => $paginationData['from'],
+                    'to'            => $paginationData['to'],
+                    'path'          => $paginationData['path'],
+                    'next_page_url' => $paginationData['next_page_url'],
+                    'prev_page_url' => $paginationData['prev_page_url'],
+                    'links'         => array_map(function ($link) {
+                        return [
+                            'url'    => $link['url'],
+                            'label'  => $link['label'],
+                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                            'active' => $link['active'],
+                        ];
+                    }, $paginationData['links']),
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -123,7 +145,7 @@ class MapelController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Store Mapel Error', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal menambahkan mata pelajaran'], 500);
+            return response()->json(['success' => false, 'message' => 'Gagal menambahkan mata pelajaran'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -167,7 +189,7 @@ class MapelController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Update Mapel Error', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal memperbarui mata pelajaran'], 500);
+            return response()->json(['success' => false, 'message' => 'Gagal memperbarui mata pelajaran'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -188,7 +210,7 @@ class MapelController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Delete Mapel Error', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal menghapus mata pelajaran'], 500);
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus mata pelajaran'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -197,27 +219,47 @@ class MapelController extends Controller
         try {
             $this->authorize('viewAny', MataPelajaran::class);
             $jurusanId = $this->getJurusanId();
+            $namaJurusan = $this->getNamaJurusan();
 
             if (!$jurusanId) {
                 return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
             }
 
             $filters = [
-                'jurusan_id'     => $jurusanId,
-                'search'         => $request->query('search'),
-                'tipe_mapel'     => $request->query('tipe_mapel'),
-                'kategori_mapel' => $request->query('kategori_mapel'),
+                'jurusan_id'       => $jurusanId,
+                'search'           => $request->query('search'),
+                'tipe_mapel'       => $request->query('tipe_mapel'),
+                'kategori_mapel'   => $request->query('kategori_mapel'),
                 'include_inactive' => $request->boolean('include_inactive'),
             ];
 
+            $nameParts = ['DATA_MATA_PELAJARAN'];
+            
+            if ($namaJurusan) {
+                $nameParts[] = strtoupper(str_replace([' ', '-'], '_', $namaJurusan));
+            }
+
+            if ($request->filled('tipe_mapel')) {
+                $nameParts[] = strtoupper($request->tipe_mapel);
+            }
+
+            if ($request->filled('search')) {
+                $nameParts[] = strtoupper(str_replace([' ', '.'], '_', $request->search));
+            }
+
+            $nameParts[] = $request->boolean('include_inactive') ? 'SEMUA' : 'AKTIF';
+
+            $fileName = implode('_', $nameParts) . '.xlsx';
+
             $profil = ProfilSekolah::first() ?? new ProfilSekolah();
             $kontak = DataKontak::first() ?? new DataKontak();
-            $fileName = 'Data_Mapel_Jurusan_' . date('Ymd_His') . '.xlsx';
+            
+            if (ob_get_contents()) ob_end_clean();
 
             return Excel::download(new MapelExport($filters, $profil, $kontak), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Mapel Jurusan Error', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal mengekspor data'], 500);
+            return response()->json(['success' => false, 'message' => 'Gagal mengekspor data'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

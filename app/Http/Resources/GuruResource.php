@@ -9,21 +9,43 @@ class GuruResource extends JsonResource
 {
     public function toArray($request): array
     {
+        $isAdmin = $request->is('api/admin/*');
+
+        // 1. Definisikan URL foto utama agar bisa dipakai berulang
+        $fullFotoUrl = $this->foto 
+            ? asset(Storage::url($this->foto)) 
+            : asset('images/default-avatar.png');
+
         return [
             'id'                 => $this->id,
-            'user_id'            => $this->user_id,
-            'user'               => $this->whenLoaded('user', fn () => new UserResource($this->user)),
-            'nip'                => $this->nip,
-            'nuptk'              => $this->nuptk,
             'nama'               => $this->nama,
+            'nip'                => $this->nip,
             'jabatan_fungsional' => $this->jabatan_fungsional,
             'status_kepegawaian' => $this->status_kepegawaian,
-            'jurusan_id'         => $this->jurusan_id,
-            'jurusan'            => $this->whenLoaded('jurusan', fn () => new JurusanResource($this->jurusan)),
-            'is_active'          => isset($this->is_active) ? (int) $this->is_active : null,
-            'foto_url'           => $this->foto ? Storage::url($this->foto) : null,
-            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
-            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
+            'foto_url'           => $fullFotoUrl,
+            
+            'jurusan' => $this->whenLoaded('jurusan', function() {
+                return [
+                    'id'           => $this->jurusan->id,
+                    'nama_jurusan' => $this->jurusan->nama_jurusan,
+                ];
+            }),
+
+            // Data khusus Admin
+            $this->mergeWhen($isAdmin, [
+                'nuptk'      => $this->nuptk,
+                'is_active'  => (int) $this->is_active,
+                
+                // 2. User dibuat sangat simpel: Hanya Username & Foto
+                'user' => $this->whenLoaded('user', function() use ($fullFotoUrl) {
+                    return [
+                        'username' => $this->user->username,
+                    ];
+                }),
+
+                'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
+                'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
+            ]),
         ];
     }
 }

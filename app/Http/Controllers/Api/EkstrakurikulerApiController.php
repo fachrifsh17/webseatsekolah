@@ -4,25 +4,47 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ekstrakurikuler;
+use App\Http\Resources\EkstrakurikulerResource; // 1. IMPORT RESOURCE
 use Symfony\Component\HttpFoundation\Response;
 
 class EkstrakurikulerApiController extends Controller
 {
     public function index()
     {
-        $ekskul = Ekstrakurikuler::with('pembina')->orderBy('nama_ekskul')->get();
-        return response()->json([
+        // 2. Tambahkan filter is_active pada relasi pembina
+        $ekskul = Ekstrakurikuler::with('pembina')
+            ->whereHas('pembina', function ($query) {
+                $query->where('is_active', true);
+            })
+            ->orderBy('nama_ekskul')
+            ->get();
+
+        // 3. Gunakan Resource::collection() supaya data difilter
+        return EkstrakurikulerResource::collection($ekskul)->additional([
             'success' => true,
-            'data' => $ekskul
-        ], Response::HTTP_OK);
+            'message' => 'Daftar ekstrakurikuler berhasil dimuat'
+        ]);
     }
 
-    public function show(Ekstrakurikuler $ekskul)
+    public function show($id)
     {
-        $ekskul->load('pembina');
-        return response()->json([
-            'success' => true,
-            'data' => $ekskul
-        ], Response::HTTP_OK);
+        // Cari data dengan filter pembina aktif
+        $ekskul = Ekstrakurikuler::with('pembina')
+            ->whereHas('pembina', function ($query) {
+                $query->where('is_active', true);
+            })
+            ->find($id);
+
+        if (!$ekskul) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ekskul tidak ditemukan atau pembina tidak aktif'
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        // 4. Gunakan 'new Resource' untuk data tunggal
+        return (new EkstrakurikulerResource($ekskul))->additional([
+            'success' => true
+        ]);
     }
 }

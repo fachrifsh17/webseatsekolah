@@ -31,7 +31,7 @@ class OrangtuaController extends Controller
         $taAktif = TahunAjaran::where('is_active', true)->first();
         if (!$taAktif) return null;
 
-        return Kelas::with('jurusan')
+        return Kelas::with(['jurusan', 'tahunAjaran'])
             ->where('wali_kelas_id', $guruId)
             ->where('tahun_ajaran_id', $taAktif->id)
             ->where('is_active', 1)
@@ -69,6 +69,9 @@ class OrangtuaController extends Controller
 
             $perPage = min((int) $request->get('per_page', 20), 100);
             $paginatedData = $query->latest()->paginate($perPage);
+            
+            // Konversi data paginasi ke array untuk mengambil metadata lengkap
+            $paginationArray = $paginatedData->toArray();
 
             return response()->json([
                 'success' => true,
@@ -80,10 +83,23 @@ class OrangtuaController extends Controller
                 ],
                 'data'    => OrangtuaResource::collection($paginatedData),
                 'meta'    => [
-                    'current_page' => $paginatedData->currentPage(),
-                    'last_page'    => $paginatedData->lastPage(),
-                    'per_page'     => $paginatedData->perPage(),
-                    'total'        => $paginatedData->total(),
+                    'current_page'  => $paginationArray['current_page'],
+                    'last_page'     => $paginationArray['last_page'],
+                    'per_page'      => $paginationArray['per_page'],
+                    'total'         => $paginationArray['total'],
+                    'from'          => $paginationArray['from'],
+                    'to'            => $paginationArray['to'],
+                    'path'          => $paginationArray['path'],
+                    'next_page_url' => $paginationArray['next_page_url'],
+                    'prev_page_url' => $paginationArray['prev_page_url'],
+                    'links'         => array_map(function ($link) {
+                        return [
+                            'url'    => $link['url'],
+                            'label'  => $link['label'],
+                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                            'active' => $link['active'],
+                        ];
+                    }, $paginationArray['links']),
                 ]
             ], Response::HTTP_OK);
 
@@ -253,10 +269,20 @@ class OrangtuaController extends Controller
                 });
             }
 
-            // Perubahan di sini: Mengganti Str::slug agar huruf besar tetap terjaga
-            $cleanNamaKelas = str_replace(' ', '_', $kelas->nama_kelas);
-            $filename = 'Data_Orangtua_' . $cleanNamaKelas . '_' . now()->format('Ymd_His') . '.xlsx';
+            $nameParts = ['DATA_ORANGTUA'];
+            $nameParts[] = strtoupper(str_replace(' ', '_', $kelas->nama_kelas));
+
+            if ($kelas->tahunAjaran) {
+                $taClean = str_replace(['/', ' '], '_', $kelas->tahunAjaran->nama);
+                $nameParts[] = strtoupper($taClean);
+                $nameParts[] = strtoupper($kelas->tahunAjaran->semester);
+            }
+
+            $nameParts[] = 'AKTIF';
+            $filename = implode('_', $nameParts) . '.xlsx';
             
+            if (ob_get_contents()) ob_end_clean();
+
             return Excel::download(
                 new OrangtuaExport(
                     $query, 

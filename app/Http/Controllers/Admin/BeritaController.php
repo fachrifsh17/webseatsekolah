@@ -33,10 +33,16 @@ class BeritaController extends Controller
                 'success' => true,
                 'data'    => BeritaResource::collection($berita),
                 'meta'    => [
-                    'current_page' => $berita->currentPage(),
-                    'last_page'    => $berita->lastPage(),
-                    'per_page'     => $berita->perPage(),
-                    'total'        => $berita->total(),
+                    'current_page'  => $berita->currentPage(),
+                    'last_page'     => $berita->lastPage(),
+                    'per_page'      => $berita->perPage(),
+                    'total'         => $berita->total(),
+                    'from'          => $berita->firstItem(),
+                    'to'            => $berita->lastItem(),
+                    'next_page_url' => $berita->nextPageUrl(),
+                    'prev_page_url' => $berita->previousPageUrl(),
+                    'path'          => $berita->path(),
+                    'links'         => $berita->linkCollection()->toArray(),
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {

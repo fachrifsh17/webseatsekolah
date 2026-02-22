@@ -87,13 +87,23 @@ class PoinSiswaController extends Controller
                           ->orderByDesc('tanggal')
                           ->paginate($perPage);
 
+            // Metadata pagination lengkap
+            $paginationData = $data->toArray();
+
             return response()->json([
                 'success' => true,
                 'data' => PoinSiswaResource::collection($data),
                 'meta' => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'total'        => $data->total(),
+                    'current_page'  => $data->currentPage(),
+                    'last_page'     => $data->lastPage(),
+                    'per_page'      => $data->perPage(),
+                    'total'         => $data->total(),
+                    'from'          => $data->firstItem(),
+                    'to'            => $data->lastItem(),
+                    'next_page_url' => $data->nextPageUrl(),
+                    'prev_page_url' => $data->previousPageUrl(),
+                    'path'          => $paginationData['path'],
+                    'links'         => $paginationData['links'],
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -109,7 +119,7 @@ class PoinSiswaController extends Controller
     {
         try {
             $ta = TahunAjaran::where('is_active', true)->firstOrFail();
-            $user = Auth::user();
+            $user = Auth::user()->load('guruStaf');
 
             $siswa = Siswa::where('id', $request->siswa_id)
                 ->where('is_active', true)
@@ -124,9 +134,11 @@ class PoinSiswaController extends Controller
             }
 
             $poin = DB::transaction(function () use ($request, $ta, $user) {
+                $guruStafId = $request->guru_staf_id ?? ($user->guruStaf ? $user->guruStaf->id : null);
+
                 return PoinSiswa::create(array_merge($request->validated(), [
                     'tahun_ajaran_id' => $ta->id,
-                    'guru_staf_id' => $request->guru_staf_id ?? $user->guru_staf_id
+                    'guru_staf_id' => $guruStafId
                 ]));
             });
 
@@ -208,7 +220,6 @@ class PoinSiswaController extends Controller
             $profil = DB::table('profil_sekolah')->first();
             $kontak = DB::table('data_kontak')->first();
 
-            // Mendapatkan Nama Tahun Ajaran (Sesuai filter atau yang aktif)
             $taActive = $request->filled('tahun_ajaran_id') 
                 ? TahunAjaran::find($request->tahun_ajaran_id) 
                 : TahunAjaran::where('is_active', true)->first();
@@ -246,7 +257,7 @@ class PoinSiswaController extends Controller
                     $labelWaktu, 
                     $profil, 
                     $kontak, 
-                    $namaTA // Menambahkan argumen ke-6 ke Export Class
+                    $namaTA 
                 ),
                 $fileName
             );

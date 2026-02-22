@@ -14,12 +14,12 @@ class UpdateKalenderAkademikRequest extends FormRequest
 
     public function rules(): array
     {
-        // Mendapatkan ID kalender dari route parameter
-        $kalenderId = $this->route('kalender')->id;
+        $kalender = $this->route('kalender');
+        $kalenderId = is_object($kalender) ? $kalender->id : $kalender;
 
         return [
             'tahun_ajaran_id' => [
-                'required', 
+                'nullable', 
                 'string', 
                 'exists:tahun_ajaran,id'
             ],
@@ -27,22 +27,20 @@ class UpdateKalenderAkademikRequest extends FormRequest
                 'required', 
                 'string', 
                 'max:255',
-                // Validasi unique yang mengabaikan ID data yang sedang diupdate
                 Rule::unique('kalender_akademik')->where(function ($query) {
                     return $query->where('tanggal_mulai', $this->tanggal_mulai)
-                                 ->where('tahun_ajaran_id', $this->tahun_ajaran_id);
+                                 ->where('tahun_ajaran_id', $this->tahun_ajaran_id ?? $this->route('kalender')->tahun_ajaran_id);
                 })->ignore($kalenderId)
             ],
             'tanggal_mulai'   => ['required', 'date'],
             'tanggal_selesai' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
-            'kategori'        => ['required', 'in:Ujian,Libur,Hari Efektif,Akademik'],
+            'kategori'        => ['required', 'in:Ujian,Libur,Hari Efektif,Akademik,Event'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'tahun_ajaran_id.required' => 'Tahun ajaran wajib dipilih.',
             'tahun_ajaran_id.exists'   => 'Tahun ajaran tidak valid.',
             'kegiatan.required'        => 'Nama kegiatan wajib diisi.',
             'kegiatan.unique'          => 'Kegiatan dengan nama yang sama sudah ada di tanggal dan tahun ajaran tersebut.',

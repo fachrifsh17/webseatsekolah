@@ -48,15 +48,16 @@ class SiswaImport implements ToModel, WithHeadingRow
             $lastUserId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
             $newUserId = 'U' . str_pad($lastUserId + 1, 3, '0', STR_PAD_LEFT);
 
-            // Buat User Akun Siswa
+            // --- PERUBAHAN DISINI: Tambahkan current_role ---
             User::create([
-                'id'        => $newUserId,
-                'username'  => $row['nis'], 
-                'password'  => Hash::make($row['nis']),
-                'is_active' => 1,
+                'id'           => $newUserId,
+                'username'     => $row['nis'], 
+                'password'     => Hash::make($row['nis']),
+                'current_role' => 'Siswa', // Menetapkan role aktif default
+                'is_active'    => 1,
             ]);
 
-            // Assign Role Siswa (R003)
+            // Assign Role Siswa (R003) ke tabel pivot
             DB::table('user_roles')->insert([
                 'user_id'    => $newUserId,
                 'role_id'    => 'R003', 
@@ -102,9 +103,6 @@ class SiswaImport implements ToModel, WithHeadingRow
         });
     }
 
-    /**
-     * Method untuk mengambil pesan conflict ke Controller
-     */
     public function getMessages(): array
     {
         return $this->importMessages;

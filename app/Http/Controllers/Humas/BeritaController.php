@@ -10,20 +10,15 @@ use App\Http\Requests\UpdateBeritaRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class BeritaController extends Controller
 {
-    use AuthorizesRequests;
-
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
-        
-        // Mengaitkan Controller dengan BeritaPolicy secara otomatis
         $this->authorizeResource(Berita::class, 'berita');
     }
 
@@ -37,14 +32,20 @@ class BeritaController extends Controller
                 'success' => true,
                 'data'    => BeritaResource::collection($berita),
                 'meta'    => [
-                    'current_page' => $berita->currentPage(),
-                    'last_page'    => $berita->lastPage(),
-                    'per_page'     => $berita->perPage(),
-                    'total'        => $berita->total(),
+                    'current_page'  => $berita->currentPage(),
+                    'last_page'     => $berita->lastPage(),
+                    'per_page'      => $berita->perPage(),
+                    'total'         => $berita->total(),
+                    'from'          => $berita->firstItem(),
+                    'to'            => $berita->lastItem(),
+                    'next_page_url' => $berita->nextPageUrl(),
+                    'prev_page_url' => $berita->previousPageUrl(),
+                    'path'          => $berita->path(),
+                    'links'         => $berita->linkCollection()->toArray(),
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Humas: Failed to fetch berita list', ['error' => $e->getMessage()]);
+            Log::error('Failed to fetch berita list', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar berita',
@@ -61,7 +62,7 @@ class BeritaController extends Controller
                 'data'    => new BeritaResource($berita),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Humas: Failed to fetch berita detail', [
+            Log::error('Failed to fetch berita detail', [
                 'berita_id' => (string) $berita->id,
                 'error'     => $e->getMessage()
             ]);
@@ -86,14 +87,14 @@ class BeritaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Berita berhasil ditambahkan oleh Humas.',
+                'message' => 'Berita berhasil ditambahkan.',
                 'data'    => new BeritaResource($berita),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             if (!empty($data['foto'] ?? null)) {
                 Storage::disk('public')->delete($data['foto']);
             }
-            Log::error('Humas: Failed to create berita', ['payload' => $data, 'error' => $e->getMessage()]);
+            Log::error('Failed to create berita', ['payload' => $data, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menambahkan berita',
@@ -106,6 +107,13 @@ class BeritaController extends Controller
     {
         $data = $request->validated();
 
+        if (! $berita->exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Berita tidak ditemukan'
+            ], Response::HTTP_NOT_FOUND);
+        }
+
         try {
             if ($request->hasFile('foto')) {
                 if ($berita->foto) {
@@ -116,22 +124,25 @@ class BeritaController extends Controller
 
             unset($data['id']);
 
-            // Membersihkan data kosong/null
-            $data = array_filter($data, fn($value) => $value !== null && $value !== '');
+            foreach ($data as $key => $value) {
+                if ($value === null || $value === '') {
+                    unset($data[$key]);
+                }
+            }
 
-            $berita->update($data);
+            $berita->fill($data)->save();
             $berita->refresh();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Berita berhasil diperbarui oleh Humas.',
+                'message' => 'Berita berhasil diperbarui.',
                 'data'    => new BeritaResource($berita),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             if (!empty($data['foto'] ?? null)) {
                 Storage::disk('public')->delete($data['foto']);
             }
-            Log::error('Humas: Failed to update berita', [
+            Log::error('Failed to update berita', [
                 'berita_id' => (string) $berita->id,
                 'payload'   => $data,
                 'error'     => $e->getMessage()
@@ -155,11 +166,11 @@ class BeritaController extends Controller
 
             return response()->json([
                 'success'      => true,
-                'message'      => 'Berita berhasil dihapus oleh Humas',
+                'message'      => 'Berita berhasil dihapus',
                 'notification' => 'Berhasil dihapus'
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Humas: Failed to delete berita', [
+            Log::error('Failed to delete berita', [
                 'berita_id' => (string) $berita->id,
                 'error'     => $e->getMessage()
             ]);

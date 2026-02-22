@@ -29,9 +29,6 @@ class KelasController extends Controller
         $this->authorizeResource(Kelas::class, 'kelas');
     }
 
-    /**
-     * Helper untuk mengambil Jurusan Ketua & Tahun Ajaran Aktif
-     */
     private function getContext()
     {
         $user = Auth::user();
@@ -59,26 +56,41 @@ class KelasController extends Controller
         try {
             $query = Kelas::with(['jurusan', 'tahunAjaran', 'waliKelas'])
                 ->withCount('siswa')
-                ->where('jurusan_id', $jurusanId) // Kunci Jurusan
-                ->where('tahun_ajaran_id', $tahunAktif->id); // Kunci Tahun Aktif
+                ->where('jurusan_id', $jurusanId)
+                ->where('tahun_ajaran_id', $tahunAktif->id);
 
             if ($request->filled('search')) {
                 $query->where('nama_kelas', 'like', '%' . $request->search . '%');
             }
 
-            $perPage = $request->get('per_page', 10);
+            $perPage = (int) $request->get('per_page', 10);
             $kelas = $query->latest()->paginate($perPage);
+            
+            $paginationData = $kelas->toArray();
 
             return response()->json([
                 'success' => true,
                 'message' => "Daftar kelas aktif jurusan berhasil dimuat.",
                 'data'    => KelasResource::collection($kelas),
                 'meta'    => [
-                    'current_page' => $kelas->currentPage(),
-                    'last_page'    => $kelas->lastPage(),
-                    'per_page'     => $kelas->perPage(),
-                    'total'        => $kelas->total(),
-                    'tahun_ajaran' => $tahunAktif->nama . " - " . $tahunAktif->semester
+                    'current_page'  => $paginationData['current_page'],
+                    'last_page'     => $paginationData['last_page'],
+                    'per_page'      => $paginationData['per_page'],
+                    'total'         => $paginationData['total'],
+                    'from'          => $paginationData['from'],
+                    'to'            => $paginationData['to'],
+                    'path'          => $paginationData['path'],
+                    'next_page_url' => $paginationData['next_page_url'],
+                    'prev_page_url' => $paginationData['prev_page_url'],
+                    'tahun_ajaran'  => $tahunAktif->nama . " - " . $tahunAktif->semester,
+                    'links'         => array_map(function ($link) {
+                        return [
+                            'url'    => $link['url'],
+                            'label'  => $link['label'],
+                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                            'active' => $link['active'],
+                        ];
+                    }, $paginationData['links']),
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -100,7 +112,6 @@ class KelasController extends Controller
         }
 
         try {
-            // Kunci filter hanya untuk jurusan si Ketua dan Tahun Aktif
             $filters = [
                 'jurusan_id' => $jurusanId,
                 'tahun_ajaran_id' => $tahunAktif->id,
@@ -111,7 +122,24 @@ class KelasController extends Controller
             $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 
             $kontak = DataKontak::first() ?? new DataKontak(); 
 
-            $fileName = 'Data_Kelas_' . Str::slug($namaJurusan) . '_' . date('Ymd_His') . '.xlsx';
+            $nameParts = ['DATA_KELAS'];
+            $taClean = str_replace(['/', ' '], '_', $tahunAktif->nama);
+            $semester = strtoupper($tahunAktif->semester);
+            $nameParts[] = "{$taClean}_{$semester}";
+
+            if ($namaJurusan) {
+                $cleanJurusan = strtoupper(str_replace([' ', '-'], '_', preg_replace('/[^A-Za-z0-9 ]/', '', $namaJurusan)));
+                $nameParts[] = $cleanJurusan;
+            }
+
+            if ($request->filled('search')) {
+                $nameParts[] = strtoupper(str_replace([' ', '.'], ['_', ''], $request->search));
+            }
+
+            $nameParts[] = 'AKTIF';
+            $fileName = implode('_', $nameParts) . '.xlsx';
+
+            if (ob_get_contents()) ob_end_clean();
 
             return Excel::download(new KelasExport($filters, $profil, $kontak), $fileName);
         } catch (Throwable $e) {
@@ -129,11 +157,10 @@ class KelasController extends Controller
         }
 
         $validated = $request->validated();
-        $validated['jurusan_id'] = $jurusanId; // Override ke jurusan user
-        $validated['tahun_ajaran_id'] = $tahunAktif->id; // Override ke tahun aktif
+        $validated['jurusan_id'] = $jurusanId; 
+        $validated['tahun_ajaran_id'] = $tahunAktif->id; 
         $validated['is_active'] = true;
 
-        // Cek duplikasi di lingkup jurusan dan tahun aktif
         if (Kelas::where('nama_kelas', $validated['nama_kelas'])->where('tahun_ajaran_id', $tahunAktif->id)->exists()) {
             return response()->json(['success' => false, 'message' => 'Nama kelas sudah terdaftar di periode ini.'], Response::HTTP_CONFLICT);
         }
@@ -154,7 +181,6 @@ class KelasController extends Controller
     {
         ['jurusan_id' => $jurusanId] = $this->getContext();
 
-        // Kunci: Tidak bisa intip kelas jurusan lain
         if ($kelas->jurusan_id !== $jurusanId) {
             return response()->json(['success' => false, 'message' => 'Akses dilarang.'], Response::HTTP_FORBIDDEN);
         }

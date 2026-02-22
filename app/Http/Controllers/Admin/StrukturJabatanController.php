@@ -30,7 +30,7 @@ class StrukturJabatanController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $data = StrukturJabatan::with(['guru', 'jabatan'])
+            $data = StrukturJabatan::with(['guruStaf', 'jabatan'])
                 ->orderBy('urutan_tampil', 'asc')
                 ->get();
 
@@ -76,7 +76,7 @@ class StrukturJabatanController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Struktur jabatan berhasil ditambahkan.',
-                'data'    => new StrukturJabatanResource($item->load(['guru', 'jabatan'])),
+                'data'    => new StrukturJabatanResource($item->load(['guruStaf', 'jabatan'])),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
@@ -116,7 +116,7 @@ class StrukturJabatanController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Struktur jabatan berhasil diperbarui.',
-                'data'    => new StrukturJabatanResource($strukturJabatan->load(['guru', 'jabatan'])),
+                'data'    => new StrukturJabatanResource($strukturJabatan->load(['guruStaf', 'jabatan'])),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();

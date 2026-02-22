@@ -24,15 +24,24 @@ class LogAktivitasController extends Controller
         try {
             $perPage = min((int) request()->get('per_page', 20), 100);
             $data = LogAktivitas::with('user')->orderByDesc('created_at')->paginate($perPage);
+            
+            // Mengonversi data paginasi ke array untuk mengambil path dan links
+            $paginationData = $data->toArray();
 
             return response()->json([
                 'success' => true,
                 'data'    => LogAktivitasResource::collection($data),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => $data->perPage(),
-                    'total'        => $data->total(),
+                    'current_page'  => $data->currentPage(),
+                    'last_page'     => $data->lastPage(),
+                    'per_page'      => $data->perPage(),
+                    'total'         => $data->total(),
+                    'from'          => $data->firstItem(),
+                    'to'            => $data->lastItem(),
+                    'next_page_url' => $data->nextPageUrl(),
+                    'prev_page_url' => $data->previousPageUrl(),
+                    'path'          => $paginationData['path'],
+                    'links'         => $paginationData['links'],
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {

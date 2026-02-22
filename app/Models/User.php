@@ -22,7 +22,8 @@ class User extends Authenticatable
         'id',
         'username',
         'password',
-        'nama_lengkap',
+        // 'nama_lengkap', // DIHAPUS karena tidak ada di tabel users
+        'current_role',    // TETAP ADA sesuai struktur DB Anda
         'is_active',
     ];
 
@@ -33,7 +34,8 @@ class User extends Authenticatable
     protected $casts = [
         'id'           => 'string',
         'username'     => 'string',
-        'nama_lengkap' => 'string',
+        // 'nama_lengkap' => 'string', // DIHAPUS
+        'current_role' => 'string',
         'is_active'    => 'boolean',
     ];
 
@@ -41,9 +43,9 @@ class User extends Authenticatable
     {
         parent::boot();
 
-        // Otomatis membuat custom ID (Contoh: U001, U002)
         static::creating(function ($model) {
             if (empty($model->id)) {
+                // Logic custom ID U001, U002, dst.
                 $lastId = static::orderBy('id', 'desc')->first()?->id;
                 $num = $lastId ? (int) substr($lastId, 1) + 1 : 1;
                 $model->id = 'U' . str_pad($num, 3, '0', STR_PAD_LEFT);
@@ -52,7 +54,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Hash password secara otomatis saat disimpan
+     * Otomatis melakukan hashing password jika diisi secara plain text
      */
     public function setPasswordAttribute(string $value): void
     {
@@ -85,7 +87,7 @@ class User extends Authenticatable
 
     public function orangtua(): HasOne
     {
-        return $this->hasOne(OrangTua::class, 'user_id', 'id');
+        return $this->hasOne(Orangtua::class, 'user_id', 'id');
     }
 
     /*
@@ -99,9 +101,20 @@ class User extends Authenticatable
         return $this->roles->pluck('role_name')->map(fn($role) => strtolower($role))->all();
     }
 
+    /**
+     * Cek kepemilikan role di tabel pivot
+     */
     public function hasRole(string $roleName): bool
     {
         return in_array(strtolower($roleName), $this->getNormalizedRoleNames(), true);
+    }
+
+    /**
+     * Cek role yang sedang aktif (current_role)
+     */
+    public function isCurrently(string $roleName): bool
+    {
+        return strtolower($this->current_role) === strtolower($roleName);
     }
 
     public function hasAnyRole($roles): bool

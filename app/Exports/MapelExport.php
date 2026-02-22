@@ -18,6 +18,7 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Color;
+use Carbon\Carbon;
 
 class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
 {
@@ -65,7 +66,6 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
     public function headings(): array
     {
         return [
-            'NO',
             'ID MAPEL',
             'NAMA MATA PELAJARAN',
             'JURUSAN',
@@ -75,11 +75,9 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         ];
     }
 
-    private $rowNumber = 0;
     public function map($mapel): array
     {
         return [
-            ++$this->rowNumber,
             $mapel->id,
             $mapel->nama_mapel,
             $mapel->jurusan->nama_jurusan ?? 'UMUM',
@@ -89,16 +87,14 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         ];
     }
 
-    public function styles(Worksheet $sheet)
-    {
-    }
+    public function styles(Worksheet $sheet) {}
 
     public function registerEvents(): array
     {
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
-                $lastCol = 'G';
+                $lastCol = 'F'; // Berubah ke F karena kolom NO dihapus
                 $lastRow = $sheet->getHighestRow();
 
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
@@ -119,7 +115,6 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $ta = TahunAjaran::where('is_active', 1)->first();
                 $sheet->setCellValue('A8', 'TAHUN PELAJARAN ' . ($ta->nama ?? '-'));
                 $sheet->getStyle("A8")->getFont()->setBold(true)->setSize(10);
-
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $jurusanName = 'Semua Jurusan';
@@ -127,7 +122,6 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                     $jurusan = Jurusan::find($this->filters['jurusan_id']);
                     $jurusanName = $jurusan ? $jurusan->nama_jurusan : 'Semua Jurusan';
                 }
-
                 $tipeLabel = !empty($this->filters['tipe_mapel']) ? strtoupper($this->filters['tipe_mapel']) : 'SEMUA TIPE';
                 $kategoriLabel = !empty($this->filters['kategori_mapel']) ? strtoupper($this->filters['kategori_mapel']) : 'SEMUA KATEGORI';
                 $statusLabel = isset($this->filters['is_active']) ? ($this->filters['is_active'] ? 'AKTIF' : 'NON-AKTIF') : 'SEMUA STATUS';
@@ -138,23 +132,17 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getStyle("A9")->getFont()->setItalic(true)->setSize(9);
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $sheet->mergeCells("A10:{$lastCol}10"); 
-                $sheet->setCellValue('A10', "Tanggal Cetak: " . date('d/m/Y H:i'));
-                $sheet->getStyle("A10")->getFont()->setSize(9);
-                $sheet->getStyle("A10")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-
                 $sheet->getStyle("A12:{$lastCol}12")->applyFromArray([
-                    'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_WHITE]],
-                    'fill' => [
-                        'fillType' => Fill::FILL_SOLID,
-                        'startColor' => ['argb' => 'FF2E75B6']
-                    ],
+                    'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_BLACK]],
+                    'fill' => ['fillType' => Fill::FILL_NONE],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
                 ]);
 
                 $sheet->getStyle("A12:{$lastCol}{$lastRow}")->applyFromArray([
                     'borders' => [
                         'allBorders' => [
-                            'borderStyle' => Border::BORDER_THIN, // Mengubah THICK menjadi THIN
+                            'borderStyle' => Border::BORDER_THIN,
+                            'color' => ['argb' => Color::COLOR_BLACK],
                         ],
                     ],
                     'alignment' => [
@@ -163,19 +151,9 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                     ],
                 ]);
 
-                for ($i = 13; $i <= $lastRow; $i++) {
-                    $tipe = $sheet->getCell("E$i")->getValue();
-                    if (in_array($tipe, ['PRODUKTIF', 'KHUSUS'])) {
-                        $sheet->getStyle("E$i")->getFont()->getColor()->setARGB('FFFF0000');
-                    } else {
-                        $sheet->getStyle("E$i")->getFont()->getColor()->setARGB('FF0070C0');
-                    }
-
-                    $status = $sheet->getCell("G$i")->getValue();
-                    if ($status === 'NON-AKTIF') {
-                        $sheet->getStyle("G$i")->getFont()->getColor()->setARGB('FFFF0000');
-                    }
-                }
+                $footerRow = $lastRow + 2; 
+                $sheet->setCellValue("A{$footerRow}", "Dicetak pada: " . Carbon::now()->format('d/m/Y H:i'));
+                $sheet->getStyle("A{$footerRow}")->getFont()->setItalic(true)->setSize(9);
             },
         ];
     }

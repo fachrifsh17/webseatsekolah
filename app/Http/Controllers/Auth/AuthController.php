@@ -5,26 +5,27 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Models\AuthToken;
+use App\Models\{AuthToken, User};
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
 use App\Http\Resources\UserResource;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\{Log, DB};
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
     public function __construct()
     {
-        // Hanya logout dan me yang butuh middleware auth.token
-        $this->middleware('auth.token')->only(['logout', 'me']);
+        $this->middleware('auth.token')->only(['logout', 'me', 'switchRole']);
     }
 
     public function me(Request $request): JsonResponse
     {
         $user = $request->user();
 
-        // Eager loading relasi agar tidak lambat (N+1 Problem)
+        // Menggunakan Policy untuk memastikan user boleh melihat datanya sendiri
+        $this->authorize('view', $user);
+
         $user->load([
             'roles',
             'guruStaf.strukturJabatan.jabatan',
@@ -32,6 +33,7 @@ class AuthController extends Controller
             'siswa',
             'orangtua'
         ]);
+
         $fotoPath = null;
         if ($user->guruStaf && $user->guruStaf->foto) {
             $fotoPath = $user->guruStaf->foto;
@@ -39,16 +41,54 @@ class AuthController extends Controller
             $fotoPath = $user->siswa->foto;
         }
 
-        // Tambahkan atribut foto_url secara dinamis agar bisa ditangkap UserResource
         $user->foto_url = $fotoPath 
             ? asset('storage/' . $fotoPath) 
-            : asset('images/default-avatar.png'); // Pastikan file ini ada di public/images/
+            : asset('images/default-avatar.png');
 
         return response()->json([
             'success' => true,
             'data' => new UserResource($user)
         ], Response::HTTP_OK);
     }
+
+    /**
+     * Switch Role Aktif
+     */
+    public function switchRole(Request $request): JsonResponse
+    {
+        $request->validate([
+            'role' => 'required|string'
+        ]);
+
+        $user = $request->user();
+        $targetRole = $request->role;
+
+        // --- PENYESUAIAN POLICY ---
+        // Memanggil UserPolicy@switchRole
+        // Jika user adalah 'Siswa' atau tidak memiliki role target, 
+        // Laravel otomatis mengembalikan 403 Forbidden.
+        $this->authorize('switchRole', [$user, $targetRole]);
+
+        try {
+            $user->update([
+                'current_role' => $targetRole
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "Berhasil pindah ke role: $targetRole",
+                'current_role' => $targetRole
+            ], Response::HTTP_OK);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengganti role.'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // ... refresh dan logout tetap sama ...
+    
     public function refresh(Request $request): JsonResponse
     {
         $request->validate([
@@ -96,7 +136,7 @@ class AuthController extends Controller
         if (!$token) {
             return response()->json([
                 'success' => false,
-                'message' => 'Token tidak ditemukan pada header Authorization.'
+                'message' => 'Token tidak ditemukan.'
             ], Response::HTTP_BAD_REQUEST);
         }
 
@@ -109,7 +149,7 @@ class AuthController extends Controller
         if (!$updated) {
             return response()->json([
                 'success' => false,
-                'message' => 'Token tidak valid atau sudah dicabut.'
+                'message' => 'Token tidak valid.'
             ], Response::HTTP_BAD_REQUEST);
         }
 
@@ -117,7 +157,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Berhasil logout, token telah dicabut.'
+            'message' => 'Berhasil logout.'
         ], Response::HTTP_OK);
     }
 }

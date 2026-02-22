@@ -40,34 +40,7 @@ class DashboardController extends Controller
                     'wa_kesiswaan' => $setting->no_wa_kesiswaan ?? null,
                 ],
                 'anak_statistics' => $this->getDataAnak($user->id, $tahunAktif?->id),
-                'akademik' => [
-                    'kalender' => KalenderAkademik::where(function ($q) use ($hariIni, $tigaHariLagi) {
-                            $q->whereBetween('tanggal_mulai', [$hariIni, $tigaHariLagi])
-                              ->orWhere(function ($sub) use ($hariIni) {
-                                  $sub->where('tanggal_mulai', '<=', $hariIni)
-                                      ->where('tanggal_selesai', '>=', $hariIni);
-                              });
-                        })
-                        ->orderBy('tanggal_mulai', 'asc')
-                        ->take(5)
-                        ->get()
-                        ->map(function ($item) use ($hariIni) {
-                            $mulai = Carbon::parse($item->tanggal_mulai);
-                            $selesai = Carbon::parse($item->tanggal_selesai);
-                            
-                            return [
-                                'kegiatan' => $item->kegiatan,
-                                'tanggal_mulai' => $mulai->format('Y-m-d'),
-                                'tanggal_selesai' => $selesai->format('Y-m-d'),
-                                'kategori' => $item->kategori,
-                                'status' => $hariIni->between($mulai, $selesai) 
-                                    ? "Sedang Berlangsung" 
-                                    : "H-" . $hariIni->diffInDays($mulai)
-                            ];
-                        }),
-                    'pengumuman_terbaru' => Pengumuman::latest()->first(),
-                    'berita_terbaru' => BeritaResource::collection(Berita::latest()->take(1)->get()),
-                ]
+                'akademik' => $this->getAkademikData($hariIni, $tigaHariLagi, $tahunAktif?->id)
             ];
 
             return response()->json([
@@ -85,13 +58,50 @@ class DashboardController extends Controller
         }
     }
 
+    private function getAkademikData($hariIni, $tigaHariLagi, $tahunAjaranId)
+    {
+        $queryKalender = KalenderAkademik::query();
+        
+        if ($tahunAjaranId) {
+            $queryKalender->where('tahun_ajaran_id', $tahunAjaranId);
+        }
+
+        return [
+            'kalender' => $queryKalender->where(function ($q) use ($hariIni, $tigaHariLagi) {
+                    $q->whereBetween('tanggal_mulai', [$hariIni, $tigaHariLagi])
+                      ->orWhere(function ($sub) use ($hariIni) {
+                          $sub->where('tanggal_mulai', '<=', $hariIni)
+                              ->where('tanggal_selesai', '>=', $hariIni);
+                      });
+                })
+                ->orderBy('tanggal_mulai', 'asc')
+                ->take(5)
+                ->get()
+                ->map(function ($item) use ($hariIni) {
+                    $mulai = Carbon::parse($item->tanggal_mulai);
+                    $selesai = Carbon::parse($item->tanggal_selesai);
+                    
+                    return [
+                        'kegiatan' => $item->kegiatan,
+                        'tanggal_mulai' => $mulai->format('Y-m-d'),
+                        'tanggal_selesai' => $selesai->format('Y-m-d'),
+                        'kategori' => $item->kategori,
+                        'status' => $hariIni->between($mulai, $selesai) 
+                            ? "Sedang Berlangsung" 
+                            : "H-" . $hariIni->diffInDays($mulai)
+                    ];
+                }),
+            'pengumuman_terbaru' => Pengumuman::latest()->first(),
+            'berita_terbaru' => BeritaResource::collection(Berita::latest()->take(1)->get()),
+        ];
+    }
+
     private function getDataAnak($userId, $tahunAjaranId)
     {
         $orangtua = Orangtua::with(['anak' => function($query) use ($tahunAjaranId) {
             $query->where('is_active', true)
                   ->whereHas('kelas', function($q) use ($tahunAjaranId) {
-                      $q->where('is_active', true)
-                        ->where('tahun_ajaran_id', $tahunAjaranId);
+                      $q->where('tahun_ajaran_id', $tahunAjaranId);
                   });
         }, 'anak.kelas.waliKelas'])->where('user_id', $userId)->first();
 
@@ -100,18 +110,16 @@ class DashboardController extends Controller
         }
 
         return $orangtua->anak->map(function ($siswa) use ($tahunAjaranId) {
-            $queryPresensi = Presensi::where('siswa_id', $siswa->id);
-            if ($tahunAjaranId) {
-                $queryPresensi->where('tahun_ajaran_id', $tahunAjaranId);
-            }
-            $statsPresensi = $queryPresensi->select('status', DB::raw('count(*) as total'))
+            // Stats Presensi difilter Tahun Ajaran
+            $statsPresensi = Presensi::where('siswa_id', $siswa->id)
+                ->when($tahunAjaranId, fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId))
+                ->select('status', DB::raw('count(*) as total'))
                 ->groupBy('status')
                 ->pluck('total', 'status');
 
-            $queryPoin = PoinSiswa::where('siswa_id', $siswa->id);
-            if ($tahunAjaranId) {
-                $queryPoin->where('tahun_ajaran_id', $tahunAjaranId);
-            }
+            // Stats Poin difilter Tahun Ajaran
+            $queryPoin = PoinSiswa::where('siswa_id', $siswa->id)
+                ->when($tahunAjaranId, fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId));
             
             $poinPositif = (int) (clone $queryPoin)->sum('poin_positif');
             $poinNegatif = (int) (clone $queryPoin)->sum('poin_negatif');

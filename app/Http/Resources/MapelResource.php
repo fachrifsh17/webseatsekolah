@@ -2,7 +2,6 @@
 
 namespace App\Http\Resources;
 
-use App\Http\Resources\JurusanResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class MapelResource extends JsonResource
@@ -17,8 +16,10 @@ class MapelResource extends JsonResource
             'kategori_mapel' => $this->kategori_mapel,
             'is_active' => (bool) $this->is_active, 
             
-            // Menggunakan whenLoaded agar tidak error jika relasi tidak dipanggil
-            'jurusan' => new JurusanResource($this->whenLoaded('jurusan')),
+            // Menampilkan hanya nama jurusan jika relasi dimuat
+            'jurusan' => $this->whenLoaded('jurusan', function() {
+                return $this->jurusan->nama_jurusan;
+            }),
 
             // Format tanggal rapi: 15-02-2026 18:49
             'created_at' => $this->created_at ? $this->created_at->format('d-m-Y H:i') : null,

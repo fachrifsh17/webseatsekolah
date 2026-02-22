@@ -44,15 +44,18 @@ class KurikulumPolicy
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // Mengecek apakah salah satu role user ada di dalam array allowedRoles
+        $hasRole = $user->roles->contains(function ($role) use ($allowedRoles) {
+            return in_array($role->role_name, $allowedRoles);
+        });
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
-                ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
-                ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+        // Mengecek apakah salah satu jabatan user ada di dalam array allowedJabatans
+        $hasJabatan = false;
+        if ($user->guruStaf) {
+            $hasJabatan = $user->guruStaf->strukturJabatan->contains(function ($sj) use ($allowedJabatans) {
+                return in_array($sj->jabatan?->nama_jabatan, $allowedJabatans);
+            });
+        }
 
         return $hasRole || $hasJabatan;
     }

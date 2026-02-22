@@ -64,15 +64,22 @@ class KelasController extends Controller
 
             $perPage = $request->get('per_page', 10);
             $kelas = $query->latest()->paginate($perPage);
+            $paginationData = $kelas->toArray();
 
             return response()->json([
                 'success' => true,
                 'data'    => KelasResource::collection($kelas),
                 'meta'    => [
-                    'current_page' => $kelas->currentPage(),
-                    'last_page'    => $kelas->lastPage(),
-                    'per_page'     => $kelas->perPage(),
-                    'total'        => $kelas->total(),
+                    'current_page'  => $kelas->currentPage(),
+                    'last_page'     => $kelas->lastPage(),
+                    'per_page'      => $kelas->perPage(),
+                    'total'         => $kelas->total(),
+                    'from'          => $kelas->firstItem(),
+                    'to'            => $kelas->lastItem(),
+                    'next_page_url' => $kelas->nextPageUrl(),
+                    'prev_page_url' => $kelas->previousPageUrl(),
+                    'path'          => $paginationData['path'],
+                    'links'         => $paginationData['links'],
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -96,12 +103,16 @@ class KelasController extends Controller
             $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 
             $kontak = DataKontak::first() ?? new DataKontak(); 
 
-            $fileNameParts = ['data_kelas'];
+            $fileNameParts = ['DATA_KELAS'];
+
+            if ($request->filled('search')) {
+                $fileNameParts[] = strtoupper(str_replace(' ', '_', $request->search));
+            }
 
             if ($request->filled('jurusan_id')) {
                 $jurusan = Jurusan::find($request->jurusan_id);
                 if ($jurusan) {
-                    $fileNameParts[] = str_replace(' ', '-', strtolower($jurusan->nama_jurusan));
+                    $fileNameParts[] = strtoupper(str_replace([' ', '-'], '_', $jurusan->nama_jurusan));
                 }
             }
 
@@ -115,12 +126,16 @@ class KelasController extends Controller
             }
 
             if (isset($ta)) {
-                $taName = str_replace(['/', ' '], '-', $ta->nama);
-                $semester = strtolower($ta->semester);
+                $taName = str_replace(['/', ' '], '_', $ta->nama);
+                $semester = strtoupper($ta->semester);
                 $fileNameParts[] = "{$taName}_{$semester}";
             }
 
-            $fileName = implode('_', $fileNameParts) . '_' . date('Ymd_His') . '.xlsx';
+            $fileNameParts[] = 'AKTIF';
+
+            $fileName = implode('_', $fileNameParts) . '.xlsx';
+
+            if (ob_get_contents()) ob_end_clean();
 
             return Excel::download(new KelasExport($filters, $profil, $kontak), $fileName);
         } catch (Throwable $e) {
@@ -254,6 +269,13 @@ class KelasController extends Controller
             return response()->json(['success' => false, 'message' => 'Gagal: Tidak ada Tahun Ajaran yang aktif.'], Response::HTTP_BAD_REQUEST);
         }
 
+        if (!empty($validated['jurusan_id'])) {
+            $jurusanAktif = Jurusan::where('id', $validated['jurusan_id'])->where('is_active', 1)->exists();
+            if (!$jurusanAktif) {
+                return response()->json(['success' => false, 'message' => 'Gagal: Jurusan yang dipilih tidak aktif atau tidak ditemukan.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+
         $validated['tahun_ajaran_id'] = $tahunAktif->id;
         $validated['is_active'] = true;
 
@@ -291,6 +313,14 @@ class KelasController extends Controller
     public function update(UpdateKelasRequest $request, Kelas $kelas): JsonResponse
     {
         $validated = $request->validated();
+
+        if (!empty($validated['jurusan_id'])) {
+            $jurusanAktif = Jurusan::where('id', $validated['jurusan_id'])->where('is_active', 1)->exists();
+            if (!$jurusanAktif) {
+                return response()->json(['success' => false, 'message' => 'Gagal: Jurusan yang dipilih tidak aktif atau tidak ditemukan.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+
         $waliId = $validated['wali_kelas_id'] ?? $kelas->wali_kelas_id;
 
         if (!empty($waliId)) {

@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Album;
-use Illuminate\Http\Request;
+use App\Http\Resources\AlbumResource;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
@@ -13,13 +13,15 @@ class AlbumApiController extends Controller
     public function index()
     {
         try {
-            $albums = Album::orderBy('tanggal_kegiatan', 'desc')->paginate(12);
+            // Tambahkan withCount('media') untuk menghitung jumlah item di dalam album
+            $albums = Album::withCount('media') 
+                ->orderBy('tanggal_kegiatan', 'desc')
+                ->paginate(12);
 
-            return response()->json([
+            return AlbumResource::collection($albums)->additional([
                 'success' => true,
-                'message' => 'Daftar album berhasil diambil',
-                'data'    => $albums
-            ], Response::HTTP_OK);
+                'message' => 'Daftar album berhasil diambil'
+            ]);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -33,15 +35,17 @@ class AlbumApiController extends Controller
     public function show($id)
     {
         try {
-            $album = Album::with(['media' => function($query) {
-                $query->orderBy('created_at', 'desc');
-            }])->findOrFail($id);
+            // Untuk detail, kita juga hitung jumlahnya agar sinkron
+            $album = Album::withCount('media')
+                ->with(['media' => function($query) {
+                    $query->orderBy('created_at', 'desc');
+                }])
+                ->findOrFail($id);
 
-            return response()->json([
+            return (new AlbumResource($album))->additional([
                 'success' => true,
-                'message' => 'Detail album ditemukan',
-                'data'    => $album
-            ], Response::HTTP_OK);
+                'message' => 'Detail album ditemukan'
+            ]);
 
         } catch (ModelNotFoundException $e) {
             return response()->json([

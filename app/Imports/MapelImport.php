@@ -20,17 +20,23 @@ class MapelImport implements ToModel, WithHeadingRow, WithValidation
 
     public function model(array $row)
     {
-        $namaMapel = $row['nama_mata_pelajaran'];
+        $namaMapel = trim($row['nama_mata_pelajaran']);
         $jurusanNama = $row['jurusan'] ?? null;
         $jurusanId = null;
 
         if (!empty($jurusanNama) && strtoupper($jurusanNama) !== 'UMUM') {
-            $jurusan = Jurusan::where('nama_jurusan', 'LIKE', '%' . $jurusanNama . '%')
-                ->orWhere('id', $jurusanNama)
+            // Menambahkan pengecekan is_active pada Jurusan
+            $jurusan = Jurusan::where(function($query) use ($jurusanNama) {
+                    $query->where('nama_jurusan', 'LIKE', '%' . $jurusanNama . '%')
+                          ->orWhere('id', $jurusanNama);
+                })
+                ->where('is_active', 1) // Hanya yang aktif
                 ->first();
+
             $jurusanId = $jurusan ? $jurusan->id : null;
         }
 
+        // Cek duplikasi Mapel berdasarkan nama dan jurusan (aktif/tidak tetap dicek agar tidak ganda)
         $exists = MataPelajaran::where('nama_mapel', $namaMapel)
             ->where('jurusan_id', $jurusanId)
             ->exists();

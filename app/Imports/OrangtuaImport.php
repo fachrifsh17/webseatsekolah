@@ -43,17 +43,20 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
                     $lastId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
                     $newUserId = 'U' . str_pad($lastId + 1, 3, '0', STR_PAD_LEFT);
 
+                    // --- BUAT USER DENGAN CURRENT ROLE ---
                     User::create([
-                        'id' => $newUserId,
-                        'username' => $row['telepon'],
-                        'password' => Hash::make($row['telepon']),
-                        'is_active' => 1,
+                        'id'           => $newUserId,
+                        'username'     => $row['telepon'],
+                        'password'     => Hash::make($row['telepon']),
+                        'current_role' => 'Orangtua', // Set role aktif default
+                        'is_active'    => 1,
                     ]);
 
                     DB::table('user_roles')->insert([
-                        'user_id' => $newUserId,
-                        'role_id' => 'R004',
-                        'created_at' => now(), 'updated_at' => now(),
+                        'user_id'    => $newUserId,
+                        'role_id'    => 'R004', // Role ID untuk Orang Tua
+                        'created_at' => now(), 
+                        'updated_at' => now(),
                     ]);
 
                     // --- GENERATE ORANG TUA ID ---
@@ -64,11 +67,11 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
                     $newOrtuaId = 'O' . str_pad($lastOrtuaId + 1, 3, '0', STR_PAD_LEFT);
 
                     Orangtua::create([
-                        'id' => $newOrtuaId,
-                        'user_id' => $newUserId,
-                        'nama_lengkap' => $row['nama_lengkap'],
-                        'telepon' => $row['telepon'],
-                        'is_active' => 1,
+                        'id'           => $newOrtuaId,
+                        'user_id'      => $newUserId,
+                        'nama_lengkap' => $row['nama_lengkap'], // Nama profil disimpan di sini
+                        'telepon'      => $row['telepon'],
+                        'is_active'    => 1,
                     ]);
 
                     // --- RELASI ANAK & CEK KONFLIK NIS ---
@@ -85,7 +88,6 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
                                 })->first();
 
                             if (!$siswa) {
-                                // Menggunakan throw agar transaksi rollback jika NIS tidak valid
                                 throw new \Exception("Siswa NIS {$nisClean} tidak ditemukan atau tidak aktif di Tahun Ajaran ini.");
                             }
 
@@ -109,7 +111,6 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
                     }
                 });
             } catch (\Exception $e) {
-                // Tangkap pesan error dari throw di atas dan masukkan ke importMessages
                 $this->importMessages[] = "Baris {$line}: " . $e->getMessage();
             }
         }

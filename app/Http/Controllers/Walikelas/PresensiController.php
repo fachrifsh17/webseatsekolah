@@ -79,7 +79,22 @@ class PresensiController extends Controller
         $this->authorize('create', [Presensi::class]);
         [$guru, $kelas, $taAktif] = $this->getIdentity();
 
+        if (!$guru || !$kelas || !$taAktif) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identitas Wali Kelas atau Kelas tidak valid.'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
         $tanggalInput = date('Y-m-d');
+
+        if ($this->isDayOff($tanggalInput, $taAktif->id)) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Presensi ditolak. Hari ini adalah hari libur atau akhir pekan.'
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
         $waktuSekarang = date('H:i');
         $jamMulai = "06:30";
         $jamSelesai = "10:00";
@@ -89,20 +104,6 @@ class PresensiController extends Controller
                 'success' => false,
                 'message' => "Akses ditolak. Presensi hanya dapat diisi pada pukul {$jamMulai} sampai {$jamSelesai}. Saat ini pukul {$waktuSekarang}."
             ], Response::HTTP_FORBIDDEN);
-        }
-
-        if (!$guru || !$kelas || !$taAktif) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Identitas Wali Kelas atau Kelas tidak valid.'
-            ], Response::HTTP_FORBIDDEN);
-        }
-
-        if ($this->isDayOff($tanggalInput)) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Hari ini adalah hari libur atau akhir pekan. Presensi tidak dapat dilakukan.'
-            ], Response::HTTP_BAD_REQUEST);
         }
 
         try {
@@ -157,6 +158,10 @@ class PresensiController extends Controller
         if (!$kelas) return response()->json(['success' => false, 'message' => 'Kelas tidak ditemukan.'], Response::HTTP_FORBIDDEN);
 
         try {
+            if ($error = $this->validateSemesterMonth($request)) {
+                return response()->json(['success' => false, 'message' => $error], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             $ta = $request->filled('tahun_ajaran_id') ? TahunAjaran::find($request->tahun_ajaran_id) : $taAktif;
             $bulan = (int) $request->get('bulan', date('m'));
             $semesterTarget = $request->get('semester');
@@ -177,11 +182,15 @@ class PresensiController extends Controller
             $namaBulan = Carbon::create()->month($bulan)->translatedFormat('F');
             $labelWaktu = "Bulan-{$bulan}-Tahun-{$tahunKalender}";
             
+            // --- MODIFIKASI NAMA FILE DISINI ---
+            $taClean = str_replace(['/', ' '], '_', $ta->nama); 
             $fileName = "Rekap_Presensi_" . 
-                        str_replace(' ', '_', $kelas->nama_kelas) . "_" . 
+                        str_replace([' ', '/'], '_', $kelas->nama_kelas) . "_" . 
                         $namaBulan . "_" . 
-                        $tahunKalender . "_" . 
+                        $tahunKalender . "_TA_" . 
+                        $taClean . "_" . 
                         $ta->semester . ".xlsx";
+            // ------------------------------------
 
             $kelas->load('waliKelas');
             $profil = DB::table('profil_sekolah')->first();
@@ -228,6 +237,9 @@ class PresensiController extends Controller
     {
         $tanggal = $request->get('tanggal', date('Y-m-d'));
         $ta = $request->filled('tahun_ajaran_id') ? TahunAjaran::find($request->tahun_ajaran_id) : $taAktif;
+        
+        $isLibur = $this->isDayOff($tanggal, $ta->id);
+
         $waktuSekarang = date('H:i');
         $jamMulai = "06:30";
         $jamSelesai = "10:00";
@@ -258,8 +270,9 @@ class PresensiController extends Controller
                 'tanggal'      => $tanggal,
                 'hari'         => Carbon::parse($tanggal)->locale('id')->dayName,
                 'tahun_ajaran' => $ta->nama . ' ' . $ta->semester,
+                'is_libur'     => $isLibur,
                 'is_editable'  => $tanggal === date('Y-m-d') && 
-                                  !$this->isDayOff($tanggal) && 
+                                  !$isLibur && 
                                   ($waktuSekarang >= $jamMulai && $waktuSekarang <= $jamSelesai)
             ],
             'data'    => $collection
@@ -309,11 +322,17 @@ class PresensiController extends Controller
         return null;
     }
 
-    private function isDayOff($date): bool
+    private function isDayOff($date, $tahunAjaranId = null): bool
     {
-        $libur = DB::table('kalender_akademik')->where('kategori', 'Libur')
+        $query = DB::table('kalender_akademik')->where('kategori', 'Libur')
             ->whereDate('tanggal_mulai', '<=', $date)
-            ->whereDate('tanggal_selesai', '>=', $date)->exists();
+            ->whereDate('tanggal_selesai', '>=', $date);
+        
+        if ($tahunAjaranId) {
+            $query->where('tahun_ajaran_id', $tahunAjaranId);
+        }
+
+        $libur = $query->exists();
         return $libur || date('N', strtotime($date)) >= 6;
     }
 }

@@ -10,20 +10,15 @@ use App\Http\Requests\UpdateBannerRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class BannerController extends Controller
 {
-    use AuthorizesRequests;
-
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
-        
-        // Otomatis mengaitkan Policy dengan method di controller ini
         $this->authorizeResource(Banner::class, 'banner');
     }
 
@@ -37,14 +32,20 @@ class BannerController extends Controller
                 'success' => true,
                 'data'    => BannerResource::collection($data),
                 'meta'    => [
-                    'current_page' => $data->currentPage(),
-                    'last_page'    => $data->lastPage(),
-                    'per_page'     => $data->perPage(),
-                    'total'        => $data->total(),
+                    'current_page'  => $data->currentPage(),
+                    'last_page'     => $data->lastPage(),
+                    'per_page'      => $data->perPage(),
+                    'total'         => $data->total(),
+                    'from'          => $data->firstItem(),
+                    'to'            => $data->lastItem(),
+                    'next_page_url' => $data->nextPageUrl(),
+                    'prev_page_url' => $data->previousPageUrl(),
+                    'path'          => $data->path(),
+                    'links'         => $data->linkCollection()->toArray(),
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Humas: Failed to fetch banners', ['error' => $e->getMessage()]);
+            Log::error('Failed to fetch banners', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar banner',
@@ -61,7 +62,7 @@ class BannerController extends Controller
                 'data'    => new BannerResource($banner),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Humas: Failed to fetch banner detail', [
+            Log::error('Failed to fetch banner detail', [
                 'banner_id' => (string) $banner->id,
                 'error'     => $e->getMessage()
             ]);
@@ -86,14 +87,14 @@ class BannerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Banner berhasil ditambahkan oleh Humas.',
+                'message' => 'Banner berhasil ditambahkan.',
                 'data'    => new BannerResource($banner),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             if (!empty($validated['foto'] ?? null)) {
                 Storage::disk('public')->delete($validated['foto']);
             }
-            Log::error('Humas: Failed to create banner', ['payload' => $validated, 'error' => $e->getMessage()]);
+            Log::error('Failed to create banner', ['payload' => $validated, 'error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menambahkan banner',
@@ -118,14 +119,14 @@ class BannerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Banner berhasil diperbarui oleh Humas.',
+                'message' => 'Banner berhasil diperbarui.',
                 'data'    => new BannerResource($banner),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             if (!empty($validated['foto'] ?? null)) {
                 Storage::disk('public')->delete($validated['foto']);
             }
-            Log::error('Humas: Failed to update banner', [
+            Log::error('Failed to update banner', [
                 'banner_id' => (string) $banner->id,
                 'payload'   => $validated,
                 'error'     => $e->getMessage()
@@ -149,11 +150,11 @@ class BannerController extends Controller
 
             return response()->json([
                 'success'      => true,
-                'message'      => 'Banner berhasil dihapus oleh Humas',
+                'message'      => 'Banner berhasil dihapus',
                 'notification' => 'Berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Humas: Failed to delete banner', [
+            Log::error('Failed to delete banner', [
                 'banner_id' => (string) $banner->id,
                 'error'     => $e->getMessage()
             ]);

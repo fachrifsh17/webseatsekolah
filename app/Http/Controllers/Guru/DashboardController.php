@@ -38,7 +38,6 @@ class DashboardController extends Controller
             $activeTaIds = TahunAjaran::where('is_active', 1)->pluck('id');
             $guruStafId = $guruStaf->id;
 
-            // Kelas Wali & Siswa Binaan (Filter TA Aktif)
             $kelasWaliIds = Kelas::where('wali_kelas_id', $guruStafId)
                 ->where('is_active', 1)
                 ->whereIn('tahun_ajaran_id', $activeTaIds)
@@ -68,7 +67,7 @@ class DashboardController extends Controller
 
             $data = [
                 'statistics' => $stats,
-                'kalender_akademik' => $this->getKalender(),
+                'kalender_akademik' => $this->getKalender($activeTaIds),
                 'common' => [
                     'recent_pengumuman' => $this->getPengumuman(),
                     'recent_berita' => BeritaResource::collection(Berita::latest()->take(3)->get()),
@@ -135,9 +134,8 @@ class DashboardController extends Controller
                 $res['summary'] = [
                     'total_mapel' => \App\Models\Matapelajaran::where('is_active', 1)->count(),
                     'total_guru_mapel' => GuruMapel::whereHas('kelas', $filterAktif)->distinct('guru_staf_id')->count(),
-                    // Perbaikan: Langsung cek tahun_ajaran_id di tabel jadwal
                     'jadwal_produktif' => JadwalProduktif::whereIn('tahun_ajaran_id', $activeTaIds)->count(),
-                    'agenda_akademik' => KalenderAkademik::whereDate('tanggal_mulai', '>=', $today)->count()
+                    'agenda_akademik' => KalenderAkademik::whereIn('tahun_ajaran_id', $activeTaIds)->whereDate('tanggal_mulai', '>=', $today)->count()
                 ];
                 break;
 
@@ -181,7 +179,6 @@ class DashboardController extends Controller
                     'guru_jurusan' => GuruMapel::whereHas('mapel', function($q) use ($jurusanId) {
                         $q->where('jurusan_id', $jurusanId);
                     })->distinct('guru_staf_id')->count(),
-                    // Perbaikan: Langsung cek jurusan_id dan tahun_ajaran_id di tabel jadwal
                     'jadwal_jurusan' => JadwalProduktif::where('jurusan_id', $jurusanId)
                         ->whereIn('tahun_ajaran_id', $activeTaIds)->count()
                 ];
@@ -191,12 +188,13 @@ class DashboardController extends Controller
         return $res;
     }
 
-    private function getKalender(): array
+    private function getKalender($activeTaIds): array
     {
         $hariIni = today();
         $tigaHariLagi = today()->addDays(3);
 
-        return KalenderAkademik::where(function ($q) use ($hariIni, $tigaHariLagi) {
+        return KalenderAkademik::whereIn('tahun_ajaran_id', $activeTaIds)
+            ->where(function ($q) use ($hariIni, $tigaHariLagi) {
                 $q->whereBetween('tanggal_mulai', [$hariIni, $tigaHariLagi])
                   ->orWhere(function ($sub) use ($hariIni) {
                       $sub->where('tanggal_mulai', '<=', $hariIni)

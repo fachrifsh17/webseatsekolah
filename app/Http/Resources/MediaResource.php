@@ -12,11 +12,14 @@ class MediaResource extends JsonResource
         return [
             'id'          => $this->id,
             'album_id'    => $this->album_id,
-            'media_url'   => $this->media_path ? Storage::url($this->media_path) : null,
+            
+            // Menggunakan asset() untuk mengubah path menjadi URL lengkap (http://...)
+            'media_url'   => $this->media_path ? asset(Storage::url($this->media_path)) : null,
+            
             'jenis_media' => $this->jenis_media,
             'keterangan'  => $this->keterangan,
 
-            // Relasi Album
+            // Relasi Album (Pastikan AlbumResource juga menggunakan asset() untuk cover_url)
             'album'       => $this->whenLoaded('album', function () {
                 return new AlbumResource($this->album);
             }),

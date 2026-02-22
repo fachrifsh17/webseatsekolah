@@ -15,6 +15,7 @@ class CheckRole
     {
         $user = $request->user();
 
+        // 1. Pastikan user sudah login
         if (!$user) {
             return response()->json([
                 'success' => false,
@@ -22,65 +23,32 @@ class CheckRole
             ], Response::HTTP_UNAUTHORIZED);
         }
 
+        // 2. Ambil daftar role yang diizinkan dari middleware (misal: 'Admin,Guru')
         $raw = implode(',', $roles);
-        $requireAll = false;
-
-        if (str_starts_with($raw, 'all:')) {
-            $requireAll = true;
-            $raw = substr($raw, 4);
-        }
-
         $allowedRoles = $this->normalizeRoles([$raw]);
 
         if (empty($allowedRoles)) {
             return $this->ensureResponse($next($request));
         }
 
-        try {
-            $rolesCollection = $user->relationLoaded('roles') ? $user->roles : ($user->roles()->get() ?? collect());
-        } catch (\Throwable $e) {
-            $rolesCollection = collect();
-        }
+        // 3. AMBIL HANYA CURRENT ROLE (Strict Mode)
+        // Kita tidak lagi mengecek $user->roles() agar fitur switch-role berguna
+        $userActiveRole = strtolower(trim($user->current_role ?? ''));
 
-        $rolesCollection = collect($rolesCollection);
-
-        if ($rolesCollection->isEmpty()) {
+        if (!$userActiveRole) {
             return response()->json([
                 'success' => false,
-                'message' => 'User tidak memiliki role apa pun.'
+                'message' => 'Role aktif tidak ditemukan. Silakan pilih role terlebih dahulu.'
             ], Response::HTTP_FORBIDDEN);
         }
 
-        $userRoleIdentifiers = $rolesCollection->map(function ($r) {
-            if (is_string($r)) {
-                return strtolower(trim($r));
-            }
-
-            $value = null;
-            if (!empty($r->slug)) $value = $r->slug;
-            elseif (!empty($r->name)) $value = $r->name;
-            elseif (!empty($r->role_name)) $value = $r->role_name;
-            elseif (!empty($r->nama)) $value = $r->nama;
-            elseif (isset($r->id)) $value = (string) $r->id;
-
-            return $value !== null ? strtolower((string) $value) : null;
-        })->filter()->unique()->values()->all();
-
-        if ($requireAll) {
-            $missing = array_diff($allowedRoles, $userRoleIdentifiers);
-            if (!empty($missing)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Anda harus memiliki semua role yang diperlukan.'
-                ], Response::HTTP_FORBIDDEN);
-            }
-        } else {
-            if (empty(array_intersect($userRoleIdentifiers, $allowedRoles))) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Anda tidak memiliki hak akses untuk halaman ini.'
-                ], Response::HTTP_FORBIDDEN);
-            }
+        // 4. PENGECEKAN KETAT
+        // User hanya lolos jika current_role-nya ada di dalam list $allowedRoles
+        if (!in_array($userActiveRole, $allowedRoles)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Akses ditolak. Role aktif Anda ($userActiveRole) tidak diizinkan mengakses halaman ini."
+            ], Response::HTTP_FORBIDDEN);
         }
 
         try {
@@ -96,39 +64,22 @@ class CheckRole
     protected function normalizeRoles(array $roles): array
     {
         $normalized = [];
-
         foreach ($roles as $role) {
-            if (!is_string($role)) {
-                continue;
-            }
-
+            if (!is_string($role)) continue;
             foreach (explode(',', $role) as $part) {
                 $trimmed = trim($part);
-                if ($trimmed === '') {
-                    continue;
-                }
-
+                if ($trimmed === '') continue;
                 $normalized[] = strtolower($trimmed);
             }
         }
-
         return array_values(array_unique($normalized));
     }
 
     protected function ensureResponse($response): Response
     {
-        if ($response instanceof Response) {
-            return $response;
-        }
-
-        if ($response instanceof JsonResponse || $response instanceof RedirectResponse || $response instanceof StreamedResponse) {
-            return $response;
-        }
-
-        if (is_array($response) || is_object($response)) {
-            return response()->json($response);
-        }
-
+        if ($response instanceof Response) return $response;
+        if ($response instanceof JsonResponse || $response instanceof RedirectResponse || $response instanceof StreamedResponse) return $response;
+        if (is_array($response) || is_object($response)) return response()->json($response);
         return response((string) $response);
     }
 }

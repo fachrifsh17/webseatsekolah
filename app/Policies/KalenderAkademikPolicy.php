@@ -32,28 +32,23 @@ class KalenderAkademikPolicy
         return $this->authorize($user, ['Admin'], ['Waka Kurikulum']);
     }
 
-    public function restore(User $user, KalenderAkademik $kalenderAkademik): bool
-    {
-        return $this->authorize($user, ['Admin'], ['Waka Kurikulum']);
-    }
-
-    public function forceDelete(User $user, KalenderAkademik $kalenderAkademik): bool
-    {
-        return $this->authorize($user, ['Admin'], ['Waka Kurikulum']);
-    }
-
+    /**
+     * Helper untuk validasi Role dan Jabatan tanpa Intersect yang berat
+     */
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // 1. Cek Role (menggunakan contains lebih aman daripada intersect untuk debugging)
+        $hasRole = $user->roles->contains(fn($role) => in_array($role->role_name, $allowedRoles));
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
-                ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
-                ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+        if ($hasRole) return true;
 
-        return $hasRole || $hasJabatan;
+        // 2. Cek Jabatan melalui relasi guruStaf
+        if ($user->guruStaf && $user->guruStaf->strukturJabatan) {
+            return $user->guruStaf->strukturJabatan->contains(function ($sj) use ($allowedJabatans) {
+                return $sj->jabatan && in_array($sj->jabatan->nama_jabatan, $allowedJabatans);
+            });
+        }
+
+        return false;
     }
 }

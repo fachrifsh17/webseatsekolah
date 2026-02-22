@@ -39,6 +39,14 @@ class SiswaController extends Controller
 
         if ($request->filled('kelas_id')) {
             $query->where('kelas_id', $request->kelas_id);
+        } elseif ($request->filled('tahun_ajaran_id')) {
+            $query->whereHas('kelas', function($q) use ($request) {
+                $q->where('tahun_ajaran_id', $request->tahun_ajaran_id);
+            });
+        } else {
+            $query->whereHas('kelas.tahunAjaran', function($q) {
+                $q->where('is_active', 1);
+            });
         }
 
         if ($request->has('is_active')) {
@@ -68,16 +76,33 @@ class SiswaController extends Controller
         $query = $this->applyFilters($request, $query);
 
         $perPage = $request->get('per_page', $request->filled('search') ? 10 : 20);
-        $data = $query->latest()->paginate($perPage);
+        $items = $query->latest()->paginate($perPage);
+        $paginationData = $items->toArray();
+
+        $tahunAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
 
         return response()->json([
             'success' => true,
-            'data'    => SiswaResource::collection($data),
+            'data'    => SiswaResource::collection($items),
             'meta'    => [
-                'current_page' => $data->currentPage(),
-                'last_page'    => $data->lastPage(),
-                'per_page'     => $data->perPage(),
-                'total'        => $data->total(),
+                'current_page'  => $paginationData['current_page'],
+                'last_page'     => $paginationData['last_page'],
+                'per_page'      => $paginationData['per_page'],
+                'total'         => $paginationData['total'],
+                'from'          => $paginationData['from'],
+                'to'            => $paginationData['to'],
+                'path'          => $paginationData['path'],
+                'next_page_url' => $paginationData['next_page_url'],
+                'prev_page_url' => $paginationData['prev_page_url'],
+                'links'         => array_map(function ($link) {
+                    return [
+                        'url'    => $link['url'],
+                        'label'  => $link['label'],
+                        'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                        'active' => $link['active'],
+                    ];
+                }, $paginationData['links']),
+                'tahun_aktif'   => $tahunAktif ? $tahunAktif->nama . " (" . $tahunAktif->semester . ")" : null
             ],
         ], Response::HTTP_OK);
     }
@@ -89,24 +114,33 @@ class SiswaController extends Controller
         $query = Siswa::query()->with(['kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
 
-        $filename = 'data_siswa';
+        if ($request->filled('tahun_ajaran_id')) {
+            $tahunFocus = DB::table('tahun_ajaran')->where('id', $request->tahun_ajaran_id)->first();
+        } else {
+            $tahunFocus = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+        }
+
+        $labelPeriode = 'PERIODE_TIDAK_DIKETAHUI';
+        if ($tahunFocus) {
+            $thn = str_replace(['/', ' '], '_', $tahunFocus->nama);
+            $sms = strtoupper($tahunFocus->semester);
+            $labelPeriode = strtoupper($thn . '_' . $sms);
+        }
+
+        $filename = 'DATA_SISWA';
         $kelasData = null;
 
         if ($request->filled('kelas_id')) {
             $kelasData = Kelas::find($request->kelas_id);
             if ($kelasData) {
-                $filename .= '_' . Str::slug($kelasData->nama_kelas);
-            }
-        } elseif ($request->filled('jurusan_id')) {
-            $jurusan = DB::table('data_jurusan')->where('id', $request->jurusan_id)->first();
-            if ($jurusan) {
-                $filename .= '_' . Str::slug($jurusan->nama_jurusan);
+                $filename .= '_' . strtoupper(Str::slug($kelasData->nama_kelas, '_'));
             }
         }
 
+        $filename .= '_' . $labelPeriode;
         $is_active = $request->has('is_active') ? $request->is_active : 1;
-        $filename .= $is_active ? '_aktif' : '_tidak_aktif';
-        $filename .= '_' . now()->format('Ymd_His') . '.xlsx';
+        $filename .= $is_active ? '_AKTIF' : '_TIDAK_AKTIF';
+        $filename .= '.xlsx';
 
         $profil = DB::table('profil_sekolah')->first();
         $kontak = DB::table('data_kontak')->first();
@@ -120,7 +154,6 @@ class SiswaController extends Controller
     public function import(Request $request): JsonResponse
     {
         $this->authorize('create', Siswa::class);
-
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv']);
 
         try {
@@ -155,6 +188,18 @@ class SiswaController extends Controller
     public function store(StoreSiswaRequest $request): JsonResponse
     {
         $validated = $request->validated();
+
+        $isKelasAktif = Kelas::where('id', $validated['kelas_id'])
+            ->whereHas('tahunAjaran', fn($q) => $q->where('is_active', 1))
+            ->exists();
+
+        if (!$isKelasAktif) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kelas yang dipilih harus berada pada tahun ajaran aktif.'
+            ], 422);
+        }
+
         $data = Arr::only($validated, (new Siswa())->getFillable());
 
         if ($request->hasFile('foto')) {
@@ -177,10 +222,11 @@ class SiswaController extends Controller
                 $newUserId = 'U' . str_pad($lastUserId + 1, 3, '0', STR_PAD_LEFT);
 
                 User::create([
-                    'id'        => $newUserId,
-                    'username'  => $data['nis'],
-                    'password'  => Hash::make($data['nis']),
-                    'is_active' => 1,
+                    'id'           => $newUserId,
+                    'username'     => $data['nis'],
+                    'password'     => Hash::make($data['nis']),
+                    'current_role' => 'Siswa',
+                    'is_active'    => 1,
                 ]);
 
                 DB::table('user_roles')->insert([
@@ -230,6 +276,20 @@ class SiswaController extends Controller
     public function update(UpdateSiswaRequest $request, Siswa $siswa): JsonResponse
     {
         $validated = $request->validated();
+
+        if (isset($validated['kelas_id'])) {
+            $isKelasAktif = Kelas::where('id', $validated['kelas_id'])
+                ->whereHas('tahunAjaran', fn($q) => $q->where('is_active', 1))
+                ->exists();
+
+            if (!$isKelasAktif) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Kelas tujuan harus berada pada tahun ajaran aktif.'
+                ], 422);
+            }
+        }
+
         $data = Arr::only($validated, (new Siswa())->getFillable());
         $oldFoto = $siswa->foto;
 

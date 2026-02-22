@@ -42,6 +42,7 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
             
             $this->hariLiburNasional = DB::table('kalender_akademik')
                 ->where('kategori', 'Libur')
+                ->where('tahun_ajaran_id', $tahunAjaranId)
                 ->where(function($q) {
                     $q->where(function($sq) {
                         $sq->whereMonth('tanggal_mulai', $this->month)->whereYear('tanggal_mulai', $this->year);
@@ -128,20 +129,16 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
         ]);
 
         if ($this->daysInMonth > 0) {
-            // Pengaturan Ukuran Kolom (Disesuaikan agar pas seperti di gambar)
-            $sheet->getColumnDimension('A')->setWidth(4);  // Kolom NO
-            $sheet->getColumnDimension('B')->setWidth(30); // Kolom NAMA LENGKAP
+            $sheet->getColumnDimension('A')->setWidth(4);
+            $sheet->getColumnDimension('B')->setWidth(30);
             
-            // Loop untuk kolom tanggal 1 sampai H, S, I, A
             $highestColIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($lastCol);
             for ($i = 3; $i < $highestColIndex; $i++) {
                 $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
-                $sheet->getColumnDimension($col)->setWidth(3.2); // Ukuran kotak tanggal (Sangat Pas)
+                $sheet->getColumnDimension($col)->setWidth(3.2);
             }
             
-            // Kolom Keterangan (Paling Akhir)
             $sheet->getColumnDimension($lastCol)->setWidth(15);
-            
             $sheet->getStyle("A11:{$lastCol}{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle("B12:B{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
         }
@@ -155,7 +152,6 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 $lastCol = $sheet->getHighestColumn();
                 $lastRow = $sheet->getHighestRow();
                 
-                // Kop Surat
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
@@ -170,18 +166,15 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 $sheet->getStyle("A1:{$lastCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
 
-                // Judul
                 $sheet->mergeCells("A7:{$lastCol}7"); $sheet->setCellValue('A7', 'LAPORAN PRESENSI SISWA');
                 $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12);
                 $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // Baris Info
                 $sheet->setCellValue('A8', "Kelas: {$this->namaKelas}");
                 $sheet->setCellValue('A9', "Tahun Ajaran: {$this->tahunAjaran}"); 
                 $sheet->setCellValue($lastCol . "9", "Periode: " . str_replace('-', ' ', $this->labelWaktu));
                 $sheet->getStyle($lastCol . "9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
-                // Tanda Tangan
                 if (in_array($this->role, ['admin', 'kesiswaan'])) {
                     $jabatanLabel = "Waka Kesiswaan,";
                     $ttd = DB::table('struktur_jabatan')
@@ -191,7 +184,7 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                     $namaTtd = $ttd->nama ?? 'Nama Kesiswaan';
                     $nipTtd = $ttd->nip ?? '-';
                 } else {
-                    $jabatanLabel = "Guru Mata Pelajaran,";
+                    $jabatanLabel = "Walikelas,";
                     $namaTtd = $this->dataKelas->waliKelas->nama ?? 'Nama Guru';
                     $nipTtd = $this->dataKelas->waliKelas->nip ?? '-';
                 }

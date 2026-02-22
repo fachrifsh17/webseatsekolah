@@ -32,28 +32,24 @@ class AlbumPolicy
         return $this->authorize($user, ['Admin'], ['Waka Sarpras']);
     }
 
-    public function restore(User $user, Album $album): bool
-    {
-        return $this->authorize($user, ['Admin'], ['Waka Sarpras']);
-    }
-
-    public function forceDelete(User $user, Album $album): bool
-    {
-        return $this->authorize($user, ['Admin'], ['Waka Sarpras']);
-    }
-
+    // --- Fungsi Authorize yang Baru (Tanpa Intersect) ---
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // 1. Cek Role (Cukup pakai contains pada koleksi roles)
+        $hasRole = $user->roles->contains(function ($role) use ($allowedRoles) {
+            return in_array($role->role_name, $allowedRoles);
+        });
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
-                ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
-                ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+        if ($hasRole) return true;
 
-        return $hasRole || $hasJabatan;
+        // 2. Cek Jabatan (Melalui relasi guruStaf -> strukturJabatan)
+        $hasJabatan = false;
+        if ($user->guruStaf && $user->guruStaf->strukturJabatan) {
+            $hasJabatan = $user->guruStaf->strukturJabatan->contains(function ($sj) use ($allowedJabatans) {
+                return $sj->jabatan && in_array($sj->jabatan->nama_jabatan, $allowedJabatans);
+            });
+        }
+
+        return $hasJabatan;
     }
 }

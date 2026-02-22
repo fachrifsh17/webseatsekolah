@@ -19,9 +19,9 @@ class StoreKalenderAkademikRequest extends FormRequest
     {
         return [
             'tahun_ajaran_id' => [
-                'required', 
+                'nullable', 
                 'string', 
-                'exists:tahun_ajaran,id' // Memastikan ID Tahun Ajaran ada di database
+                'exists:tahun_ajaran,id'
             ],
             'kegiatan' => [
                 'required', 
@@ -29,7 +29,7 @@ class StoreKalenderAkademikRequest extends FormRequest
                 'max:255',
                 Rule::unique('kalender_akademik')->where(function ($query) {
                     return $query->where('tanggal_mulai', $this->tanggal_mulai)
-                                 ->where('tahun_ajaran_id', $this->tahun_ajaran_id); // Unique berdasarkan tanggal DAN tahun ajaran
+                                 ->where('tahun_ajaran_id', $this->tahun_ajaran_id);
                 }),
             ],
             'tanggal_mulai'   => ['required', 'date'],
@@ -41,7 +41,6 @@ class StoreKalenderAkademikRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'tahun_ajaran_id.required'       => 'Tahun ajaran wajib dipilih.',
             'tahun_ajaran_id.exists'         => 'Tahun ajaran yang dipilih tidak valid.',
             'kegiatan.required'              => 'Nama kegiatan akademik wajib diisi.',
             'kegiatan.string'                => 'Nama kegiatan harus berupa teks.',

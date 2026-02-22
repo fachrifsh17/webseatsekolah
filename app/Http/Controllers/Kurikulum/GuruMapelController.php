@@ -75,6 +75,7 @@ class GuruMapelController extends Controller
         $query = $this->applyFilters($request);
         $perPage = $request->get('per_page', 10);
         $assignments = $query->paginate($perPage);
+        $paginationData = $assignments->toArray();
 
         return response()->json([
             'success' => true,
@@ -84,91 +85,101 @@ class GuruMapelController extends Controller
                 'last_page'    => $assignments->lastPage(),
                 'per_page'     => $assignments->perPage(),
                 'total'        => $assignments->total(),
+                'from'         => $assignments->firstItem(),
+                'to'           => $assignments->lastItem(),
+                'next_page_url'=> $assignments->nextPageUrl(),
+                'prev_page_url'=> $assignments->previousPageUrl(),
+                'path'         => $paginationData['path'],
+                'links'        => $paginationData['links'],
             ],
         ], Response::HTTP_OK);
     }
 
-public function export(Request $request)
-{
-    $this->authorize('viewAny', GuruMapel::class);
+    public function export(Request $request)
+    {
+        $this->authorize('viewAny', GuruMapel::class);
 
-    try {
-        $query = $this->applyFilters($request);
-        
-        // Menangani alias filter (agar sinkron dengan filter kelas/guru)
-        $kelasId = $request->get('kelas_id') ?? $request->get('klas_id');
-        $guruId = $request->get('guru_staf_id') ?? $request->get('guru_id');
+        try {
+            $query = $this->applyFilters($request);
+            
+            $kelasId = $request->get('kelas_id') ?? $request->get('klas_id');
+            $guruId = $request->get('guru_staf_id') ?? $request->get('guru_id');
 
-        $filters = [
-            'q'            => $request->get('q'),
-            'hari'         => $request->get('hari'),
-            'tahun_ajaran' => 'Semua',
-            'guru'         => 'Semua Guru',
-            'mapel'        => 'Semua Mapel',
-            'kelas'        => 'Semua Kelas',
-            'tipe_mapel'   => $request->get('tipe_mapel', 'Semua Tipe'),
-            'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Hanya Mapel Aktif'
-        ];
+            $filters = [
+                'q'            => $request->get('q'),
+                'hari'         => $request->get('hari'),
+                'tahun_ajaran' => 'Semua',
+                'semester'     => 'Semua',
+                'guru'         => 'Semua Guru',
+                'mapel'        => 'Semua Mapel',
+                'kelas'        => 'Semua Kelas',
+                'tipe_mapel'   => $request->get('tipe_mapel', 'Semua Tipe'),
+                'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Hanya Mapel Aktif'
+            ];
 
-        // 1. Inisialisasi komponen nama file
-        $nameParts = ['Jadwal_Admin'];
+            $nameParts = ['JADWAL_GURU_MAPEL'];
 
-        // 2. Tambahkan Tahun Ajaran jika difilter
-        if ($request->filled('tahun_ajaran_id')) {
-            $tahun = TahunAjaran::find($request->tahun_ajaran_id);
-            $filters['tahun_ajaran'] = $tahun->nama ?? 'Semua';
-            $nameParts[] = $filters['tahun_ajaran'];
-        }
-
-        // 3. TAMBAHKAN TIPE MAPEL KE NAMA FILE
-        if ($request->filled('tipe_mapel')) {
-            $nameParts[] = $request->tipe_mapel; // Contoh: "Muatan Kejuruan"
-        }
-
-        // 4. Tambahkan Guru jika difilter
-        if ($guruId) {
-            $guru = GuruStaf::find($guruId);
-            if ($guru) {
-                $filters['guru'] = $guru->nama;
-                $nameParts[] = $guru->nama;
+            if ($request->filled('tahun_ajaran_id')) {
+                $tahun = TahunAjaran::find($request->tahun_ajaran_id);
+            } else {
+                $tahun = TahunAjaran::where('is_active', 1)->first();
             }
-        }
 
-        // 5. Tambahkan Mapel jika difilter
-        if ($request->filled('mata_pelajaran_id')) {
-            $mapel = MataPelajaran::find($request->mata_pelajaran_id);
-            if ($mapel) {
-                $filters['mapel'] = $mapel->nama_mapel;
-                $nameParts[] = $mapel->nama_mapel;
+            if ($tahun) {
+                $filters['tahun_ajaran'] = $tahun->nama;
+                $filters['semester'] = strtoupper($tahun->semester);
+                $taClean = str_replace(['/', ' '], '_', $tahun->nama);
+                $semester = strtoupper($tahun->semester);
+                $nameParts[] = "{$taClean}_{$semester}";
             }
-        }
 
-        // 6. Tambahkan Kelas jika difilter
-        if ($kelasId) {
-            $kelas = Kelas::find($kelasId);
-            if ($kelas) {
-                $filters['kelas'] = $kelas->nama_kelas;
-                $nameParts[] = $kelas->nama_kelas;
+            if ($request->filled('tipe_mapel')) {
+                $nameParts[] = strtoupper(str_replace(' ', '_', $request->tipe_mapel));
             }
+
+            if ($guruId) {
+                $guru = GuruStaf::find($guruId);
+                if ($guru) {
+                    $filters['guru'] = $guru->nama;
+                    $nameParts[] = strtoupper(str_replace(' ', '_', $guru->nama));
+                }
+            }
+
+            if ($request->filled('mata_pelajaran_id')) {
+                $mapel = MataPelajaran::find($request->mata_pelajaran_id);
+                if ($mapel) {
+                    $filters['mapel'] = $mapel->nama_mapel;
+                    $nameParts[] = strtoupper(str_replace(' ', '_', $mapel->nama_mapel));
+                }
+            }
+
+            if ($kelasId) {
+                $kelas = Kelas::find($kelasId);
+                if ($kelas) {
+                    $filters['kelas'] = $kelas->nama_kelas;
+                    $nameParts[] = strtoupper(str_replace(' ', '_', $kelas->nama_kelas));
+                }
+            }
+
+            if ($request->filled('hari')) {
+                $nameParts[] = strtoupper($request->hari);
+            }
+
+            $nameParts[] = 'AKTIF';
+
+            $fileName = implode('_', $nameParts) . '.xlsx';
+
+            $profil = ProfilSekolah::first();
+            $contak = DataKontak::first();
+
+            if (ob_get_contents()) ob_end_clean();
+            
+            return Excel::download(new GuruMapelExport($query, $profil, $contak, $filters), $fileName);
+        } catch (Throwable $e) {
+            Log::error('Export Guru Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Gagal mengekspor data penugasan.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        // 7. Tambahkan Hari jika difilter
-        if ($request->filled('hari')) {
-            $nameParts[] = $request->hari;
-        }
-
-        $profil = ProfilSekolah::first();
-        $kontak = DataKontak::first();
-
-        // Menggabungkan semua bagian menjadi satu nama file yang bersih (slug)
-        $fileName = Str::slug(implode('_', $nameParts), '_') . '_' . now()->format('Ymd_His') . '.xlsx';
-        
-        return Excel::download(new GuruMapelExport($query, $profil, $kontak, $filters), $fileName);
-    } catch (Throwable $e) {
-        Log::error('Export Guru Mapel Error', ['error' => $e->getMessage()]);
-        return response()->json(['message' => 'Gagal mengekspor data penugasan.'], Response::HTTP_INTERNAL_SERVER_ERROR);
     }
-}
 
     public function import(Request $request): JsonResponse
     {

@@ -25,7 +25,6 @@ class PrestasiController extends Controller
         $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
         
-        // Mengotomatisasi pengecekan Policy untuk index, show, store, update, destroy
         $this->authorizeResource(Prestasi::class, 'prestasi');
     }
 
@@ -35,14 +34,29 @@ class PrestasiController extends Controller
             $perPage = min((int) request()->get('per_page', 12), 100);
             $items   = Prestasi::orderBy('tahun', 'desc')->paginate($perPage);
 
+            $paginationData = $items->toArray();
+
             return response()->json([
                 'success' => true,
                 'data'    => PrestasiResource::collection($items),
                 'meta'    => [
-                    'current_page' => $items->currentPage(),
-                    'last_page'    => $items->lastPage(),
-                    'per_page'     => $items->perPage(),
-                    'total'        => $items->total(),
+                    'current_page'  => $paginationData['current_page'],
+                    'last_page'     => $paginationData['last_page'],
+                    'per_page'      => $paginationData['per_page'],
+                    'total'         => $paginationData['total'],
+                    'from'          => $paginationData['from'],
+                    'to'            => $paginationData['to'],
+                    'path'          => $paginationData['path'],
+                    'next_page_url' => $paginationData['next_page_url'],
+                    'prev_page_url' => $paginationData['prev_page_url'],
+                    'links'         => array_map(function ($link) {
+                        return [
+                            'url'    => $link['url'],
+                            'label'  => $link['label'],
+                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                            'active' => $link['active'],
+                        ];
+                    }, $paginationData['links']),
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {

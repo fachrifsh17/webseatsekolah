@@ -17,7 +17,10 @@ class EkstrakurikulerResource extends JsonResource
             'jam_mulai'    => $this->jam_mulai ? (string) $this->jam_mulai : null,
             'jam_selesai'  => $this->jam_selesai ? (string) $this->jam_selesai : null,
             'pembina_id'   => $this->pembina_id,
-            'foto_url'     => $this->foto ? Storage::url($this->foto) : null,
+            
+            // Tambahkan asset() agar menghasilkan http://domain.com/storage/...
+            'foto_url'     => $this->foto ? asset(Storage::url($this->foto)) : null,
+            
             'keterangan'   => $this->keterangan,
             'pembina'      => $this->whenLoaded('pembina', function () {
                 return [

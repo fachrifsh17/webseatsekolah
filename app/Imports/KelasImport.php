@@ -18,6 +18,7 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
 
     public function model(array $row)
     {
+        // 1. Cek Tahun Ajaran yang Aktif
         $tahunAktif = TahunAjaran::where('is_active', 1)->first();
         
         if (!$tahunAktif) {
@@ -25,17 +26,25 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
             return null;
         }
 
-        $jurusan = Jurusan::where('nama_jurusan', trim($row['jurusan']))->first();
+        // 2. Cek Jurusan yang Aktif (Tambahan is_active)
+        $jurusan = Jurusan::where('nama_jurusan', trim($row['jurusan']))
+            ->where('is_active', 1)
+            ->first();
+
         if (!$jurusan) {
-            $this->messages[] = "Baris skipped: Jurusan '" . ($row['jurusan'] ?? 'Kosong') . "' tidak ditemukan.";
+            $this->messages[] = "Baris skipped: Jurusan '" . ($row['jurusan'] ?? 'Kosong') . "' tidak ditemukan atau tidak aktif.";
             return null;
         }
 
         $waliKelasId = null;
         if (!empty($row['wali_kelas'])) {
-            $guru = GuruStaf::where('nama', trim($row['wali_kelas']))->first();
+            // 3. Cek Guru yang Aktif (Tambahan is_active)
+            $guru = GuruStaf::where('nama', trim($row['wali_kelas']))
+                ->where('is_active', 1)
+                ->first();
             
             if ($guru) {
+                // Cek apakah guru sudah jadi wali kelas di tahun ajaran aktif ini
                 $sudahJadiWali = Kelas::where('wali_kelas_id', $guru->id)
                     ->where('tahun_ajaran_id', $tahunAktif->id)
                     ->exists();
@@ -47,11 +56,12 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
 
                 $waliKelasId = $guru->id;
             } else {
-                $this->messages[] = "Baris skipped: Guru '{$row['wali_kelas']}' tidak ditemukan di database.";
+                $this->messages[] = "Baris skipped: Guru '{$row['wali_kelas']}' tidak ditemukan atau statusnya tidak aktif.";
                 return null;
             }
         }
 
+        // 4. Cek duplikasi nama kelas di tahun ajaran yang sama
         $isDuplicate = Kelas::where('nama_kelas', trim($row['nama_kelas']))
             ->where('tahun_ajaran_id', $tahunAktif->id)
             ->exists();
@@ -73,7 +83,7 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
 
                 return new Kelas([
                     'id'              => $newId,
-                    'nama_kelas'      => $row['nama_kelas'],
+                    'nama_kelas'      => trim($row['nama_kelas']),
                     'jurusan_id'      => $jurusan->id,
                     'wali_kelas_id'   => $waliKelasId,
                     'tahun_ajaran_id' => $tahunAktif->id,

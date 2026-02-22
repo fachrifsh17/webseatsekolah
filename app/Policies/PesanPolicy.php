@@ -39,15 +39,21 @@ class PesanPolicy
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // Menggunakan contains untuk mengecek kecocokan role
+        $hasRole = $user->roles->pluck('role_name')->contains(function ($roleName) use ($allowedRoles) {
+            return in_array($roleName, $allowedRoles);
+        });
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
-                ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
+        // Menggunakan contains untuk mengecek kecocokan jabatan
+        $hasJabatan = false;
+        if ($user->guruStaf) {
+            $hasJabatan = $user->guruStaf->strukturJabatan
+                ->pluck('jabatan.nama_jabatan')
                 ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+                ->contains(function ($jabatanName) use ($allowedJabatans) {
+                    return in_array($jabatanName, $allowedJabatans);
+                });
+        }
 
         return $hasRole || $hasJabatan;
     }

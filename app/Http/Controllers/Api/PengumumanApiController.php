@@ -4,18 +4,27 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Pengumuman;
+use App\Http\Resources\PengumumanResource;
 use Symfony\Component\HttpFoundation\Response;
 
 class PengumumanApiController extends Controller
 {
     public function index()
     {
-        $data = Pengumuman::orderBy('tanggal_publikasi', 'desc')->get();
-        return response()->json(['success' => true, 'data' => $data], Response::HTTP_OK);
+        // Gunakan paginate supaya seragam dengan Berita
+        $data = Pengumuman::orderBy('tanggal_publikasi', 'desc')->paginate(10);
+        
+        return PengumumanResource::collection($data)->additional([
+            'success' => true
+        ]);
     }
 
-    public function show(Pengumuman $pengumuman)
+    public function show($id)
     {
-        return response()->json(['success' => true, 'data' => $pengumuman], Response::HTTP_OK);
+        $pengumuman = Pengumuman::findOrFail($id);
+        
+        return (new PengumumanResource($pengumuman))->additional([
+            'success' => true
+        ]);
     }
 }

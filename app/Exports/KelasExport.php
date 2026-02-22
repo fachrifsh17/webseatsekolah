@@ -18,6 +18,7 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Color;
+use Carbon\Carbon;
 
 class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
 {
@@ -91,9 +92,7 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         ];
     }
 
-    public function styles(Worksheet $sheet)
-    {
-    }
+    public function styles(Worksheet $sheet) {}
 
     public function registerEvents(): array
     {
@@ -103,6 +102,7 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $lastCol = 'F';
                 $lastRow = $sheet->getHighestRow();
 
+                // Kop Surat
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
@@ -113,17 +113,14 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
                 $sheet->getStyle("A5:{$lastCol}5")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
+                // Judul Laporan
                 $sheet->mergeCells("A7:{$lastCol}7"); 
                 $sheet->setCellValue('A7', 'DAFTAR DATA KELAS');
                 $sheet->getStyle("A7")->getFont()->setBold(true)->setSize(14);
                 
-                $ta = null;
-                if (!empty($this->filters['tahun_ajaran_id'])) {
-                    $ta = TahunAjaran::find($this->filters['tahun_ajaran_id']);
-                }
-                if (!$ta) {
-                    $ta = TahunAjaran::where('is_active', 1)->first();
-                }
+                $ta = !empty($this->filters['tahun_ajaran_id']) 
+                        ? TahunAjaran::find($this->filters['tahun_ajaran_id']) 
+                        : TahunAjaran::where('is_active', 1)->first();
 
                 $sheet->mergeCells("A8:{$lastCol}8"); 
                 $taText = $ta ? "TAHUN PELAJARAN {$ta->nama} - SEMESTER " . strtoupper($ta->semester) : 'TAHUN PELAJARAN -';
@@ -131,16 +128,13 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getStyle("A8")->getFont()->setBold(true)->setSize(11);
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+                // Filter Info (Baris 9)
                 $jurusanName = 'Semua Jurusan';
                 if (!empty($this->filters['jurusan_id'])) {
                     $jurusan = Jurusan::find($this->filters['jurusan_id']);
                     $jurusanName = $jurusan ? $jurusan->nama_jurusan : 'Semua Jurusan';
                 }
-
-                $statusLabel = 'Semua Status';
-                if (isset($this->filters['is_active'])) {
-                    $statusLabel = $this->filters['is_active'] == 1 ? 'Aktif' : 'Tidak Aktif';
-                }
+                $statusLabel = isset($this->filters['is_active']) ? ($this->filters['is_active'] == 1 ? 'Aktif' : 'Tidak Aktif') : 'Semua Status';
 
                 $filterText = "Filter: Jurusan ($jurusanName) | Status ($statusLabel)";
                 $sheet->mergeCells("A9:{$lastCol}9");
@@ -148,23 +142,22 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getStyle("A9")->getFont()->setItalic(true)->setSize(10);
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $sheet->mergeCells("A10:{$lastCol}10"); 
-                $sheet->setCellValue('A10', "Tanggal Cetak: " . date('d/m/Y H:i'));
-                $sheet->getStyle("A10")->getFont()->setSize(9);
-                $sheet->getStyle("A10")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                // Baris 10 dibersihkan (untuk jarak)
+                $sheet->setCellValue('A10', '');
 
+                // Header Tabel (Baris 12)
                 $sheet->getStyle("A12:{$lastCol}12")->applyFromArray([
-                    'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_WHITE]],
-                    'fill' => [
-                        'fillType' => Fill::FILL_SOLID,
-                        'startColor' => ['argb' => 'FF2E75B6']
-                    ],
+                    'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_BLACK]],
+                    'fill' => ['fillType' => Fill::FILL_NONE],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
                 ]);
 
+                // Garis Tabel Hitam dan Alignment Isi
                 $sheet->getStyle("A12:{$lastCol}{$lastRow}")->applyFromArray([
                     'borders' => [
                         'allBorders' => [
                             'borderStyle' => Border::BORDER_THIN,
+                            'color' => ['argb' => Color::COLOR_BLACK],
                         ],
                     ],
                     'alignment' => [
@@ -173,15 +166,22 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                     ],
                 ]);
 
+                // --- PERUBAHAN WARNA STATUS ---
                 for ($i = 13; $i <= $lastRow; $i++) {
                     $val = $sheet->getCell("F$i")->getValue();
-                    if ($val == 'AKTIF') {
-                        $sheet->getStyle("F$i")->getFont()->getColor()->setARGB('FF008000');
-                    } else {
-                        $sheet->getStyle("F$i")->getFont()->getColor()->setARGB('FFFF0000');
-                    }
+                    
+                    // AKTIF = HITAM, TIDAK AKTIF = MERAH
+                    $color = ($val == 'AKTIF') ? Color::COLOR_BLACK : 'FFFF0000';
+                    
+                    $sheet->getStyle("F$i")->getFont()->getColor()->setARGB($color);
                 }
 
+                // --- TANGGAL CETAK (DI BAWAH KIRI) ---
+                $footerRow = $lastRow + 2; 
+                $sheet->setCellValue("A{$footerRow}", "Dicetak pada: " . Carbon::now()->format('d/m/Y H:i'));
+                $sheet->getStyle("A{$footerRow}")->getFont()->setItalic(true)->setSize(9);
+
+                // Page Setup
                 $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_PORTRAIT);
                 $sheet->getPageSetup()->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_A4);
             },

@@ -44,16 +44,23 @@ class EkstrakurikulerPolicy
 
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // 1. Cek Role menggunakan contains
+        $hasRole = $user->roles->contains(function ($role) use ($allowedRoles) {
+            return in_array($role->role_name, $allowedRoles);
+        });
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
-                ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
-                ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+        if ($hasRole) {
+            return true;
+        }
 
-        return $hasRole || $hasJabatan;
+        // 2. Cek Jabatan (Pastikan relasi guruStaf dan strukturJabatan tersedia)
+        if ($user->guruStaf && $user->guruStaf->strukturJabatan) {
+            return $user->guruStaf->strukturJabatan->contains(function ($sj) use ($allowedJabatans) {
+                // Pastikan relasi jabatan tidak null sebelum mengecek nama_jabatan
+                return $sj->jabatan && in_array($sj->jabatan->nama_jabatan, $allowedJabatans);
+            });
+        }
+
+        return false;
     }
 }

@@ -153,7 +153,7 @@ Route::prefix('public')->group(function () {
     Route::get('fasilitas', [FasilitasApiController::class, 'index']);
     Route::get('ekstrakurikuler', [EkstrakurikulerApiController::class, 'index']);
     Route::get('banner', [BannerApiController::class, 'index']);
-    Route::get('media', [MediaApiController::class, 'index']);
+    Route::get('media/{id}', [MediaApiController::class, 'show']);
     Route::get('album', [AlbumApiController::class, 'index']);
     Route::get('prestasi', [PrestasiApiController::class, 'index']);
     Route::get('portal', [PortalApiController::class, 'index']);
@@ -176,6 +176,7 @@ Route::middleware(['auth.token'])->group(function () {
     Route::get('me', [AuthController::class, 'me']);
     Route::post('update-foto', [ProfilController::class, 'updateFoto']);
     Route::post('change-password', [ProfilController::class, 'changePassword']);
+    Route::post('switch-role', [AuthController::class, 'switchRole']);
 });
 
 /*
@@ -261,7 +262,7 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::apiResource('album', AlbumController::class);
     Route::apiResource('media', MediaController::class);
     Route::apiResource('jabatan', JabatanController::class);
-    Route::apiResource('struktur-jabatan', StrukturJabatanController::class);
+    Route::apiResource('struktur_jabatan', StrukturJabatanController::class);
     Route::apiResource('pesan', PesanController::class)->except(['store']);
 });
 
