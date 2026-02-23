@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\DB;
 
 class SiswaImport implements ToModel, WithHeadingRow
 {
-    // Properti untuk menampung pesan catatan/konflik
     public array $importMessages = [];
     private int $rows = 0;
 
@@ -26,7 +25,7 @@ class SiswaImport implements ToModel, WithHeadingRow
             return null;
         }
 
-        // 2. Cek apakah Siswa sudah terdaftar (Berdasarkan NIS atau NISN)
+        // 2. Cek Duplikat NIS/NISN
         $existingSiswa = Siswa::where('nis', $row['nis'])
             ->when(!empty($row['nisn']), function ($q) use ($row) {
                 return $q->orWhere('nisn', $row['nisn']);
@@ -34,12 +33,40 @@ class SiswaImport implements ToModel, WithHeadingRow
             ->first();
 
         if ($existingSiswa) {
-            $this->importMessages[] = "Baris {$this->rows}: Siswa dengan NIS '{$row['nis']}' sudah terdaftar (Gagal Import).";
+            $this->importMessages[] = "Baris {$this->rows}: Siswa dengan NIS/NISN tersebut sudah terdaftar.";
             return null;
         }
 
-        return DB::transaction(function () use ($row) {
-            // Generate User ID (U001, dst)
+        // 3. Validasi Tahun Ajaran & Kelas
+        $tahunAjaranAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+        
+        if (!$tahunAjaranAktif) {
+            $this->importMessages[] = "Baris {$this->rows}: Gagal Import. Tidak ada Tahun Ajaran yang aktif.";
+            return null;
+        }
+
+        $namaKelasInput = isset($row['kelas']) ? trim($row['kelas']) : null;
+        $kelasId = null;
+
+        if (!empty($namaKelasInput)) {
+            $kelas = Kelas::where('nama_kelas', $namaKelasInput)
+                ->where('tahun_ajaran_id', $tahunAjaranAktif->id)
+                ->first();
+
+            if ($kelas) {
+                $kelasId = $kelas->id;
+            } else {
+                $this->importMessages[] = "Baris {$this->rows}: Kelas '{$namaKelasInput}' tidak ditemukan di Tahun Ajaran aktif.";
+                return null; // Gunakan return null jika kamu ingin baris ini batal import kalau kelas salah
+            }
+        } else {
+            $this->importMessages[] = "Baris {$this->rows}: Kolom kelas kosong.";
+            return null;
+        }
+
+        // 4. Proses Simpan Data
+        return DB::transaction(function () use ($row, $kelasId) {
+            // Generate User ID
             $lastUser = User::where('id', 'like', 'U%')
                 ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                 ->lockForUpdate()
@@ -48,16 +75,14 @@ class SiswaImport implements ToModel, WithHeadingRow
             $lastUserId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
             $newUserId = 'U' . str_pad($lastUserId + 1, 3, '0', STR_PAD_LEFT);
 
-            // --- PERUBAHAN DISINI: Tambahkan current_role ---
             User::create([
                 'id'           => $newUserId,
                 'username'     => $row['nis'], 
                 'password'     => Hash::make($row['nis']),
-                'current_role' => 'Siswa', // Menetapkan role aktif default
+                'current_role' => 'Siswa',
                 'is_active'    => 1,
             ]);
 
-            // Assign Role Siswa (R003) ke tabel pivot
             DB::table('user_roles')->insert([
                 'user_id'    => $newUserId,
                 'role_id'    => 'R003', 
@@ -65,7 +90,7 @@ class SiswaImport implements ToModel, WithHeadingRow
                 'updated_at' => now(),
             ]);
 
-            // Generate Siswa ID (S001, dst)
+            // Generate Siswa ID
             $lastSiswa = Siswa::where('id', 'like', 'S%')
                 ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                 ->lockForUpdate()
@@ -73,18 +98,6 @@ class SiswaImport implements ToModel, WithHeadingRow
 
             $lastSiswaId = $lastSiswa ? (int) substr($lastSiswa->id, 1) : 0;
             $newSiswaId = 'S' . str_pad($lastSiswaId + 1, 3, '0', STR_PAD_LEFT);
-
-            // Cari Kelas Berdasarkan Tahun Ajaran Aktif
-            $tahunAjaranAktif = DB::table('tahun_ajaran')
-                ->where('is_active', 1)
-                ->first();
-
-            $kelas = null;
-            if ($tahunAjaranAktif && !empty($row['kelas'])) {
-                $kelas = Kelas::where('nama_kelas', trim($row['kelas']))
-                    ->where('tahun_ajaran_id', $tahunAjaranAktif->id)
-                    ->first();
-            }
 
             return new Siswa([
                 'id'            => $newSiswaId,
@@ -95,7 +108,7 @@ class SiswaImport implements ToModel, WithHeadingRow
                 'tempat_lahir'  => $row['tempat_lahir'] ?? null,
                 'tanggal_lahir' => $row['tanggal_lahir'] ?? null,
                 'jenis_kelamin' => $row['jenis_kelamin'] ?? null,
-                'kelas_id'      => $kelas ? $kelas->id : null,
+                'kelas_id'      => $kelasId,
                 'is_active'     => 1,
                 'no_telp_siswa' => $row['no_telp_siswa'] ?? null,
                 'alamat'        => $row['alamat'] ?? null,

@@ -27,56 +27,66 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
             return null;
         }
 
-        $hariInput = trim($row['hari']);
-        
-        $guru = GuruStaf::where('nama', 'LIKE', '%' . $row['guru'] . '%')
-            ->orWhere('nip', $row['guru'])
+        $hariInput = trim((string)($row['hari'] ?? ''));
+        $inputGuru = trim((string)($row['guru'] ?? ''));
+        $inputKelas = trim((string)($row['kelas'] ?? ''));
+        $inputMapel = trim((string)($row['mapel'] ?? ''));
+
+        $guru = GuruStaf::where(function($q) use ($inputGuru) {
+                $q->where('id', $inputGuru)
+                  ->orWhere('nama', 'LIKE', '%' . $inputGuru . '%');
+            })
+            ->where('is_active', 1)
             ->first();
 
-        $mapel = MataPelajaran::where('nama_mapel', 'LIKE', '%' . $row['mapel'] . '%')->first();
-        $kelas = Kelas::where('nama_kelas', 'LIKE', '%' . $row['kelas'] . '%')->first();
+        $mapel = MataPelajaran::where('nama_mapel', 'LIKE', '%' . $inputMapel . '%')
+            ->where('is_active', 1)
+            ->first();
+
+        $kelas = Kelas::where('nama_kelas', 'LIKE', '%' . $inputKelas . '%')
+            ->where('tahun_ajaran_id', $tahunAktif->id)
+            ->where('is_active', 1)
+            ->first();
         
-        // Pencarian jam sekarang dikunci berdasarkan HARI
-        $jamMulai = JamSekolah::where('jam_ke', $row['jam_ke_mulai'])
+        $jamMulai = JamSekolah::where('jam_ke', $row['jam_ke_mulai'] ?? '')
             ->where('hari', $hariInput)
             ->first();
             
-        $jamSelesai = JamSekolah::where('jam_ke', $row['jam_ke_selesai'])
+        $jamSelesai = JamSekolah::where('jam_ke', $row['jam_ke_selesai'] ?? '')
             ->where('hari', $hariInput)
             ->first();
 
         if (!$guru) {
-            $this->importMessages[] = "Baris {$this->rows}: Guru '{$row['guru']}' tidak ditemukan.";
+            $this->importMessages[] = "Baris {$this->rows}: Conflict! Guru '{$inputGuru}' tidak ditemukan atau non-aktif.";
             return null;
         }
         if (!$mapel) {
-            $this->importMessages[] = "Baris {$this->rows}: Mapel '{$row['mapel']}' tidak ditemukan.";
+            $this->importMessages[] = "Baris {$this->rows}: Conflict! Mapel '{$inputMapel}' tidak ditemukan atau non-aktif.";
             return null;
         }
         if (!$kelas) {
-            $this->importMessages[] = "Baris {$this->rows}: Kelas '{$row['kelas']}' tidak ditemukan.";
+            $this->importMessages[] = "Baris {$this->rows}: Conflict! Kelas '{$inputKelas}' tidak ditemukan pada Tahun Ajaran Aktif.";
             return null;
         }
-
-        // Cek apakah jam tersebut memang ada di hari tersebut
         if (!$jamMulai || !$jamSelesai) {
-            $this->importMessages[] = "Baris {$this->rows}: Jam ke-{$row['jam_ke_mulai']} atau ke-{$row['jam_ke_selesai']} tidak tersedia pada hari {$hariInput}.";
+            $this->importMessages[] = "Baris {$this->rows}: Conflict! Jam ke-{$row['jam_ke_mulai']} s/d {$row['jam_ke_selesai']} tidak ada di hari {$hariInput}.";
             return null;
         }
 
-        // Cek Logika Waktu (Selesai harus > Mulai)
         if ($jamSelesai->waktu_selesai <= $jamMulai->waktu_mulai) {
-            $this->importMessages[] = "Baris {$this->rows}: Logika waktu salah, jam selesai harus lebih besar dari jam mulai.";
+            $this->importMessages[] = "Baris {$this->rows}: Logika salah! Waktu selesai harus setelah waktu mulai.";
             return null;
         }
 
         $bentrok = GuruMapel::where('hari', $hariInput)
             ->where('tahun_ajaran_id', $tahunAktif->id)
             ->where(function ($q) use ($jamMulai, $jamSelesai) {
-                $q->whereHas('jamMulai', function ($query) use ($jamSelesai) {
-                    $query->where('waktu_mulai', '<', $jamSelesai->waktu_selesai);
-                })->whereHas('jamSelesai', function ($query) use ($jamMulai) {
-                    $query->where('waktu_selesai', '>', $jamMulai->waktu_mulai);
+                $q->where(function($query) use ($jamMulai, $jamSelesai) {
+                    $query->whereHas('jamMulai', function ($sub) use ($jamSelesai) {
+                        $sub->where('waktu_mulai', '<', $jamSelesai->waktu_selesai);
+                    })->whereHas('jamSelesai', function ($sub) use ($jamMulai) {
+                        $sub->where('waktu_selesai', '>', $jamMulai->waktu_mulai);
+                    });
                 });
             })
             ->where(function ($q) use ($guru, $kelas) {
@@ -86,20 +96,8 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
             ->first();
 
         if ($bentrok) {
-            $type = $bentrok->guru_staf_id == $guru->id ? "Guru '{$guru->nama}'" : "Kelas '{$kelas->nama_kelas}'";
-            $this->importMessages[] = "Baris {$this->rows}: {$type} sudah memiliki jadwal lain di jam tersebut (Bentrok).";
-            return null;
-        }
-
-        $exists = GuruMapel::where([
-            'guru_staf_id'      => $guru->id,
-            'mata_pelajaran_id' => $mapel->id,
-            'kelas_id'          => $kelas->id,
-            'tahun_ajaran_id'   => $tahunAktif->id,
-        ])->exists();
-
-        if ($exists) {
-            $this->importMessages[] = "Baris {$this->rows}: Data penugasan ini sudah terdaftar sebelumnya.";
+            $subjek = $bentrok->guru_staf_id == $guru->id ? "Guru '{$guru->nama}'" : "Kelas '{$kelas->nama_kelas}'";
+            $this->importMessages[] = "Baris {$this->rows}: Conflict! {$subjek} sudah ada jadwal lain di jam ini.";
             return null;
         }
 

@@ -32,7 +32,7 @@ class UserController extends Controller
 
     public function index(): JsonResponse
     {
-        $users = User::with(['roles', 'guruStaf'])->paginate(15);
+        $users = User::with(['roles', 'guruStaf', 'siswa'])->paginate(15);
         
         return response()->json([
             'success' => true,
@@ -43,7 +43,7 @@ class UserController extends Controller
 
     public function show(User $user): JsonResponse
     {
-        $user->load(['roles', 'guruStaf']);
+        $user->load(['roles', 'guruStaf', 'siswa']);
 
         return response()->json([
             'success' => true,
@@ -64,17 +64,17 @@ class UserController extends Controller
                     $roleIds = array_map('strval', $data['role_ids']);
                     $user->roles()->attach($roleIds);
 
-                    // Set current_role default ke role pertama yang dipilih
                     $firstRole = $user->roles()->first();
                     if ($firstRole) {
-                        $user->update(['current_role' => $firstRole->role_name]);
+                        $roleValue = $firstRole->role_name ?? $firstRole->nama ?? $firstRole->slug;
+                        $user->update(['current_role' => $roleValue]);
                     }
                 }
 
                 return $user;
             });
 
-            $user->load(['roles', 'guruStaf']);
+            $user->load(['roles', 'guruStaf', 'siswa']);
 
             return response()->json([
                 'success' => true,
@@ -107,8 +107,10 @@ class UserController extends Controller
                     $roleIds = is_array($data['role_ids']) ? array_map('strval', $data['role_ids']) : [];
                     $user->roles()->sync($roleIds);
 
-                    // Sinkronisasi current_role: Jika role saat ini sudah tidak ada di list baru, reset ke yang tersedia
-                    $availableRoles = $user->roles()->pluck('role_name')->toArray();
+                    $availableRoles = $user->roles()->get()->map(function($role) {
+                        return $role->role_name ?? $role->nama ?? $role->slug;
+                    })->filter()->toArray();
+
                     if (!empty($availableRoles) && !in_array($user->current_role, $availableRoles)) {
                         $user->update(['current_role' => $availableRoles[0]]);
                     } elseif (empty($availableRoles)) {
@@ -117,7 +119,7 @@ class UserController extends Controller
                 }
             });
 
-            $user->load(['roles', 'guruStaf']);
+            $user->load(['roles', 'guruStaf', 'siswa']);
 
             return response()->json([
                 'success' => true,
@@ -149,8 +151,6 @@ class UserController extends Controller
             return response()->json(['success' => false, 'message' => 'Gagal menghapus user.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-
-    /** --- Helpers --- **/
 
     private function handleQueryException(QueryException $e, $userId = null)
     {

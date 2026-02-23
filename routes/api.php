@@ -35,7 +35,7 @@ use App\Http\Controllers\Admin\{
     LogAktivitasController, PrestasiController, ProfilSekolahController, 
     MapelController, SiswaController, OrangtuaController, 
     PresensiController as AdminPresensi, 
-    JadwalProduktifController, PortalController, PpdbLinkController, 
+    PortalController, PpdbLinkController, 
     KelasController, TahunAjaranController, JamSekolahController, 
     GuruMapelController, DataKontakController, PresensiGuruMapelController, 
     SettingController, KenaikanKelasController,
@@ -78,7 +78,6 @@ use App\Http\Controllers\Kesiswaan\{
 // --- Ketua Jurusan ---
 use App\Http\Controllers\KetuaJurusan\{
     GuruMapelController as JurusanGuruMapel,
-    JadwalProduktifController as JurusanJadwal,
     MapelController as JurusanMapel,
     SiswaController as JurusanSiswa,
     KelasController as JurusanKelas
@@ -87,7 +86,6 @@ use App\Http\Controllers\KetuaJurusan\{
 // --- Kurikulum ---
 use App\Http\Controllers\Kurikulum\{
     GuruMapelController as KurikulumGuruMapel,
-    JadwalProduktifController as KurikulumJadwal,
     JamSekolahController as KurikulumJam,
     KalenderController as KurikulumKalender,
     KurikulumController as KurikulumData,
@@ -120,10 +118,10 @@ use App\Http\Controllers\Guru\{
 // --- Siswa ---
 use App\Http\Controllers\Siswa\{
     PresensiController as SiswaPresensi,
-    JadwalProduktifController as SiswaJadwal,
     DashboardController as SiswaDashboard,
     JamSekolahController as SiswaJamSekolah,
-    PoinSiswaController as SiswaPoin
+    PoinSiswaController as SiswaPoin,
+    GuruMapelController as SiswaMapel
 };
 
 // --- Orang Tua ---
@@ -236,9 +234,6 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::post('mapel/import', [MapelController::class, 'import']);
     Route::apiResource('mapel', MapelController::class);
     
-    Route::apiResource('tahun_ajaran', TahunAjaranController::class);
-    Route::apiResource('jadwal_produktif', JadwalProduktifController::class);
-    
     Route::get('presensi/export', [AdminPresensi::class, 'export']); 
     Route::get('list-kelas', [AdminPresensi::class, 'listKelas']);
     Route::get('list-siswa', [AdminPresensi::class, 'listSiswaPresensi']);
@@ -252,6 +247,7 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::get('poin-siswa/export', [AdminPoin::class, 'export']);
     Route::apiResource('poin_siswa', AdminPoin::class); 
     
+    Route::apiResource('tahun_ajaran', TahunAjaranController::class);
     Route::apiResource('portal', PortalController::class);
     Route::apiResource('berita', BeritaController::class);
     Route::apiResource('pengumuman', PengumumanController::class);
@@ -302,7 +298,6 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         // Lainnya
         Route::apiResource('kurikulum', KurikulumData::class);
         Route::apiResource('kalender', KurikulumKalender::class);
-        Route::apiResource('jadwal_produktif', KurikulumJadwal::class);
     });
 
     // --- Jabatan: Waka Kesiswaan ---
@@ -383,7 +378,6 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         Route::get('guru_mapel', [JurusanGuruMapel::class, 'index']);
         Route::get('kelas/export', [JurusanKelas::class, 'export']);
         Route::apiResource('kelas', JurusanKelas::class);
-        Route::apiResource('jadwal_produktif', JurusanJadwal::class);
     });
 
     // --- Jabatan: Wali Kelas ---
@@ -416,9 +410,11 @@ Route::prefix('siswa')->middleware(['auth.token', 'role:siswa'])->group(function
     Route::get('dashboard', [SiswaDashboard::class, 'index']);
     Route::get('presensi-saya', [SiswaPresensi::class, 'index']);
     Route::get('poin-saya', [SiswaPoin::class, 'index']); 
-    Route::get('jadwal_produktif', [SiswaJadwal::class, 'index']);
     Route::get('jam-sekolah/export', [SiswaJamSekolah::class, 'export']);
+    Route::get('jadwal-mapel/export-pdf', [SiswaMapel::class, 'exportPdf']);
     Route::apiResource('jam_sekolah', SiswaJamSekolah::class);
+    Route::apiResource('jadwal-mapel', SiswaMapel::class);
+
      
 });
 

@@ -20,46 +20,40 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
         foreach ($rows as $index => $row) {
             $line = $index + 2;
 
-            // 1. Validasi Input Dasar
             if (empty($row['nama_lengkap']) || empty($row['telepon'])) {
                 $this->importMessages[] = "Baris {$line}: Nama lengkap dan telepon wajib diisi.";
                 continue;
             }
 
-            // 2. Cek Conflict: Orang Tua Sudah Ada
             $existingOrangtua = Orangtua::where('telepon', $row['telepon'])->first();
             if ($existingOrangtua) {
                 $this->importMessages[] = "Baris {$line}: Orang tua dengan nomor {$row['telepon']} sudah terdaftar.";
                 continue;
             }
 
-            // 3. Proses Database
             try {
                 DB::transaction(function () use ($row, $line) {
-                    // --- GENERATE USER ID ---
                     $lastUser = User::where('id', 'like', 'U%')
                         ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                         ->lockForUpdate()->first();
                     $lastId = $lastUser ? (int) substr($lastUser->id, 1) : 0;
                     $newUserId = 'U' . str_pad($lastId + 1, 3, '0', STR_PAD_LEFT);
 
-                    // --- BUAT USER DENGAN CURRENT ROLE ---
                     User::create([
                         'id'           => $newUserId,
                         'username'     => $row['telepon'],
                         'password'     => Hash::make($row['telepon']),
-                        'current_role' => 'Orangtua', // Set role aktif default
+                        'current_role' => 'Orangtua',
                         'is_active'    => 1,
                     ]);
 
                     DB::table('user_roles')->insert([
                         'user_id'    => $newUserId,
-                        'role_id'    => 'R004', // Role ID untuk Orang Tua
+                        'role_id'    => 'R004',
                         'created_at' => now(), 
                         'updated_at' => now(),
                     ]);
 
-                    // --- GENERATE ORANG TUA ID ---
                     $lastOrtua = Orangtua::where('id', 'like', 'O%')
                         ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                         ->lockForUpdate()->first();
@@ -69,14 +63,15 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
                     Orangtua::create([
                         'id'           => $newOrtuaId,
                         'user_id'      => $newUserId,
-                        'nama_lengkap' => $row['nama_lengkap'], // Nama profil disimpan di sini
+                        'nama_lengkap' => $row['nama_lengkap'],
                         'telepon'      => $row['telepon'],
                         'is_active'    => 1,
                     ]);
 
-                    // --- RELASI ANAK & CEK KONFLIK NIS ---
                     if (!empty($row['nis_anak'])) {
                         $nisList = explode(',', $row['nis_anak']);
+                        $hubunganInput = strtolower(trim($row['hubungan'] ?? 'ayah'));
+
                         foreach ($nisList as $nis) {
                             $nisClean = trim($nis);
                             $siswa = Siswa::where('nis', $nisClean)
@@ -93,17 +88,17 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
 
                             $existsRelasi = DB::table('orangtua_siswa')
                                 ->where('siswa_id', $siswa->id)
-                                ->where('hubungan', strtolower($row['hubungan'] ?? 'ayah'))
+                                ->where('hubungan', $hubunganInput)
                                 ->exists();
 
                             if ($existsRelasi) {
-                                throw new \Exception("Siswa {$siswa->nama_lengkap} sudah memiliki relasi " . ($row['hubungan'] ?? 'ayah') . ".");
+                                throw new \Exception("Siswa {$siswa->nama_lengkap} sudah memiliki relasi " . $hubunganInput . ".");
                             }
 
                             DB::table('orangtua_siswa')->insert([
                                 'orangtua_id' => $newOrtuaId,
                                 'siswa_id'    => $siswa->id,
-                                'hubungan'    => strtolower($row['hubungan'] ?? 'ayah'),
+                                'hubungan'    => $hubunganInput,
                                 'created_at'  => now(), 
                                 'updated_at'  => now(),
                             ]);

@@ -129,7 +129,7 @@ class OrangtuaController extends Controller
                     'id' => $newUserId,
                     'username' => $validated['telepon'],
                     'password' => Hash::make($validated['telepon']),
-                    'current_role' => 'Orang Tua',
+                    'current_role' => 'Orangtua',
                     'is_active' => 1,
                 ]);
 

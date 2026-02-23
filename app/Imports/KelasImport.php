@@ -18,61 +18,73 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
 
     public function model(array $row)
     {
-        // 1. Cek Tahun Ajaran yang Aktif
+        $line = isset($row['nama_kelas']) ? $row['nama_kelas'] : 'Unknown';
+
+        // 1. Ambil Tahun Ajaran Aktif
         $tahunAktif = TahunAjaran::where('is_active', 1)->first();
-        
         if (!$tahunAktif) {
-            $this->messages[] = "Baris skipped: Tidak ada Tahun Ajaran aktif di sistem.";
+            $this->messages[] = "Baris [{$line}]: Gagal! Tidak ada Tahun Ajaran aktif.";
             return null;
         }
 
-        // 2. Cek Jurusan yang Aktif (Tambahan is_active)
-        $jurusan = Jurusan::where('nama_jurusan', trim($row['jurusan']))
+        // 2. Cari Jurusan (Hanya ID atau Nama Jurusan)
+        $inputJurusan = trim((string)($row['jurusan'] ?? ''));
+        $jurusan = Jurusan::where(function($q) use ($inputJurusan) {
+                $q->where('id', $inputJurusan)
+                  ->orWhere('nama_jurusan', 'LIKE', '%' . $inputJurusan . '%');
+            })
             ->where('is_active', 1)
             ->first();
 
         if (!$jurusan) {
-            $this->messages[] = "Baris skipped: Jurusan '" . ($row['jurusan'] ?? 'Kosong') . "' tidak ditemukan atau tidak aktif.";
+            $this->messages[] = "Baris [{$line}]: Conflict! Jurusan '{$inputJurusan}' tidak ditemukan.";
             return null;
         }
 
         $waliKelasId = null;
-        if (!empty($row['wali_kelas'])) {
-            // 3. Cek Guru yang Aktif (Tambahan is_active)
-            $guru = GuruStaf::where('nama', trim($row['wali_kelas']))
+        $inputWali = trim((string)($row['wali_kelas'] ?? ''));
+
+        if (!empty($inputWali)) {
+            // 3. Cari Guru berdasarkan ID (G30) atau Nama (Tanpa NIP)
+            $guru = GuruStaf::where(function($q) use ($inputWali) {
+                    $q->where('id', $inputWali) 
+                      ->orWhere('nama', 'LIKE', '%' . $inputWali . '%');
+                })
                 ->where('is_active', 1)
                 ->first();
             
-            if ($guru) {
-                // Cek apakah guru sudah jadi wali kelas di tahun ajaran aktif ini
-                $sudahJadiWali = Kelas::where('wali_kelas_id', $guru->id)
-                    ->where('tahun_ajaran_id', $tahunAktif->id)
-                    ->exists();
-
-                if ($sudahJadiWali) {
-                    $this->messages[] = "Baris skipped: Guru '{$row['wali_kelas']}' sudah terdaftar sebagai wali kelas di kelas lain pada periode ini.";
-                    return null;
-                }
-
-                $waliKelasId = $guru->id;
-            } else {
-                $this->messages[] = "Baris skipped: Guru '{$row['wali_kelas']}' tidak ditemukan atau statusnya tidak aktif.";
+            if (!$guru) {
+                $this->messages[] = "Baris [{$line}]: Conflict! Guru ID/Nama '{$inputWali}' tidak ditemukan.";
                 return null;
             }
+
+            // 4. Cek apakah sudah jadi Wali Kelas
+            $sudahJadiWali = Kelas::where('wali_kelas_id', $guru->id)
+                ->where('tahun_ajaran_id', $tahunAktif->id)
+                ->exists();
+
+            if ($sudahJadiWali) {
+                $this->messages[] = "Baris [{$line}]: Conflict! Guru '{$guru->nama}' sudah menjabat di kelas lain.";
+                return null;
+            }
+
+            $waliKelasId = $guru->id;
         }
 
-        // 4. Cek duplikasi nama kelas di tahun ajaran yang sama
-        $isDuplicate = Kelas::where('nama_kelas', trim($row['nama_kelas']))
+        // 5. Cek Duplikasi Nama Kelas
+        $namaKelas = trim((string)($row['nama_kelas'] ?? ''));
+        $isDuplicate = Kelas::where('nama_kelas', $namaKelas)
             ->where('tahun_ajaran_id', $tahunAktif->id)
             ->exists();
 
         if ($isDuplicate) {
-            $this->messages[] = "Baris skipped: Kelas '{$row['nama_kelas']}' sudah ada di tahun ajaran ini.";
+            $this->messages[] = "Baris [{$line}]: Skipped! Kelas '{$namaKelas}' sudah terdaftar.";
             return null;
         }
 
+        // 6. Simpan dengan Auto-Numbering ID (K001...)
         try {
-            return DB::transaction(function () use ($row, $tahunAktif, $jurusan, $waliKelasId) {
+            return DB::transaction(function () use ($namaKelas, $tahunAktif, $jurusan, $waliKelasId) {
                 $lastKelas = Kelas::where('id', 'like', 'K%')
                     ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                     ->lockForUpdate()
@@ -83,7 +95,7 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
 
                 return new Kelas([
                     'id'              => $newId,
-                    'nama_kelas'      => trim($row['nama_kelas']),
+                    'nama_kelas'      => $namaKelas,
                     'jurusan_id'      => $jurusan->id,
                     'wali_kelas_id'   => $waliKelasId,
                     'tahun_ajaran_id' => $tahunAktif->id,
@@ -92,7 +104,7 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
             });
         } catch (\Throwable $e) {
             Log::error('Import Kelas Error: ' . $e->getMessage());
-            $this->messages[] = "Baris error: Gagal menyimpan kelas '{$row['nama_kelas']}'.";
+            $this->messages[] = "Baris [{$line}]: Gagal simpan ke database.";
             return null;
         }
     }

@@ -221,10 +221,11 @@ class SiswaController extends Controller
                 $newUserId = 'U' . str_pad($lastUserId + 1, 3, '0', STR_PAD_LEFT);
 
                 User::create([
-                    'id'        => $newUserId,
-                    'username'  => $data['nis'],
-                    'password'  => Hash::make($data['nis']),
-                    'is_active' => 1,
+                    'id'           => $newUserId,
+                    'username'     => $data['nis'],
+                    'password'     => Hash::make($data['nis']),
+                    'current_role' => 'Siswa',
+                    'is_active'    => 1,
                 ]);
 
                 DB::table('user_roles')->insert([

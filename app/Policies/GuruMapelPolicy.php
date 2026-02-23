@@ -9,12 +9,12 @@ class GuruMapelPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $this->authorize($user, ['Admin'], ['waka-kurikulum', 'ketua-jurusan']);
+        return $this->authorize($user, ['Admin', 'Siswa'], ['waka-kurikulum', 'ketua-jurusan']);
     }
 
     public function view(User $user, GuruMapel $guruMapel): bool
     {
-        return $this->authorize($user, ['Admin'], ['waka-kurikulum', 'ketua-jurusan']);
+        return $this->authorize($user, ['Admin', 'Siswa'], ['waka-kurikulum', 'ketua-jurusan']);
     }
 
     public function create(User $user): bool
@@ -24,7 +24,7 @@ class GuruMapelPolicy
 
     public function update(User $user, GuruMapel $guruMapel): bool
     {
-        return $this->authorize($user, ['Admin'], ['waka-kurikulum', 'ketua-jurusan']);
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum']);
     }
 
     public function delete(User $user, GuruMapel $guruMapel): bool
@@ -34,7 +34,7 @@ class GuruMapelPolicy
 
     public function export(User $user): bool
     {
-        return $this->authorize($user, ['Admin'], ['waka-kurikulum', 'ketua-jurusan']);
+        return $this->authorize($user, ['Admin', 'Siswa'], ['waka-kurikulum', 'ketua-jurusan']);
     }
 
     public function import(User $user): bool
@@ -49,7 +49,7 @@ class GuruMapelPolicy
 
         $jabatanSlugs = $user->guruStaf
             ? $user->guruStaf->strukturJabatan
-                ->map(fn($sj) => strtolower($sj->jabatan?->slug))
+                ->map(fn($sj) => strtolower($sj->jabatan?->slug ?? ''))
                 ->filter()
                 ->toArray()
             : [];

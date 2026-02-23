@@ -134,7 +134,6 @@ class DashboardController extends Controller
                 $res['summary'] = [
                     'total_mapel' => \App\Models\Matapelajaran::where('is_active', 1)->count(),
                     'total_guru_mapel' => GuruMapel::whereHas('kelas', $filterAktif)->distinct('guru_staf_id')->count(),
-                    'jadwal_produktif' => JadwalProduktif::whereIn('tahun_ajaran_id', $activeTaIds)->count(),
                     'agenda_akademik' => KalenderAkademik::whereIn('tahun_ajaran_id', $activeTaIds)->whereDate('tanggal_mulai', '>=', $today)->count()
                 ];
                 break;
@@ -179,8 +178,6 @@ class DashboardController extends Controller
                     'guru_jurusan' => GuruMapel::whereHas('mapel', function($q) use ($jurusanId) {
                         $q->where('jurusan_id', $jurusanId);
                     })->distinct('guru_staf_id')->count(),
-                    'jadwal_jurusan' => JadwalProduktif::where('jurusan_id', $jurusanId)
-                        ->whereIn('tahun_ajaran_id', $activeTaIds)->count()
                 ];
                 break;
         }

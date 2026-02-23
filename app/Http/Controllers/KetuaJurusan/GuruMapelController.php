@@ -194,6 +194,9 @@ class GuruMapelController extends Controller
 
     public function show(GuruMapel $guruMapel): JsonResponse
     {
+        // TAMBAHAN: Otorisasi via Policy
+        $this->authorize('view', $guruMapel);
+
         if ($guruMapel->kelas->jurusan_id !== $this->getJurusanId()) {
             return response()->json(['message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
         }
@@ -214,6 +217,9 @@ class GuruMapelController extends Controller
 
     public function store(StoreGuruMapelRequest $request): JsonResponse
     {
+        // TAMBAHAN: Otorisasi via Policy (Memastikan user boleh membuat data baru)
+        $this->authorize('create', GuruMapel::class);
+
         $validated = $request->validated();
         $jurusanId = $this->getJurusanId();
         
@@ -290,6 +296,9 @@ class GuruMapelController extends Controller
 
     public function update(UpdateGuruMapelRequest $request, GuruMapel $guruMapel): JsonResponse
     {
+        // TAMBAHAN: Otorisasi via Policy
+        $this->authorize('update', $guruMapel);
+
         $jurusanId = $this->getJurusanId();
         if ($guruMapel->kelas->jurusan_id !== $jurusanId) {
             return response()->json(['message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
@@ -350,6 +359,9 @@ class GuruMapelController extends Controller
 
     public function destroy(GuruMapel $guruMapel): JsonResponse
     {
+        // TAMBAHAN: Otorisasi via Policy
+        $this->authorize('delete', $guruMapel);
+
         if ($guruMapel->kelas->jurusan_id !== $this->getJurusanId()) {
             return response()->json(['message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
         }

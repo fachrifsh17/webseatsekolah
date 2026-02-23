@@ -20,23 +20,33 @@ class GuruImport implements ToModel, WithHeadingRow
         $this->rows++;
         
         $nip = isset($row['nip']) ? trim($row['nip']) : null;
+        $nuptk = isset($row['nuptk']) ? trim($row['nuptk']) : null;
         $nama = isset($row['nama']) ? trim($row['nama']) : null;
         $namaJurusan = isset($row['jurusan']) ? trim($row['jurusan']) : null;
 
+        // 1. Validasi Nama Wajib
         if (empty($nama)) {
             $this->importMessages[] = "Baris {$this->rows}: Nama kosong (Dilewati).";
             return null;
         }
 
+        // 2. Cek Duplikat NIP
         if (!empty($nip)) {
-            $existingGuru = GuruStaf::where('nip', $nip)->first();
-            if ($existingGuru) {
+            if (GuruStaf::where('nip', $nip)->exists()) {
                 $this->importMessages[] = "Baris {$this->rows}: Guru dengan NIP '{$nip}' sudah terdaftar.";
-                return null;
+                return null; // Stop baris ini, lanjut ke baris berikutnya
             }
         }
 
-        return DB::transaction(function () use ($row, $nip, $nama, $namaJurusan) {
+        // 3. Cek Duplikat NUPTK
+        if (!empty($nuptk)) {
+            if (GuruStaf::where('nuptk', $nuptk)->exists()) {
+                $this->importMessages[] = "Baris {$this->rows}: Guru dengan NUPTK '{$nuptk}' sudah terdaftar.";
+                return null; // Stop baris ini, lanjut ke baris berikutnya
+            }
+        }
+
+        return DB::transaction(function () use ($row, $nip, $nuptk, $nama, $namaJurusan) {
             // --- GENERATE USER ID ---
             $lastUser = User::where('id', 'like', 'U%')
                 ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
@@ -48,6 +58,7 @@ class GuruImport implements ToModel, WithHeadingRow
 
             $username = !empty($nip) ? $nip : strtolower(str_replace(' ', '', $nama));
             
+            // Cek jika username sudah dipakai user lain
             $finalUsername = $username;
             $count = 1;
             while (User::where('username', $finalUsername)->exists()) {
@@ -55,15 +66,16 @@ class GuruImport implements ToModel, WithHeadingRow
                 $count++;
             }
 
-            // --- BUAT USER DENGAN CURRENT ROLE ---
+            // --- BUAT USER ---
             User::create([
                 'id'           => $newUserId,
                 'username'     => $finalUsername, 
                 'password'     => Hash::make($finalUsername),
-                'current_role' => 'Guru', // Set role aktif default
+                'current_role' => 'Guru',
                 'is_active'    => 1,
             ]);
 
+            // Assign Role R002 (Guru)
             DB::table('user_roles')->insert([
                 'user_id'    => $newUserId,
                 'role_id'    => 'R002', 
@@ -71,25 +83,25 @@ class GuruImport implements ToModel, WithHeadingRow
                 'updated_at' => now(),
             ]);
 
+            // Cari Jurusan ID
             $jurusanId = null;
             if ($namaJurusan) {
                 $jurusan = Jurusan::where('nama_jurusan', 'LIKE', '%' . $namaJurusan . '%')
                     ->where('is_active', 1)
                     ->first();
-
                 if ($jurusan) {
                     $jurusanId = $jurusan->id;
                 } else {
-                    $this->importMessages[] = "Baris {$this->rows}: Jurusan '{$namaJurusan}' tidak ditemukan atau sedang tidak aktif.";
+                    $this->importMessages[] = "Baris {$this->rows}: Jurusan '{$namaJurusan}' tidak ditemukan.";
                 }
             }
 
-            // --- SIMPAN DATA KE TABEL GURU_STAFS ---
+            // --- SIMPAN DATA GURU ---
             return new GuruStaf([
                 'user_id'            => $newUserId,
                 'nip'                => $nip,
-                'nuptk'              => $row['nuptk'] ?? null,
-                'nama'               => $nama, // Nama lengkap disimpan di sini
+                'nuptk'              => $nuptk,
+                'nama'               => $nama,
                 'jabatan_fungsional' => $row['jabatan_fungsional'] ?? $row['jabatan'] ?? null,
                 'status_kepegawaian' => $row['status_kepegawaian'] ?? $row['status'] ?? null,
                 'jurusan_id'         => $jurusanId,

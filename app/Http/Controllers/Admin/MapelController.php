@@ -123,34 +123,38 @@ class MapelController extends Controller
     }
 
     public function import(Request $request): JsonResponse
-    {
-        $this->authorize('create', MataPelajaran::class);
+{
+    $this->authorize('create', MataPelajaran::class);
 
-        $request->validate(['file' => 'required|mimes:xlsx,xls,csv,txt|max:2048']);
+    $request->validate(['file' => 'required|mimes:xlsx,xls,csv,txt|max:2048']);
 
-        try {
-            $access = [
-                'isFullAccess' => true,
-                'guruStaf' => null,
-                'namaJabatan' => 'Admin'
-            ];
+    try {
+        $access = [
+            'isFullAccess' => true,
+            'guruStaf' => null,
+            'namaJabatan' => 'Admin'
+        ];
 
-            Excel::import(new MapelImport($access), $request->file('file'));
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Data mata pelajaran berhasil diimpor.'
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Import Mapel Error', ['error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengimpor data mata pelajaran.',
-                'errors'  => ['exception' => [$e->getMessage()]]
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        $import = new MapelImport($access);
+        Excel::import($import, $request->file('file'));
+        
+        $conflicts = $import->getMessages();
+
+        return response()->json([
+            'success' => true,
+            'message' => empty($conflicts) ? 'Data mata pelajaran berhasil diimpor.' : 'Import selesai dengan catatan.',
+            'conflicts' => $conflicts
+        ], Response::HTTP_OK);
+
+    } catch (Throwable $e) {
+        Log::error('Import Mapel Error', ['error' => $e->getMessage()]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Gagal mengimpor data mata pelajaran.',
+            'errors'  => ['exception' => [$e->getMessage()]]
+        ], Response::HTTP_INTERNAL_SERVER_ERROR);
     }
-
+}
     public function store(StoreMapelRequest $request): JsonResponse
     {
         $validated = $request->validated();

@@ -86,7 +86,6 @@ class OrangtuaController extends Controller
             $perPage = $request->query('per_page', 20);
             $orangtua = $query->latest()->paginate($perPage);
             
-            // Mengambil metadata pagination secara lengkap
             $paginationData = $orangtua->toArray();
 
             return response()->json([
@@ -129,6 +128,7 @@ class OrangtuaController extends Controller
                     'id' => $newUserId,
                     'username' => $validated['telepon'],
                     'password' => Hash::make($validated['telepon']),
+                    'current_role' => 'Orangtua',
                     'is_active' => 1,
                 ]);
 
