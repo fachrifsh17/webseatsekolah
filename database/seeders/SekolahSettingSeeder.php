@@ -9,12 +9,15 @@ class SekolahSettingSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('sekolah_seting')->updateOrInsert(
+        DB::table('sekolah_setting')->updateOrInsert(
             ['id' => 1],
             [
-                'tagline' => 'Sekolah Unggul, Berkarakter, Berprestasi',
-                'logo' => 'logo-sekolah.png',
-                'pesan_selamat_datang' => 'Selamat datang di portal resmi SMA Negeri Bantarkalong.',
+                'tagline' => 'Mencetak Generasi Maju Dan Cerdas', // Sesuai gambar
+                'logo' => null, // Dinullkan sesuai permintaan
+                'pesan_selamat_datang' => 'Selamat datang di Sekolah Kita — tempat belajar dan berkarya.', // Sesuai gambar
+                'buku_poin_path' => null, // Dinullkan sesuai permintaan
+                'no_wa_kesiswaan' => null, // Dinullkan sesuai permintaan
+                'updated_at' => now(),
             ]
         );
     }

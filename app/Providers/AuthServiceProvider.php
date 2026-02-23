@@ -24,7 +24,6 @@ use App\Models\GuruMapel;
 use App\Models\Kelas;
 use App\Models\Jurusan;
 use App\Models\JamSekolah;
-use App\Models\JadwalProduktif;
 use App\Models\Ekstrakurikuler;
 use App\Models\Fasilitas;
 use App\Models\Album;
@@ -102,7 +101,6 @@ class AuthServiceProvider extends ServiceProvider
         Kelas::class             => KelasPolicy::class,
         Jurusan::class           => JurusanPolicy::class,
         JamSekolah::class        => JamSekolahPolicy::class,
-        JadwalProduktif::class   => JadwalProduktifPolicy::class,
         Ekstrakurikuler::class   => EkstrakurikulerPolicy::class,
         Fasilitas::class         => FasilitasPolicy::class,
         Album::class             => AlbumPolicy::class,

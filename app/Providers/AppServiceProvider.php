@@ -28,7 +28,6 @@ class AppServiceProvider extends ServiceProvider
 
             // --- Akademik & Jadwal ---
             \App\Models\JamSekolah::class        => \App\Policies\JamSekolahPolicy::class,
-            \App\Models\JadwalProduktif::class   => \App\Policies\JadwalProduktifPolicy::class,
             \App\Models\KalenderAkademik::class  => \App\Policies\KalenderAkademikPolicy::class,
             \App\Models\Kurikulum::class         => \App\Policies\KurikulumPolicy::class,
 
