@@ -15,6 +15,7 @@ class Presensi extends Model
     protected $fillable = [
         'siswa_id',
         'guru_staf_id',
+        'kelas_id', // TAMBAHKAN INI
         'tahun_ajaran_id',
         'tanggal',
         'status',
@@ -25,6 +26,7 @@ class Presensi extends Model
         'tanggal' => 'date',
         'siswa_id' => 'string',
         'guru_staf_id' => 'string',
+        'kelas_id' => 'string', // TAMBAHKAN INI (karena VARCHAR 10)
         'tahun_ajaran_id' => 'string',
     ];
 
@@ -36,6 +38,12 @@ class Presensi extends Model
     public function guruStaf(): BelongsTo
     {
         return $this->belongsTo(GuruStaf::class, 'guru_staf_id', 'id');
+    }
+
+    // TAMBAHKAN RELASI KE KELAS
+    public function kelas(): BelongsTo
+    {
+        return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
     }
 
     public function tahunAjaran(): BelongsTo

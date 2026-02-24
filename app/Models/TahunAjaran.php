@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany; // Tambahkan ini
 
 class TahunAjaran extends Model
 {
@@ -47,11 +48,19 @@ class TahunAjaran extends Model
         return $this->belongsTo(Kurikulum::class, 'kurikulum_id');
     }
 
-    public function kelas(): HasMany
+    /**
+     * PERUBAHAN: Relasi ke Kelas tidak lagi HasMany langsung, 
+     * melainkan BelongsToMany melalui tabel pivot 'siswa_kelas'.
+     * Ini akan menampilkan daftar kelas yang memiliki siswa aktif di TA ini.
+     */
+    public function kelas(): BelongsToMany
     {
-        return $this->hasMany(Kelas::class, 'tahun_ajaran_id');
+        return $this->belongsToMany(Kelas::class, 'siswa_kelas', 'tahun_ajaran_id', 'kelas_id')
+                    ->withPivot('is_active')
+                    ->distinct(); // Gunakan distinct agar nama kelas tidak duplikat
     }
 
+    // Relasi lainnya tetap sama karena mereka masih punya tahun_ajaran_id
     public function presensi(): HasMany
     {
         return $this->hasMany(Presensi::class, 'tahun_ajaran_id');
@@ -71,6 +80,7 @@ class TahunAjaran extends Model
     {
         return $this->hasMany(JamSekolah::class, 'tahun_ajaran_id');
     }
+
     public function kalenderAkademik(): HasMany
     {
         return $this->hasMany(KalenderAkademik::class, 'tahun_ajaran_id', 'id');

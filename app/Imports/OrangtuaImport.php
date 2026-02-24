@@ -74,9 +74,11 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
 
                         foreach ($nisList as $nis) {
                             $nisClean = trim($nis);
+                            
+                            // PERBAIKAN: Mencari siswa melalui relasi riwayatKelas (tabel pivot)
                             $siswa = Siswa::where('nis', $nisClean)
                                 ->where('is_active', 1)
-                                ->whereHas('kelas', function($q) {
+                                ->whereHas('riwayatKelas', function($q) {
                                     $q->whereHas('tahunAjaran', function($ta) {
                                         $ta->where('is_active', 1);
                                     });

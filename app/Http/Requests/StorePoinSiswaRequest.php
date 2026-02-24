@@ -21,7 +21,8 @@ class StorePoinSiswaRequest extends FormRequest
             'indikator'    => ['required', 'string'],
             'poin_positif' => ['nullable', 'integer', 'min:0'],
             'poin_negatif' => ['nullable', 'integer', 'min:0'],
-            'tanggal'      => ['required', 'date'],
+            // Diubah ke nullable agar tidak memicu error validasi karena diisi otomatis di Controller
+            'tanggal'      => ['nullable', 'date'], 
             'guru_staf_id' => ['nullable', 'string', 'exists:guru_staf,id'],
         ];
     }
@@ -38,7 +39,7 @@ class StorePoinSiswaRequest extends FormRequest
             'poin_positif.min'     => 'Poin positif tidak boleh bernilai negatif.',
             'poin_negatif.integer' => 'Poin negatif harus berupa angka.',
             'poin_negatif.min'     => 'Poin negatif tidak boleh bernilai negatif.',
-            'tanggal.required'   => 'Tanggal kejadian harus diisi.',
+            // Pesan tanggal.required dihapus karena sudah tidak mandatory di sisi request
             'tanggal.date'       => 'Format tanggal kejadian tidak valid.',
             'guru_staf_id.string'  => 'ID guru pelapor harus berupa teks.',
             'guru_staf_id.exists'  => 'Data guru pelapor tidak ditemukan.',

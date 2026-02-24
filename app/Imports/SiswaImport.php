@@ -57,7 +57,7 @@ class SiswaImport implements ToModel, WithHeadingRow
                 $kelasId = $kelas->id;
             } else {
                 $this->importMessages[] = "Baris {$this->rows}: Kelas '{$namaKelasInput}' tidak ditemukan di Tahun Ajaran aktif.";
-                return null; // Gunakan return null jika kamu ingin baris ini batal import kalau kelas salah
+                return null; 
             }
         } else {
             $this->importMessages[] = "Baris {$this->rows}: Kolom kelas kosong.";
@@ -65,7 +65,8 @@ class SiswaImport implements ToModel, WithHeadingRow
         }
 
         // 4. Proses Simpan Data
-        return DB::transaction(function () use ($row, $kelasId) {
+        // Menambahkan $tahunAjaranAktif ke dalam closure 'use'
+        return DB::transaction(function () use ($row, $kelasId, $tahunAjaranAktif) {
             // Generate User ID
             $lastUser = User::where('id', 'like', 'U%')
                 ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
@@ -99,7 +100,8 @@ class SiswaImport implements ToModel, WithHeadingRow
             $lastSiswaId = $lastSiswa ? (int) substr($lastSiswa->id, 1) : 0;
             $newSiswaId = 'S' . str_pad($lastSiswaId + 1, 3, '0', STR_PAD_LEFT);
 
-            return new Siswa([
+            // Simpan data siswa
+            $siswa = Siswa::create([
                 'id'            => $newSiswaId,
                 'user_id'       => $newUserId,
                 'nis'           => $row['nis'],
@@ -108,11 +110,24 @@ class SiswaImport implements ToModel, WithHeadingRow
                 'tempat_lahir'  => $row['tempat_lahir'] ?? null,
                 'tanggal_lahir' => $row['tanggal_lahir'] ?? null,
                 'jenis_kelamin' => $row['jenis_kelamin'] ?? null,
-                'kelas_id'      => $kelasId,
                 'is_active'     => 1,
                 'no_telp_siswa' => $row['no_telp_siswa'] ?? null,
                 'alamat'        => $row['alamat'] ?? null,
             ]);
+
+            // --- PENYESUAIAN PIVOT KELAS ---
+            if ($kelasId) {
+                DB::table('siswa_kelas')->insert([
+                    'siswa_id'        => $newSiswaId,
+                    'kelas_id'        => $kelasId,
+                    'tahun_ajaran_id' => $tahunAjaranAktif->id, // WAJIB DIISI sesuai struktur DB
+                    'is_active'       => 1, 
+                    'created_at'      => now(),
+                    'updated_at'      => now(),
+                ]);
+            }
+
+            return $siswa;
         });
     }
 

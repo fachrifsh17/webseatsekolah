@@ -60,10 +60,19 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
 
     public function query() 
     { 
+        // Mengambil siswa berdasarkan relasi riwayatKelas (tabel pivot siswa_kelas)
         return Siswa::query()
-            ->where('kelas_id', $this->dataKelas->id)
+            ->whereHas('riwayatKelas', function($q) {
+                $q->where('kelas_id', $this->dataKelas->id);
+                if ($this->selectedTa) {
+                    $q->where('tahun_ajaran_id', $this->selectedTa->id);
+                }
+            })
             ->where('is_active', true)
             ->with(['presensi' => function($q) {
+                // Filter presensi berdasarkan kelas_id di tabel presensi
+                $q->where('kelas_id', $this->dataKelas->id);
+                
                 if ($this->selectedTa) {
                     $q->where('tahun_ajaran_id', $this->selectedTa->id);
                 }

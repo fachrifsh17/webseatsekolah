@@ -15,6 +15,7 @@ class PoinSiswa extends Model
     protected $fillable = [
         'siswa_id',
         'guru_staf_id',
+        'kelas_id', // Tambahkan ini
         'tahun_ajaran_id',
         'indikator',
         'poin_positif',
@@ -26,9 +27,9 @@ class PoinSiswa extends Model
     protected $appends = ['total_poin'];
 
     protected $casts = [
-        'tanggal'    => 'date',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'tanggal'      => 'date',
+        'created_at'   => 'datetime',
+        'updated_at'   => 'datetime',
         'poin_positif' => 'integer',
         'poin_negatif' => 'integer',
     ];
@@ -46,6 +47,12 @@ class PoinSiswa extends Model
     public function guru(): BelongsTo
     {
         return $this->guruStaf();
+    }
+
+    // Tambahkan relasi ke Kelas
+    public function kelas(): BelongsTo
+    {
+        return $this->belongsTo(Kelas::class, 'kelas_id');
     }
 
     public function tahunAjaran(): BelongsTo

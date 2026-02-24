@@ -86,8 +86,11 @@ class PresensiController extends Controller
             ], Response::HTTP_FORBIDDEN);
         }
 
-        $tanggalInput = date('Y-m-d');
+        $now = Carbon::now();
+        $tanggalInput = $now->toDateString();
+        $jamSekarang = $now->format('H:i');
 
+        // VALIDASI 1: Cek Hari Libur
         if ($this->isDayOff($tanggalInput, $taAktif->id)) {
             return response()->json([
                 'success' => false, 
@@ -95,29 +98,43 @@ class PresensiController extends Controller
             ], Response::HTTP_BAD_REQUEST);
         }
 
-        $waktuSekarang = date('H:i');
-        $jamMulai = "06:30";
-        $jamSelesai = "10:00";
-
-        if ($waktuSekarang < $jamMulai || $waktuSekarang > $jamSelesai) {
+        // VALIDASI 2: Cek Batasan Jam (06:30 - 10:00)
+        if ($jamSekarang < '06:30' || $jamSekarang > '10:00') {
             return response()->json([
                 'success' => false,
-                'message' => "Akses ditolak. Presensi hanya dapat diisi pada pukul {$jamMulai} sampai {$jamSelesai}. Saat ini pukul {$waktuSekarang}."
-            ], Response::HTTP_FORBIDDEN);
+                'message' => "Presensi ditolak. Input hanya diperbolehkan pukul 06:30 s/d 10:00 WIB. Jam sekarang: {$jamSekarang}."
+            ], Response::HTTP_BAD_REQUEST);
         }
 
         try {
-            $siswaIdSah = Siswa::where('kelas_id', $kelas->id)
+            // Ambil daftar siswa yang wajib diisi (anggota kelas aktif)
+            $siswaIdWajib = Siswa::whereHas('riwayatKelas', function($q) use ($kelas, $taAktif) {
+                    $q->where('kelas_id', $kelas->id)
+                      ->where('tahun_ajaran_id', $taAktif->id);
+                })
                 ->where('is_active', 1)
                 ->pluck('id')
                 ->toArray();
 
             $dataInput = $request->has('data_presensi') ? $request->input('data_presensi') : [$request->all()];
+            $siswaIdInput = collect($dataInput)->pluck('siswa_id')->toArray();
 
-            $results = DB::transaction(function () use ($dataInput, $tanggalInput, $taAktif, $guru, $siswaIdSah) {
+            // VALIDASI 3: Cek apakah semua siswa sudah masuk dalam input
+            $siswaBelumInput = array_diff($siswaIdWajib, $siswaIdInput);
+
+            if (count($siswaBelumInput) > 0) {
+                $namaSiswaTerlewat = Siswa::whereIn('id', $siswaBelumInput)->pluck('nama_lengkap')->implode(', ');
+                return response()->json([
+                    'success' => false,
+                    'message' => "Presensi ditolak. Data belum lengkap. Siswa berikut belum diisi: [{$namaSiswaTerlewat}]."
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $results = DB::transaction(function () use ($dataInput, $tanggalInput, $taAktif, $guru, $siswaIdWajib, $kelas) {
                 $savedData = [];
                 foreach ($dataInput as $item) {
-                    if (!in_array($item['siswa_id'], $siswaIdSah)) {
+                    // Proteksi tambahan: Pastikan siswa memang anggota kelas yang bersangkutan
+                    if (!in_array($item['siswa_id'], $siswaIdWajib)) {
                         throw new \Exception("Siswa dengan ID " . $item['siswa_id'] . " bukan bagian dari kelas perwalian Anda.");
                     }
 
@@ -129,6 +146,7 @@ class PresensiController extends Controller
                         ],
                         [
                             'status'       => $item['status'],
+                            'kelas_id'     => $kelas->id,
                             'keterangan'   => $item['keterangan'] ?? 'Diinput oleh Wali Kelas',
                             'guru_staf_id' => $guru->id,
                         ]
@@ -139,7 +157,7 @@ class PresensiController extends Controller
 
             return response()->json([
                 'success' => true, 
-                'message' => count($results) . " data presensi berhasil disimpan (Waktu: {$waktuSekarang})."
+                'message' => count($results) . " data presensi berhasil disimpan."
             ], Response::HTTP_CREATED);
 
         } catch (Throwable $e) {
@@ -182,15 +200,13 @@ class PresensiController extends Controller
             $namaBulan = Carbon::create()->month($bulan)->translatedFormat('F');
             $labelWaktu = "Bulan-{$bulan}-Tahun-{$tahunKalender}";
             
-            // --- MODIFIKASI NAMA FILE DISINI ---
             $taClean = str_replace(['/', ' '], '_', $ta->nama); 
-            $fileName = "Rekap_Presensi_" . 
+            $fileName = "REKAP_PRESENSI_" . 
                         str_replace([' ', '/'], '_', $kelas->nama_kelas) . "_" . 
                         $namaBulan . "_" . 
                         $tahunKalender . "_TA_" . 
                         $taClean . "_" . 
                         $ta->semester . ".xlsx";
-            // ------------------------------------
 
             $kelas->load('waliKelas');
             $profil = DB::table('profil_sekolah')->first();
@@ -235,16 +251,21 @@ class PresensiController extends Controller
 
     private function fetchDaily(Request $request, $guru, $kelas, $taAktif): JsonResponse
     {
-        $tanggal = $request->get('tanggal', date('Y-m-d'));
-        $ta = $request->filled('tahun_ajaran_id') ? TahunAjaran::find($request->tahun_ajaran_id) : $taAktif;
+        $now = Carbon::now();
+        $tanggal = $request->get('tanggal', $now->toDateString());
+        $jamSekarang = $now->format('H:i');
         
+        $ta = $request->filled('tahun_ajaran_id') ? TahunAjaran::find($request->tahun_ajaran_id) : $taAktif;
         $isLibur = $this->isDayOff($tanggal, $ta->id);
 
-        $waktuSekarang = date('H:i');
-        $jamMulai = "06:30";
-        $jamSelesai = "10:00";
+        // Flag untuk menentukan apakah data hari ini boleh diisi/diedit
+        $isTimeValid = ($jamSekarang >= '06:30' && $jamSekarang <= '10:00');
+        $isEditable = ($tanggal === $now->toDateString() && !$isLibur && $isTimeValid);
 
-        $siswa = Siswa::where('kelas_id', $kelas->id)
+        $siswa = Siswa::whereHas('riwayatKelas', function($q) use ($kelas, $ta) {
+                $q->where('kelas_id', $kelas->id)
+                  ->where('tahun_ajaran_id', $ta->id);
+            })
             ->where('is_active', 1)
             ->with(['presensi' => function($q) use ($tanggal, $ta) {
                 $q->whereDate('tanggal', $tanggal)->where('tahun_ajaran_id', $ta->id);
@@ -271,9 +292,8 @@ class PresensiController extends Controller
                 'hari'         => Carbon::parse($tanggal)->locale('id')->dayName,
                 'tahun_ajaran' => $ta->nama . ' ' . $ta->semester,
                 'is_libur'     => $isLibur,
-                'is_editable'  => $tanggal === date('Y-m-d') && 
-                                  !$isLibur && 
-                                  ($waktuSekarang >= $jamMulai && $waktuSekarang <= $jamSelesai)
+                'is_editable'  => $isEditable,
+                'current_time' => $jamSekarang
             ],
             'data'    => $collection
         ], Response::HTTP_OK);
@@ -306,9 +326,13 @@ class PresensiController extends Controller
             }
         }
 
-        return $query->whereHas('siswa', fn($q) => $q->where('kelas_id', $kelasId)->where('is_active', 1))
+        return $query->whereHas('siswa.riwayatKelas', function($q) use ($kelasId, $ta) {
+                $q->where('kelas_id', $kelasId);
+                if ($ta) $q->where('tahun_ajaran_id', $ta->id);
+            })
+            ->whereHas('siswa', fn($q) => $q->where('is_active', 1))
             ->when($request->filled('search'), fn($q) => $q->whereHas('siswa', fn($qs) => $qs->where('nama_lengkap', 'like', "%{$request->search}%")))
-            ->with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
+            ->with(['siswa.riwayatKelas.kelas', 'guruStaf', 'tahunAjaran'])
             ->orderBy('tanggal', 'desc');
     }
 

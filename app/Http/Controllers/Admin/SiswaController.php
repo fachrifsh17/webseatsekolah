@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Siswa, Kelas, User};
+use App\Models\{Siswa, Kelas, User, SiswaKelas};
 use App\Http\Requests\{StoreSiswaRequest, UpdateSiswaRequest};
 use App\Http\Resources\SiswaResource;
 use App\Exports\SiswaExport;
@@ -34,18 +34,19 @@ class SiswaController extends Controller
     private function applyFilters(Request $request, $query)
     {
         if ($request->filled('jurusan_id')) {
-            $query->whereHas('kelas', fn($q) => $q->where('jurusan_id', $request->jurusan_id));
+            $query->whereHas('riwayatKelas.kelas', fn($q) => $q->where('jurusan_id', $request->jurusan_id));
         }
 
         if ($request->filled('kelas_id')) {
-            $query->where('kelas_id', $request->kelas_id);
+            $query->whereHas('riwayatKelas', fn($q) => $q->where('kelas_id', $request->kelas_id));
         } elseif ($request->filled('tahun_ajaran_id')) {
-            $query->whereHas('kelas', function($q) use ($request) {
+            $query->whereHas('riwayatKelas', function($q) use ($request) {
                 $q->where('tahun_ajaran_id', $request->tahun_ajaran_id);
             });
         } else {
-            $query->whereHas('kelas.tahunAjaran', function($q) {
-                $q->where('is_active', 1);
+            $query->whereHas('riwayatKelas', function($q) {
+                $q->where('is_active', 1)
+                  ->whereHas('tahunAjaran', fn($ta) => $ta->where('is_active', 1));
             });
         }
 
@@ -61,7 +62,7 @@ class SiswaController extends Controller
                 $q->where('nama_lengkap', 'like', "%{$search}%")
                   ->orWhere('nisn', 'like', "%{$search}%")
                   ->orWhere('nis', 'like', "%{$search}%")
-                  ->orWhereHas('kelas', function ($qK) use ($search) {
+                  ->orWhereHas('riwayatKelas.kelas', function ($qK) use ($search) {
                       $qK->where('nama_kelas', 'like', "%{$search}%");
                   });
             });
@@ -72,7 +73,7 @@ class SiswaController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Siswa::with(['user', 'kelas.jurusan', 'orangtua']);
+        $query = Siswa::with(['user', 'riwayatKelas.kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
 
         $perPage = $request->get('per_page', $request->filled('search') ? 10 : 20);
@@ -111,7 +112,7 @@ class SiswaController extends Controller
     {
         $this->authorize('viewAny', Siswa::class);
 
-        $query = Siswa::query()->with(['kelas.jurusan', 'orangtua']);
+        $query = Siswa::query()->with(['riwayatKelas.kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
 
         if ($request->filled('tahun_ajaran_id')) {
@@ -178,7 +179,7 @@ class SiswaController extends Controller
 
     public function show(Siswa $siswa): JsonResponse
     {
-        $siswa->load(['user', 'kelas.jurusan', 'orangtua']);
+        $siswa->load(['user', 'riwayatKelas.kelas.jurusan', 'orangtua']);
         return response()->json([
             'success' => true,
             'data'    => new SiswaResource($siswa)
@@ -189,11 +190,11 @@ class SiswaController extends Controller
     {
         $validated = $request->validated();
 
-        $isKelasAktif = Kelas::where('id', $validated['kelas_id'])
+        $kelas = Kelas::where('id', $validated['kelas_id'])
             ->whereHas('tahunAjaran', fn($q) => $q->where('is_active', 1))
-            ->exists();
+            ->first();
 
-        if (!$isKelasAktif) {
+        if (!$kelas) {
             return response()->json([
                 'success' => false,
                 'message' => 'Kelas yang dipilih harus berada pada tahun ajaran aktif.'
@@ -207,7 +208,7 @@ class SiswaController extends Controller
         }
 
         try {
-            $siswa = DB::transaction(function() use ($data) {
+            $siswa = DB::transaction(function() use ($data, $validated, $kelas) {
                 if (User::where('username', $data['nis'])->exists()) {
                     throw ValidationException::withMessages([
                         'nis' => ["NIS {$data['nis']} sudah terdaftar sebagai pengguna lain."]
@@ -247,13 +248,22 @@ class SiswaController extends Controller
                 $data['user_id'] = $newUserId;
                 $data['is_active'] = 1;
 
-                return Siswa::create($data);
+                $siswaCreated = Siswa::create($data);
+
+                SiswaKelas::create([
+                    'siswa_id'        => $newSiswaId,
+                    'kelas_id'        => $validated['kelas_id'],
+                    'tahun_ajaran_id' => $kelas->tahun_ajaran_id,
+                    'is_active'       => 1
+                ]);
+
+                return $siswaCreated;
             });
 
             return response()->json([
                 'success' => true,
                 'message' => 'Data siswa berhasil ditambahkan',
-                'data'    => new SiswaResource($siswa->load(['user', 'kelas.jurusan', 'orangtua']))
+                'data'    => new SiswaResource($siswa->load(['user', 'riwayatKelas.kelas.jurusan', 'orangtua']))
             ], Response::HTTP_CREATED);
 
         } catch (ValidationException $e) {
@@ -277,12 +287,13 @@ class SiswaController extends Controller
     {
         $validated = $request->validated();
 
+        $kelas = null;
         if (isset($validated['kelas_id'])) {
-            $isKelasAktif = Kelas::where('id', $validated['kelas_id'])
+            $kelas = Kelas::where('id', $validated['kelas_id'])
                 ->whereHas('tahunAjaran', fn($q) => $q->where('is_active', 1))
-                ->exists();
+                ->first();
 
-            if (!$isKelasAktif) {
+            if (!$kelas) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Kelas tujuan harus berada pada tahun ajaran aktif.'
@@ -298,7 +309,7 @@ class SiswaController extends Controller
         }
 
         try {
-            DB::transaction(function() use ($siswa, $data) {
+            DB::transaction(function() use ($siswa, $data, $validated, $kelas) {
                 if (isset($data['nis']) && $siswa->user_id) {
                     $isTaken = User::where('username', $data['nis'])
                                    ->where('id', '!=', $siswa->user_id)
@@ -311,6 +322,21 @@ class SiswaController extends Controller
                 }
 
                 $siswa->update($data);
+
+                if (isset($validated['kelas_id']) && $kelas) {
+                    SiswaKelas::where('siswa_id', $siswa->id)
+                        ->where('is_active', 1)
+                        ->update(['is_active' => 0]);
+
+                    SiswaKelas::updateOrCreate(
+                        [
+                            'siswa_id'        => $siswa->id,
+                            'kelas_id'        => $validated['kelas_id'],
+                            'tahun_ajaran_id' => $kelas->tahun_ajaran_id
+                        ],
+                        ['is_active' => 1]
+                    );
+                }
 
                 if ($siswa->user_id) {
                     $userData = [];
@@ -330,7 +356,7 @@ class SiswaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Data siswa berhasil diperbarui',
-                'data'    => new SiswaResource($siswa->fresh(['user', 'kelas.jurusan', 'orangtua']))
+                'data'    => new SiswaResource($siswa->fresh(['user', 'riwayatKelas.kelas.jurusan', 'orangtua']))
             ], Response::HTTP_OK);
 
         } catch (ValidationException $e) {
@@ -357,6 +383,7 @@ class SiswaController extends Controller
             $userId = $siswa->user_id;
 
             DB::transaction(function() use ($siswa, $userId) {
+                SiswaKelas::where('siswa_id', $siswa->id)->delete();
                 $siswa->delete();
                 if ($userId) {
                     User::where('id', $userId)->delete();

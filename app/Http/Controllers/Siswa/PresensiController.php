@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Presensi, TahunAjaran};
+use App\Models\{Presensi, TahunAjaran}; // Hapus RiwayatKelas dari sini
 use Illuminate\Http\{JsonResponse, Request};
 use Illuminate\Support\Facades\{Auth, Log};
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -36,7 +36,6 @@ class PresensiController extends Controller
             }
 
             $tahunAjaranId = $request->tahun_ajaran_id;
-            
             if (!$tahunAjaranId) {
                 $tahunAktif = TahunAjaran::where('is_active', 1)->first();
                 $tahunAjaranId = $tahunAktif?->id;
@@ -44,10 +43,23 @@ class PresensiController extends Controller
                 $tahunAktif = TahunAjaran::find($tahunAjaranId);
             }
 
+            // MENGGUNAKAN RELASI DARI MODEL SISWA
+            $riwayat = $siswa->riwayatKelas()
+                ->with('kelas')
+                ->where('tahun_ajaran_id', $tahunAjaranId)
+                ->when($request->filled('kelas_id'), function($q) use ($request) {
+                    $q->where('kelas_id', $request->kelas_id);
+                })
+                ->first();
+
             $query = Presensi::where('siswa_id', $siswaId);
 
             if ($tahunAjaranId) {
                 $query->where('tahun_ajaran_id', $tahunAjaranId);
+            }
+
+            if ($request->filled('kelas_id')) {
+                $query->where('kelas_id', $request->kelas_id);
             }
 
             if ($request->filled('search')) {
@@ -68,7 +80,6 @@ class PresensiController extends Controller
                           ->orderBy('id', 'desc')
                           ->paginate($perPage);
 
-            // Transformasi data untuk menyertakan meta paginasi mendalam
             $paginationData = $data->toArray();
 
             return response()->json([
@@ -76,7 +87,7 @@ class PresensiController extends Controller
                 'message' => 'Data presensi berhasil diambil.',
                 'header' => [
                     'nama' => $siswa?->nama_lengkap,
-                    'kelas' => $siswa?->kelas?->nama_kelas,
+                    'kelas' => $riwayat?->kelas?->nama_kelas ?? 'Tanpa Kelas',
                     'tahun_ajaran' => $tahunAktif?->nama ?? 'Tidak Diketahui',
                     'semester' => $tahunAktif?->semester ?? '-',
                 ],
@@ -93,11 +104,6 @@ class PresensiController extends Controller
                     'last_page'     => $paginationData['last_page'],
                     'per_page'      => $paginationData['per_page'],
                     'total'         => $paginationData['total'],
-                    'from'          => $paginationData['from'],
-                    'to'            => $paginationData['to'],
-                    'path'          => $paginationData['path'],
-                    'next_page_url' => $paginationData['next_page_url'],
-                    'prev_page_url' => $paginationData['prev_page_url'],
                     'links'         => array_map(function ($link) {
                         return [
                             'url'    => $link['url'],

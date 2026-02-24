@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Guru;
 
 use App\Http\Controllers\Controller;
 use App\Models\{
-    Berita, Pengumuman, Siswa, Presensi, KalenderAkademik, Kelas, GuruMapel, TahunAjaran, GuruStaf, JadwalProduktif
+    Berita, Pengumuman, Siswa, Presensi, KalenderAkademik, Kelas, GuruMapel, TahunAjaran, GuruStaf, JadwalProduktif, SiswaKelas
 };
 use App\Http\Resources\BeritaResource;
 use Illuminate\Http\Request;
@@ -43,9 +43,10 @@ class DashboardController extends Controller
                 ->whereIn('tahun_ajaran_id', $activeTaIds)
                 ->pluck('id');
 
-            $siswaBinaanIds = Siswa::whereIn('kelas_id', $kelasWaliIds)
+            $siswaBinaanIds = SiswaKelas::whereIn('kelas_id', $kelasWaliIds)
+                ->whereIn('tahun_ajaran_id', $activeTaIds)
                 ->where('is_active', 1)
-                ->pluck('id');
+                ->pluck('siswa_id');
 
             $stats = $this->getStats($guruStafId, $siswaBinaanIds);
 
@@ -114,17 +115,17 @@ class DashboardController extends Controller
         $res = ['role_jabatan' => $jabatan];
         $today = today();
         
-        $filterAktif = function($q) use ($activeTaIds) {
+        $filterAktifPivot = function($q) use ($activeTaIds) {
             $q->where('is_active', 1)->whereIn('tahun_ajaran_id', $activeTaIds);
         };
 
         switch ($jabatan) {
             case 'Kepala Sekolah':
                 $res['summary'] = [
-                    'total_siswa_global' => Siswa::whereHas('kelas', $filterAktif)->where('is_active', 1)->count(),
+                    'total_siswa_global' => Siswa::whereHas('riwayatKelas', $filterAktifPivot)->where('is_active', 1)->count(),
                     'presensi_siswa_hari_ini' => Presensi::whereDate('created_at', $today)
-                        ->whereHas('siswa', function($q) use ($filterAktif) {
-                            $q->whereHas('kelas', $filterAktif)->where('is_active', 1);
+                        ->whereHas('siswa', function($q) use ($filterAktifPivot) {
+                            $q->whereHas('riwayatKelas', $filterAktifPivot)->where('is_active', 1);
                         })->count(),
                     'total_guru_staf' => GuruStaf::where('is_active', 1)->count(),
                 ];
@@ -133,20 +134,20 @@ class DashboardController extends Controller
             case 'Waka Kurikulum':
                 $res['summary'] = [
                     'total_mapel' => \App\Models\Matapelajaran::where('is_active', 1)->count(),
-                    'total_guru_mapel' => GuruMapel::whereHas('kelas', $filterAktif)->distinct('guru_staf_id')->count(),
+                    'total_guru_mapel' => GuruMapel::distinct('guru_staf_id')->count(),
                     'agenda_akademik' => KalenderAkademik::whereIn('tahun_ajaran_id', $activeTaIds)->whereDate('tanggal_mulai', '>=', $today)->count()
                 ];
                 break;
 
             case 'Waka Kesiswaan':
                 $res['summary'] = [
-                    'total_siswa' => Siswa::whereHas('kelas', $filterAktif)->where('is_active', 1)->count(),
+                    'total_siswa' => Siswa::whereHas('riwayatKelas', $filterAktifPivot)->where('is_active', 1)->count(),
                     'pelanggaran_hari_ini' => \App\Models\PoinSiswa::whereDate('created_at', $today)
                         ->where('poin_negatif', '>', 0)->count(),
                     'total_ekstrakurikuler' => \App\Models\Ekstrakurikuler::count(),
                     'siswa_mangkir' => Presensi::whereDate('created_at', $today)->where('status', 'Alpa')
-                        ->whereHas('siswa', function($q) use ($filterAktif) {
-                            $q->whereHas('kelas', $filterAktif)->where('is_active', 1);
+                        ->whereHas('siswa', function($q) use ($filterAktifPivot) {
+                            $q->whereHas('riwayatKelas', $filterAktifPivot)->where('is_active', 1);
                         })->count()
                 ];
                 break;
@@ -171,8 +172,12 @@ class DashboardController extends Controller
             case 'Ketua Jurusan':
                 $jurusanId = $guruStaf->jurusan_id;
                 $res['summary'] = [
-                    'siswa_jurusan' => Siswa::whereHas('kelas', function($q) use ($jurusanId, $activeTaIds) {
-                        $q->where('jurusan_id', $jurusanId)->whereIn('tahun_ajaran_id', $activeTaIds)->where('is_active', 1);
+                    'siswa_jurusan' => Siswa::whereHas('riwayatKelas', function($q) use ($jurusanId, $activeTaIds) {
+                        $q->whereIn('tahun_ajaran_id', $activeTaIds)
+                          ->where('is_active', 1)
+                          ->whereHas('kelas', function($qk) use ($jurusanId) {
+                              $qk->where('jurusan_id', $jurusanId);
+                          });
                     })->where('is_active', 1)->count(),
                     'kelas_jurusan' => Kelas::where('jurusan_id', $jurusanId)->whereIn('tahun_ajaran_id', $activeTaIds)->where('is_active', 1)->count(),
                     'guru_jurusan' => GuruMapel::whereHas('mapel', function($q) use ($jurusanId) {

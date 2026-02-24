@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Siswa extends Model
@@ -26,7 +27,7 @@ class Siswa extends Model
         'tempat_lahir',
         'tanggal_lahir',
         'jenis_kelamin',
-        'kelas_id',
+        // 'kelas_id', // <-- HAPUS INI karena kolomnya sudah kita drop di SQL
         'foto',
         'no_telp_siswa',
         'alamat',
@@ -67,10 +68,26 @@ class Siswa extends Model
         return $this->belongsTo(User::class, 'user_id', 'id');
     }
 
-    public function kelas(): BelongsTo
+    /**
+     * Mengambil semua riwayat kelas siswa (untuk sejarah)
+     */
+    public function riwayatKelas(): HasMany
     {
-        return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
+        return $this->hasMany(SiswaKelas::class, 'siswa_id', 'id');
     }
+
+    /**
+     * Mengambil kelas yang sedang aktif saat ini saja
+     */
+    public function kelasAktif(): HasOne
+    {
+        return $this->hasOne(SiswaKelas::class, 'siswa_id', 'id')->where('is_active', true);
+    }
+
+    // public function kelas(): BelongsTo // <-- HAPUS/KOMENTAR relasi lama ini
+    // {
+    //     return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
+    // }
 
     public function orangtua(): BelongsToMany
     {

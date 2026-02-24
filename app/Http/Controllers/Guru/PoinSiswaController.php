@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Guru;
 
 use App\Http\Controllers\Controller;
-use App\Models\{PoinSiswa, TahunAjaran, Siswa};
+use App\Models\{PoinSiswa, TahunAjaran, Siswa, Kelas};
 use App\Http\Requests\{StorePoinSiswaRequest, UpdatePoinSiswaRequest};
 use App\Http\Resources\PoinSiswaResource;
 use App\Exports\PoinSiswaExport;
@@ -28,7 +28,12 @@ class PoinSiswaController extends Controller
         $user = Auth::user();
         $guruStafId = $user->guruStaf?->id;
         
-        return PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
+        // PENYESUAIAN: Menggunakan riwayatKelas yang difilter aktif
+        return PoinSiswa::with([
+                'siswa.riwayatKelas' => fn($q) => $q->where('is_active', true)->with('kelas'), 
+                'guruStaf', 
+                'tahunAjaran'
+            ])
             ->select('poin_siswa.*')
             ->addSelect([
                 'total_kumulatif_positif' => DB::table('poin_siswa as ps')
@@ -47,8 +52,14 @@ class PoinSiswaController extends Controller
         try {
             $user = Auth::user();
             $guruStafId = $user->guruStaf?->id;
+            $taActive = TahunAjaran::where('is_active', true)->first();
 
-            $query = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
+            // PENYESUAIAN: Eager load riwayatKelas (yang aktif saja)
+            $query = PoinSiswa::with([
+                    'siswa.riwayatKelas' => fn($q) => $q->where('is_active', true)->with('kelas'), 
+                    'guruStaf', 
+                    'tahunAjaran'
+                ])
                 ->select('poin_siswa.*')
                 ->addSelect([
                     'total_kumulatif_positif' => DB::table('poin_siswa as ps')
@@ -58,17 +69,25 @@ class PoinSiswaController extends Controller
                         ->whereColumn('ps.siswa_id', 'poin_siswa.siswa_id')
                         ->selectRaw('SUM(poin_negatif)')
                 ])
+                ->where('poin_siswa.guru_staf_id', $guruStafId)
                 ->whereHas('siswa', function($q) {
                     $q->where('is_active', true)
-                      ->whereHas('kelas', fn($qk) => $qk->where('is_active', true));
+                      // PENYESUAIAN: Filter via riwayatKelas aktif
+                      ->whereHas('riwayatKelas', fn($qk) => $qk->where('is_active', true));
                 });
 
-            $query->where('poin_siswa.guru_staf_id', $guruStafId);
+            if ($request->filled('kelas_id')) {
+                // PENYESUAIAN: Filter kelas_id melalui pivot riwayatKelas
+                $query->whereHas('siswa.riwayatKelas', function($q) use ($request) {
+                    $q->where('is_active', true)
+                      ->where('kelas_id', $request->kelas_id);
+                });
+            }
 
             if ($request->filled('tahun_ajaran_id')) {
                 $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
-            } else {
-                $query->whereHas('tahunAjaran', fn($q) => $q->where('is_active', true));
+            } else if ($taActive) {
+                $query->where('tahun_ajaran_id', $taActive->id);
             }
 
             if ($request->filled('siswa_id')) {
@@ -90,7 +109,6 @@ class PoinSiswaController extends Controller
             $perPage = min((int) $request->get('per_page', 20), 100);
             $data = $query->orderByDesc('tanggal')->paginate($perPage);
             
-            // Konversi ke array untuk memproses metadata manual
             $paginationData = $data->toArray();
 
             return response()->json([
@@ -106,19 +124,12 @@ class PoinSiswaController extends Controller
                     'path'          => $paginationData['path'],
                     'next_page_url' => $paginationData['next_page_url'],
                     'prev_page_url' => $paginationData['prev_page_url'],
-                    'links'         => array_map(function ($link) {
-                        return [
-                            'url'    => $link['url'],
-                            'label'  => $link['label'],
-                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
-                            'active' => $link['active'],
-                        ];
-                    }, $paginationData['links']),
+                    'links'         => $paginationData['links'],
                 ],
             ], Response::HTTP_OK);
 
         } catch (Throwable $e) {
-            Log::error('Fetch Poin Index Error: ' . $e->getMessage());
+            Log::error('Fetch Poin Guru Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false, 
                 'message' => 'Gagal mengambil data.'
@@ -140,22 +151,28 @@ class PoinSiswaController extends Controller
                 ], Response::HTTP_FORBIDDEN);
             }
 
+            // Ambil siswa beserta riwayat kelas aktifnya
             $siswa = Siswa::where('id', $request->siswa_id)
                 ->where('is_active', true)
-                ->whereHas('kelas', fn($q) => $q->where('is_active', true))
+                ->with(['riwayatKelas' => fn($q) => $q->where('is_active', true)])
                 ->first();
 
-            if (!$siswa) {
+            $riwayatAktif = $siswa?->riwayatKelas->first();
+
+            if (!$siswa || !$riwayatAktif) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Siswa tidak ditemukan atau kelas sudah tidak aktif.'
+                    'message' => 'Siswa tidak ditemukan atau tidak memiliki kelas aktif.'
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
-            $poin = DB::transaction(function () use ($request, $ta, $guruStafId) {
+            $poin = DB::transaction(function () use ($request, $ta, $guruStafId, $riwayatAktif) {
+                // Merge data: memaksa tanggal ke hari ini dan mengisi kelas_id otomatis
                 return PoinSiswa::create(array_merge($request->validated(), [
                     'tahun_ajaran_id' => $ta->id,
-                    'guru_staf_id' => $guruStafId 
+                    'guru_staf_id'    => $guruStafId,
+                    'kelas_id'        => $riwayatAktif->kelas_id,
+                    'tanggal'         => now()->format('Y-m-d'), // Set otomatis hari ini
                 ]));
             });
 
@@ -166,86 +183,54 @@ class PoinSiswaController extends Controller
             ], Response::HTTP_CREATED);
 
         } catch (Throwable $e) {
-            Log::error('Store Poin Error: ' . $e->getMessage());
+            Log::error('Store Poin Guru Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false, 
                 'message' => 'Gagal mencatat poin.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-
-    public function show(PoinSiswa $poinSiswa): JsonResponse
-    {
-        try {
-            $data = $this->getPoinWithKumulatif($poinSiswa->id);
-            return response()->json([
-                'success' => true, 
-                'data' => new PoinSiswaResource($data)
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Data tidak ditemukan atau akses ditolak.'
-            ], Response::HTTP_FORBIDDEN);
-        }
-    }
-
-    public function update(UpdatePoinSiswaRequest $request, PoinSiswa $poinSiswa): JsonResponse
-    {
-        try {
-            $poin = $this->getPoinWithKumulatif($poinSiswa->id);
-            DB::transaction(fn() => $poin->update($request->validated()));
-            
-            return response()->json([
-                'success' => true, 
-                'message' => 'Berhasil diperbarui.', 
-                'data' => new PoinSiswaResource($this->getPoinWithKumulatif($poin->id))
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Gagal memperbarui data.'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    public function destroy(PoinSiswa $poinSiswa): JsonResponse
-    {
-        try {
-            $poin = $this->getPoinWithKumulatif($poinSiswa->id);
-            DB::transaction(fn() => $poin->delete());
-            
-            return response()->json([
-                'success' => true, 
-                'message' => 'Berhasil dihapus.'
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Gagal menghapus data.'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
     public function export(Request $request)
     {
         try {
             $user = Auth::user();
             $guruStafId = $user->guruStaf?->id;
+            
             $profil = DB::table('profil_sekolah')->first();
             $kontak = DB::table('data_kontak')->first();
+            
             $taActive = $request->filled('tahun_ajaran_id') 
                 ? TahunAjaran::find($request->tahun_ajaran_id) 
                 : TahunAjaran::where('is_active', true)->first();
-            
-            $query = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
+
+            // PENYESUAIAN: Menggunakan riwayatKelas aktif pada export
+            $query = PoinSiswa::with([
+                    'siswa.riwayatKelas' => fn($q) => $q->where('is_active', true)->with('kelas'), 
+                    'guruStaf', 
+                    'tahunAjaran'
+                ])
                 ->where('guru_staf_id', $guruStafId);
 
+            if ($request->filled('kelas_id')) {
+                // PENYESUAIAN: Filter kelas via riwayatKelas
+                $query->whereHas('siswa.riwayatKelas', function($q) use ($request) {
+                    $q->where('is_active', true)->where('kelas_id', $request->kelas_id);
+                });
+            }
+
             return Excel::download(
-                new PoinSiswaExport($query->orderBy('tanggal', 'asc'), 'Laporan', 'Periode', $profil, $kontak, $taActive?->nama),
-                "Rekap_Poin_" . date('His') . ".xlsx"
+                new PoinSiswaExport(
+                    $query->orderBy('tanggal', 'asc'), 
+                    'REKAP GURU', 
+                    'Periode', 
+                    $profil, 
+                    $kontak, 
+                    $taActive?->nama
+                ),
+                "Rekap_Poin_Guru_" . date('His') . ".xlsx"
             );
         } catch (Throwable $e) {
+            Log::error('Export Poin Guru Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false, 
                 'message' => 'Gagal melakukan export laporan.'

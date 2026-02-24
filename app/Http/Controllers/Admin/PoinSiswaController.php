@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{PoinSiswa, TahunAjaran, Siswa};
+use App\Models\{PoinSiswa, TahunAjaran, Siswa, Kelas};
 use App\Http\Requests\{StorePoinSiswaRequest, UpdatePoinSiswaRequest};
 use App\Http\Resources\PoinSiswaResource;
 use App\Exports\PoinSiswaExport;
@@ -26,7 +26,12 @@ class PoinSiswaController extends Controller
 
     private function getPoinWithKumulatif($id)
     {
-        return PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
+        // PENYESUAIAN: Menggunakan riwayatKelas dengan filter is_active
+        return PoinSiswa::with([
+                'siswa.riwayatKelas' => fn($q) => $q->where('is_active', true)->with('kelas'),
+                'guruStaf', 
+                'tahunAjaran'
+            ])
             ->select('poin_siswa.*')
             ->addSelect([
                 'total_kumulatif_positif' => DB::table('poin_siswa as ps')
@@ -42,7 +47,14 @@ class PoinSiswaController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
+            $taActive = TahunAjaran::where('is_active', true)->first();
+            
+            // PENYESUAIAN: Eager load riwayatKelas (yang aktif saja)
+            $query = PoinSiswa::with([
+                    'siswa.riwayatKelas' => fn($q) => $q->where('is_active', true)->with('kelas'),
+                    'guruStaf', 
+                    'tahunAjaran'
+                ])
                 ->select('poin_siswa.*')
                 ->addSelect([
                     'total_kumulatif_positif' => DB::table('poin_siswa as ps')
@@ -54,29 +66,36 @@ class PoinSiswaController extends Controller
                 ])
                 ->whereHas('siswa', function($q) {
                     $q->where('is_active', true)
-                      ->whereHas('kelas', fn($qk) => $qk->where('is_active', true));
+                      // PENYESUAIAN: Menggunakan riwayatKelas sebagai filter dasar
+                      ->whereHas('riwayatKelas', fn($qk) => $qk->where('is_active', true));
                 });
 
-            // Filter Tahun Ajaran
+            if ($request->filled('kelas_id')) {
+                // PENYESUAIAN: Filter kelas_id melalui riwayatKelas
+                $query->whereHas('siswa.riwayatKelas', function($q) use ($request) {
+                    $q->where('is_active', true)
+                      ->where('kelas_id', $request->kelas_id);
+                });
+            }
+
             if ($request->filled('tahun_ajaran_id')) {
                 $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
             } else {
-                $query->whereHas('tahunAjaran', fn($q) => $q->where('is_active', true));
+                if ($taActive) {
+                    $query->where('tahun_ajaran_id', $taActive->id);
+                }
             }
 
-            // Filter Siswa
             if ($request->filled('siswa_id')) {
                 $query->where('siswa_id', $request->siswa_id);
             }
             
-            // Filter Bulan
             if ($request->filled('bulan')) {
                 $time = strtotime($request->bulan);
                 $query->whereMonth('tanggal', date('m', $time))
                       ->whereYear('tanggal', date('Y', $time));
             }
 
-            // Search Nama/NISN
             if ($request->filled('search')) {
                 $search = $request->search;
                 $query->whereHas('siswa', fn($q) => $q->where('nama_lengkap', 'like', "%{$search}%")
@@ -88,7 +107,6 @@ class PoinSiswaController extends Controller
                           ->orderByDesc('tanggal')
                           ->paginate($perPage);
 
-            // Metadata pagination lengkap
             $paginationData = $data->toArray();
 
             return response()->json([
@@ -124,13 +142,17 @@ class PoinSiswaController extends Controller
 
             $siswa = Siswa::where('id', $request->siswa_id)
                 ->where('is_active', true)
-                ->whereHas('kelas', fn($q) => $q->where('is_active', true))
+                // PENYESUAIAN: Validasi riwayatKelas aktif untuk tahun ajaran ini
+                ->whereHas('riwayatKelas', function($q) use ($ta) {
+                    $q->where('tahun_ajaran_id', $ta->id)
+                      ->where('is_active', true);
+                })
                 ->first();
 
             if (!$siswa) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Siswa tidak ditemukan atau kelas sudah tidak aktif.'
+                    'message' => 'Siswa tidak ditemukan atau tidak terdaftar di kelas aktif tahun ajaran ini.'
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
@@ -170,13 +192,14 @@ class PoinSiswaController extends Controller
         try {
             $siswa = Siswa::where('id', $poinSiswa->siswa_id)
                 ->where('is_active', true)
-                ->whereHas('kelas', fn($q) => $q->where('is_active', true))
+                // PENYESUAIAN: Menggunakan riwayatKelas aktif
+                ->whereHas('riwayatKelas', fn($q) => $q->where('is_active', true))
                 ->first();
 
             if (!$siswa) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Data tidak dapat diubah karena siswa atau kelas sudah tidak aktif.'
+                    'message' => 'Data tidak dapat diubah karena siswa tidak memiliki kelas aktif.'
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
@@ -226,35 +249,62 @@ class PoinSiswaController extends Controller
                 : TahunAjaran::where('is_active', true)->first();
             
             $namaTA = $taActive ? $taActive->nama . " " . $taActive->semester : "-";
-            
-            $namaKelas = $request->nama_kelas ?? 'Seluruh_Siswa';
-            $namaKelasFile = str_replace([' ', '/', '\\'], '_', $namaKelas);
-            
-            $labelWaktu = $request->filled('bulan') ? date('F Y', strtotime($request->bulan)) : "Kumulatif";
-            $bulanFile = $request->filled('bulan') ? date('M_Y', strtotime($request->bulan)) : "Semua_Waktu";
 
-            $query = PoinSiswa::with(['siswa.kelas', 'guruStaf', 'tahunAjaran'])
+            $namaKelasLaporan = 'SELURUH SISWA';
+            if ($request->filled('kelas_id')) {
+                $kelasObj = Kelas::find($request->kelas_id);
+                if ($kelasObj) {
+                    $namaKelasLaporan = $kelasObj->nama_kelas;
+                } else {
+                    $namaKelasLaporan = $request->kelas_id;
+                }
+            }
+
+            $taSlug = strtoupper(str_replace([' ', '/', '\\'], '_', $namaTA));
+            $kelasSlug = strtoupper(str_replace([' ', '/', '\\'], '_', $namaKelasLaporan));
+            $fileName = "REKAP_POIN_SISWA_{$kelasSlug}_{$taSlug}_AKTIF.XLSX";
+
+            $labelWaktu = $request->filled('bulan') ? date('F Y', strtotime($request->bulan)) : "KUMULATIF";
+
+            // PENYESUAIAN: Query Export menggunakan riwayatKelas
+            $query = PoinSiswa::with([
+                    'siswa.riwayatKelas' => fn($q) => $q->where('is_active', true)->with('kelas'),
+                    'guruStaf', 
+                    'tahunAjaran'
+                ])
                 ->whereHas('siswa', function($q) {
                     $q->where('is_active', true)
-                      ->whereHas('kelas', fn($qk) => $qk->where('is_active', true));
+                      ->whereHas('riwayatKelas', fn($qk) => $qk->where('is_active', true));
                 });
 
             if ($request->filled('kelas_id')) {
-                $query->whereHas('siswa', fn($q) => $q->where('kelas_id', $request->kelas_id));
+                // PENYESUAIAN: Filter kelas_id via riwayatKelas
+                $query->whereHas('siswa.riwayatKelas', function($q) use ($request) {
+                    $q->where('is_active', true)
+                      ->where('kelas_id', $request->kelas_id);
+                });
             }
+
+            // ... (filter tahun ajaran dan bulan tetap sama)
 
             if ($request->filled('tahun_ajaran_id')) {
                 $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
             } else {
-                $query->whereHas('tahunAjaran', fn($q) => $q->where('is_active', true));
+                if ($taActive) {
+                    $query->where('tahun_ajaran_id', $taActive->id);
+                }
             }
 
-            $fileName = "Rekap_Poin_{$namaKelasFile}_{$bulanFile}_" . date('His') . ".xlsx";
+            if ($request->filled('bulan')) {
+                $time = strtotime($request->bulan);
+                $query->whereMonth('tanggal', date('m', $time))
+                      ->whereYear('tanggal', date('Y', $time));
+            }
 
             return Excel::download(
                 new PoinSiswaExport(
                     $query->orderBy('tanggal', 'asc'), 
-                    $namaKelas, 
+                    $namaKelasLaporan, 
                     $labelWaktu, 
                     $profil, 
                     $kontak, 

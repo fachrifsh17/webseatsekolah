@@ -98,42 +98,43 @@ class DashboardController extends Controller
 
     private function getDataAnak($userId, $tahunAjaranId)
     {
-        $orangtua = Orangtua::with(['anak' => function($query) use ($tahunAjaranId) {
-            $query->where('is_active', true)
-                  ->whereHas('kelas', function($q) use ($tahunAjaranId) {
-                      $q->where('tahun_ajaran_id', $tahunAjaranId);
-                  });
-        }, 'anak.kelas.waliKelas'])->where('user_id', $userId)->first();
+        $anakList = Siswa::whereHas('orangtua', fn($q) => $q->where('user_id', $userId))
+            ->where('is_active', true)
+            ->with(['riwayatKelas' => function($q) use ($tahunAjaranId) {
+                $q->where('tahun_ajaran_id', $tahunAjaranId)
+                  ->where('is_active', true)
+                  ->with('kelas.waliKelas');
+            }])
+            ->get();
 
-        if (!$orangtua || !$orangtua->anak) {
+        if ($anakList->isEmpty()) {
             return [];
         }
 
-        return $orangtua->anak->map(function ($siswa) use ($tahunAjaranId) {
-            // Stats Presensi difilter Tahun Ajaran
+        return $anakList->map(function ($siswa) use ($tahunAjaranId) {
+            $riwayat = $siswa->riwayatKelas->first();
+            
             $statsPresensi = Presensi::where('siswa_id', $siswa->id)
-                ->when($tahunAjaranId, fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId))
+                ->where('tahun_ajaran_id', $tahunAjaranId)
                 ->select('status', DB::raw('count(*) as total'))
                 ->groupBy('status')
                 ->pluck('total', 'status');
 
-            // Stats Poin difilter Tahun Ajaran
-            $queryPoin = PoinSiswa::where('siswa_id', $siswa->id)
-                ->when($tahunAjaranId, fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId));
-            
-            $poinPositif = (int) (clone $queryPoin)->sum('poin_positif');
-            $poinNegatif = (int) (clone $queryPoin)->sum('poin_negatif');
+            $poinSiswa = PoinSiswa::where('siswa_id', $siswa->id);
+            $poinPositif = (int) (clone $poinSiswa)->sum('poin_positif');
+            $poinNegatif = (int) (clone $poinSiswa)->sum('poin_negatif');
 
             return [
-                'nama_anak'  => $siswa->nama_lengkap ?? $siswa->nama,
-                'kelas'      => $siswa->kelas->nama_kelas ?? '-',
-                'wali_kelas' => $siswa->kelas->waliKelas->nama ?? '-',
+                'id_siswa'   => $siswa->id,
+                'nama_anak'  => $siswa->nama_lengkap,
+                'kelas'      => $riwayat?->kelas?->nama_kelas ?? '-',
+                'wali_kelas' => $riwayat?->kelas?->waliKelas?->nama ?? '-',
                 'statistics' => [
                     'presensi' => [
-                        'hadir' => $statsPresensi['Hadir'] ?? 0,
-                        'izin'  => $statsPresensi['Izin'] ?? 0,
-                        'sakit' => $statsPresensi['Sakit'] ?? 0,
-                        'alpa'  => $statsPresensi['Alpa'] ?? 0,
+                        'hadir' => (int)($statsPresensi['Hadir'] ?? 0),
+                        'izin'  => (int)($statsPresensi['Izin'] ?? 0),
+                        'sakit' => (int)($statsPresensi['Sakit'] ?? 0),
+                        'alpa'  => (int)($statsPresensi['Alpa'] ?? 0),
                     ],
                     'poin' => [
                         'total_positif' => $poinPositif,

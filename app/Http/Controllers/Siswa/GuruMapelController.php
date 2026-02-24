@@ -25,17 +25,25 @@ class GuruMapelController extends Controller
 
     private function getKelasIdSiswa()
     {
-        return Auth::user()->siswa->kelas_id ?? null;
+        $siswa = Auth::user()->siswa;
+        if (!$siswa) return null;
+
+        $riwayatAktif = $siswa->riwayatKelas()->where('is_active', true)->first();
+        return $riwayatAktif?->kelas_id;
     }
 
     private function applyBaseFilters(Request $request)
     {
         $kelasId = $this->getKelasIdSiswa();
-        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
+        $siswa = Auth::user()->siswa;
+        $riwayatAktif = $siswa?->riwayatKelas()->where('is_active', true)->first();
+        $tahunAktifId = $riwayatAktif?->tahun_ajaran_id ?? TahunAjaran::where('is_active', 1)->value('id');
 
         $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran', 'jamMulai', 'jamSelesai'])
-            ->where('kelas_id', $kelasId)
-            ->where('tahun_ajaran_id', $tahunAktif?->id);
+            ->select('guru_mapel.*')
+            ->leftJoin('jam_sekolah as jm', 'guru_mapel.jam_mulai_id', '=', 'jm.id')
+            ->where('guru_mapel.kelas_id', $kelasId)
+            ->where('guru_mapel.tahun_ajaran_id', $tahunAktifId);
 
         $query->whereHas('mapel', function ($q) {
             $q->where('is_active', 1);
@@ -65,20 +73,46 @@ class GuruMapelController extends Controller
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', GuruMapel::class);
+        
+        $siswa = Auth::user()->siswa;
+        $kelasId = $this->getKelasIdSiswa();
+
+        if (!$kelasId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jadwal tidak tersedia karena Anda belum terdaftar di kelas manapun.',
+                'data'    => []
+            ], Response::HTTP_OK);
+        }
+
+        $riwayat = $siswa?->riwayatKelas()
+            ->with(['kelas', 'tahunAjaran'])
+            ->where('is_active', true)
+            ->first();
+
         $query = $this->applyBaseFilters($request);
 
         if ($request->filled('hari')) {
-            $query->where('hari', $request->hari);
+            $query->where('guru_mapel.hari', $request->hari);
         } elseif (!$request->filled('q')) {
-            $query->where('hari', Carbon::now()->translatedFormat('l'));
+            $query->where('guru_mapel.hari', Carbon::now()->translatedFormat('l'));
         }
 
-        $assignments = $query->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
-                             ->orderBy('jam_mulai_id')
+        $assignments = $query->orderByRaw("FIELD(guru_mapel.hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
+                             ->orderByRaw("CASE WHEN guru_mapel.jam_mulai_id IS NULL THEN 1 ELSE 0 END ASC")
+                             ->orderBy('jm.waktu_mulai', 'asc')
                              ->get();
 
         return response()->json([
             'success' => true,
+            'message' => $assignments->isEmpty() ? 'Tidak ada jadwal pelajaran untuk kriteria ini.' : 'Data jadwal pelajaran berhasil diambil.',
+            'header'  => [
+                'nama'         => $siswa?->nama_lengkap,
+                'kelas'        => $riwayat?->kelas?->nama_kelas ?? 'Tanpa Kelas',
+                'tahun_ajaran' => $riwayat?->tahunAjaran?->nama ?? 'Tidak Diketahui',
+                'semester'     => $riwayat?->tahunAjaran?->semester ?? '-',
+                'hari_ini'     => Carbon::now()->translatedFormat('l, d F Y'),
+            ],
             'data'    => GuruMapelResource::collection($assignments),
         ], Response::HTTP_OK);
     }
@@ -91,33 +125,32 @@ class GuruMapelController extends Controller
 
             $labelHari = 'SEMUA HARI';
             if ($request->filled('hari')) {
-                $query->where('hari', $request->hari);
+                $query->where('guru_mapel.hari', $request->hari);
                 $labelHari = strtoupper($request->hari);
             }
 
-            $data = $query->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
-                          ->orderBy('jam_mulai_id')
+            $data = $query->orderByRaw("FIELD(guru_mapel.hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
+                          ->orderByRaw("CASE WHEN guru_mapel.jam_mulai_id IS NULL THEN 1 ELSE 0 END ASC")
+                          ->orderBy('jm.waktu_mulai', 'asc')
                           ->get();
 
             $profil = ProfilSekolah::first() ?? new ProfilSekolah();
             $kontak = DataKontak::first() ?? new DataKontak();
-            $tahunAktif = TahunAjaran::where('is_active', 1)->first();
             
-            // 1. Data Kelas & Wali Kelas
             $siswa = Auth::user()->siswa;
-            $kelas = $siswa->kelas->nama_kelas ?? 'Kelas Siswa';
-            $wali = $siswa->kelas->waliKelas->nama ?? '...........................';
-            $nipWali = $siswa->kelas->waliKelas->nip ?? '...........................';
+            $riwayat = $siswa->riwayatKelas()->where('is_active', true)->with('kelas.waliKelas', 'tahunAjaran')->first();
+            
+            $kelas = $riwayat?->kelas?->nama_kelas ?? 'Kelas Siswa';
+            $wali = $riwayat?->kelas?->waliKelas?->nama ?? '...........................';
+            $nipWali = $riwayat?->kelas?->waliKelas?->nip ?? '...........................';
 
-            // 2. Data Kepala Sekolah (Otomatis ID 1)
             $kepsekData = StrukturJabatan::where('jabatan_id', 1)->with('guruStaf')->first();
-            $kepsek = $kepsekData->guruStaf->nama ?? $profil->nama_kepala_sekolah ?? '...........................';
-            $nipKepsek = $kepsekData->guruStaf->nip ?? $profil->nip_kepala_sekolah ?? '...........................';
+            $kepsek = $kepsekData?->guruStaf?->nama ?? $profil->nama_kepala_sekolah ?? '...........................';
+            $nipKepsek = $kepsekData?->guruStaf?->nip ?? $profil->nip_kepala_sekolah ?? '...........................';
 
-            // 3. Data Wakasek Kurikulum (Otomatis ID 2)
             $wakaKurData = StrukturJabatan::where('jabatan_id', 2)->with('guruStaf')->first();
-            $wakaKur = $wakaKurData->guruStaf->nama ?? '...........................';
-            $nipWakaKur = $wakaKurData->guruStaf->nip ?? '...........................';
+            $wakaKur = $wakaKurData?->guruStaf?->nama ?? '...........................';
+            $nipWakaKur = $wakaKurData?->guruStaf?->nip ?? '...........................';
             
             $fileName = 'JADWAL_SISWA_' . strtoupper(Str::slug($kelas, '_')) . '.pdf';
 
@@ -127,7 +160,7 @@ class GuruMapelController extends Controller
                 'data'       => $data,
                 'profil'     => $profil,
                 'kontak'     => $kontak,
-                'tahun'      => $tahunAktif,
+                'tahun'      => $riwayat?->tahunAjaran,
                 'kelas'      => $kelas,
                 'hari'       => $labelHari,
                 'wali'       => $wali,
@@ -139,7 +172,6 @@ class GuruMapelController extends Controller
                 'kategori'   => $request->get('kategori_mapel', 'Semua Kategori')
             ]);
 
-            // DIUBAH MENJADI PORTRAIT KARENA LANDSCAPE TERLALU BESAR
             $pdf->setPaper('a4', 'portrait'); 
             return $pdf->download($fileName);
         } catch (Throwable $e) {
@@ -155,31 +187,29 @@ class GuruMapelController extends Controller
             $query = $this->applyBaseFilters($request);
 
             if ($request->filled('hari')) {
-                $query->where('hari', $request->hari);
+                $query->where('guru_mapel.hari', $request->hari);
             }
-
-            $tahunAktif = TahunAjaran::where('is_active', 1)->first();
             
-            // Tambahkan data tanda tangan ke dalam filters agar terbaca di Excel/PDF Export class
             $siswa = Auth::user()->siswa;
+            $riwayat = $siswa->riwayatKelas()->where('is_active', true)->with('kelas.waliKelas', 'tahunAjaran')->first();
+
             $kepsekData = StrukturJabatan::where('jabatan_id', 1)->with('guruStaf')->first();
             $wakaKurData = StrukturJabatan::where('jabatan_id', 2)->with('guruStaf')->first();
 
             $filters = [
                 'q'              => $request->get('q'),
                 'hari'           => $request->filled('hari') ? $request->hari : 'SEMUA HARI',
-                'tahun_ajaran'   => $tahunAktif?->nama ?? 'Semua',
-                'semester'       => $tahunAktif?->semester ?? 'Semua', 
-                'kelas'          => $siswa->kelas->nama_kelas ?? 'Kelas Siswa',
+                'tahun_ajaran'   => $riwayat?->tahunAjaran?->nama ?? 'Semua',
+                'semester'       => $riwayat?->tahunAjaran?->semester ?? 'Semua', 
+                'kelas'          => $riwayat?->kelas?->nama_kelas ?? 'Kelas Siswa',
                 'tipe_mapel'     => $request->get('tipe_mapel', 'Semua Tipe'),
                 'kategori_mapel' => $request->get('kategori_mapel', 'Semua Kategori'),
-                // Data Tanda Tangan untuk dikirim ke Export Class
-                'wali'           => $siswa->kelas->waliKelas->nama ?? '...........................',
-                'nipWali'        => $siswa->kelas->waliKelas->nip ?? '...........................',
-                'kepsek'         => $kepsekData->guruStaf->nama ?? '...........................',
-                'nipKepsek'      => $kepsekData->guruStaf->nip ?? '...........................',
-                'wakaKur'        => $wakaKurData->guruStaf->nama ?? '...........................',
-                'nipWakaKur'     => $wakaKurData->guruStaf->nip ?? '...........................',
+                'wali'           => $riwayat?->kelas?->waliKelas?->nama ?? '...........................',
+                'nipWali'        => $riwayat?->kelas?->waliKelas?->nip ?? '...........................',
+                'kepsek'         => $kepsekData?->guruStaf?->nama ?? '...........................',
+                'nipKepsek'      => $kepsekData?->guruStaf?->nip ?? '...........................',
+                'wakaKur'        => $wakaKurData?->guruStaf?->nama ?? '...........................',
+                'nipWakaKur'     => $wakaKurData?->guruStaf?->nip ?? '...........................',
             ];
 
             $profil = ProfilSekolah::first() ?? new ProfilSekolah();
@@ -202,9 +232,11 @@ class GuruMapelController extends Controller
             return response()->json(['message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
         }
 
+        $guruMapel->load(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran', 'jamMulai', 'jamSelesai']);
+        
         return response()->json([
             'success' => true,
-            'data'    => new GuruMapelResource($guruMapel->load(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran', 'jamMulai', 'jamSelesai']))
+            'data'    => new GuruMapelResource($guruMapel)
         ], Response::HTTP_OK);
     }
 

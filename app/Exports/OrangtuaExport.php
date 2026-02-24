@@ -62,25 +62,40 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
         ];
     }
 
+    /**
+     * Transformasi data setiap baris
+     */
     public function map($orangtua): array
     {
-        $daftarAnak = $orangtua->anak->filter(function($anak) {
-            if ($this->kelasData) {
-                return $anak->kelas_id == $this->kelasData->id;
+        // Filter dan petakan data anak berdasarkan Riwayat Kelas di Tahun Ajaran terkait
+        $daftarAnak = $orangtua->anak->map(function($anak) {
+            // Ambil riwayat kelas siswa yang sesuai dengan Tahun Ajaran Export
+            $riwayat = $anak->riwayatKelas->where('tahun_ajaran_id', $this->tahunAjaranId)->first();
+
+            // Jika siswa tidak punya riwayat di TA ini, jangan tampilkan
+            if (!$riwayat) {
+                return null;
             }
-            if ($this->jurusanData) {
-                return $anak->kelas->jurusan_id == $this->jurusanData->id;
+
+            // Filter tambahan jika user memfilter berdasarkan Kelas
+            if ($this->kelasData && $riwayat->kelas_id != $this->kelasData->id) {
+                return null;
             }
-            return $anak->kelas->tahun_ajaran_id == $this->tahunAjaranId;
-        })->map(function($anak) {
-            $namaKelas = $anak->kelas->nama_kelas ?? '-';
+
+            // Filter tambahan jika user memfilter berdasarkan Jurusan
+            if ($this->jurusanData && $riwayat->kelas?->jurusan_id != $this->jurusanData->id) {
+                return null;
+            }
+
+            $namaKelas = $riwayat->kelas->nama_kelas ?? '-';
             return "{$anak->nama_lengkap} ({$namaKelas})";
-        })->implode(', ');
+
+        })->filter()->implode(', '); // filter() membuang nilai null agar tidak berantakan
 
         return [
             $orangtua->id,
             $orangtua->nama_lengkap,
-            "'" . $orangtua->telepon,
+            "'" . $orangtua->telepon, // Kutipan agar nomor HP tidak jadi format scientific
             $daftarAnak ?: '-',
             $orangtua->is_active ? 'Aktif' : 'Non-Aktif',
         ];
@@ -133,12 +148,11 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $sheet->getStyle('A9')->getFont()->setItalic(true)->setName('Arial')->setSize(9);
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // Baris 10 dikosongkan untuk jarak sebelum tabel
-                
                 // Header Tabel (Baris 11)
                 $sheet->getStyle("A11:{$lastCol}11")->applyFromArray([
                     'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_BLACK], 'name' => 'Arial', 'size' => 10],
-                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+                    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'F2F2F2']]
                 ]);
 
                 // Border dan Font Tabel
@@ -158,7 +172,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $sheet->getStyle("E12:E{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("D12:D{$lastRow}")->getAlignment()->setWrapText(true);
 
-                // --- TANGGAL CETAK (DI BAWAH KIRI) ---
+                // Tanggal Cetak
                 $footerRow = $lastRow + 2; 
                 $sheet->setCellValue("A{$footerRow}", "Dicetak pada: " . Carbon::now()->format('d/m/Y H:i'));
                 $sheet->getStyle("A{$footerRow}")->getFont()->setItalic(true)->setName('Arial')->setSize(9);

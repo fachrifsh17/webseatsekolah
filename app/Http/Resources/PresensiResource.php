@@ -21,14 +21,16 @@ class PresensiResource extends JsonResource
             $this->mergeWhen($isWali, [
                 'siswa_id' => (string) $this->siswa_id,
                 'nama_lengkap' => $this->siswa?->nama_lengkap,
-                'kelas' => $this->siswa?->kelas?->nama_kelas,
+                // Mengambil langsung dari relasi kelas di model Presensi
+                'kelas' => $this->kelas?->nama_kelas,
             ]),
 
             $this->mergeWhen(!$isWali, [
                 'siswa' => [
                     'id' => (string) $this->siswa_id,
                     'nama' => $this->siswa?->nama_lengkap,
-                    'kelas' => $this->siswa?->kelas?->nama_kelas,
+                    // Mengambil langsung dari relasi kelas di model Presensi
+                    'kelas' => $this->kelas?->nama_kelas,
                 ],
                 'guru' => $this->guruStaf?->nama,
                 'tahun_ajaran' => [

@@ -42,6 +42,15 @@ class GuruMapelController extends Controller
             $query->whereHas('mapel', function ($q) {
                 $q->where('is_active', 1);
             });
+            
+            $query->whereHas('guru', function ($q) {
+                $q->where('is_active', 1);
+            });
+
+            // Tambahan: Pastikan kelas yang dijadwalkan juga sedang aktif
+            $query->whereHas('kelas', function ($q) {
+                $q->where('is_active', 1);
+            });
         }
 
         $query->when($request->tipe_mapel, function ($q, $tipe) {
@@ -67,6 +76,7 @@ class GuruMapelController extends Controller
               ->when($request->hari, fn($q, $hari) => $q->where('hari', $hari));
 
         return $query->orderBy(DB::raw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')"))
+                     ->orderByRaw("CASE WHEN jam_mulai_id IS NULL THEN 1 ELSE 0 END ASC")
                      ->orderBy('jam_mulai_id');
     }
 
@@ -222,7 +232,14 @@ class GuruMapelController extends Controller
         $this->authorize('viewAny', GuruMapel::class);
 
         $hari = $request->query('hari');
-        $jam = JamSekolah::where('hari', $hari)->orderBy('waktu_mulai')->get();
+        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
+
+        $jam = JamSekolah::where('hari', $hari)
+            ->when($tahunAktif, function ($query) use ($tahunAktif) {
+                return $query->where('tahun_ajaran_id', $tahunAktif->id);
+            })
+            ->orderBy('waktu_mulai')
+            ->get();
 
         return response()->json(['success' => true, 'data' => $jam], Response::HTTP_OK);
     }
@@ -236,6 +253,23 @@ class GuruMapelController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal: Mata pelajaran yang dipilih sudah tidak aktif.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $guru = GuruStaf::find($validated['guru_staf_id']);
+        if (!$guru || $guru->is_active == 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal: Guru yang dipilih sudah tidak aktif.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // Pengecekan Kelas berdasarkan is_active (Konsep Kelas Statis)
+        $kelas = Kelas::find($validated['kelas_id']);
+        if (!$kelas || $kelas->is_active == 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal: Kelas yang dipilih sudah tidak aktif.',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 

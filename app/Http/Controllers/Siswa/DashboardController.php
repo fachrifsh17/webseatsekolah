@@ -28,27 +28,39 @@ class DashboardController extends Controller
             $hariIni = today();
             $tigaHariLagi = today()->addDays(3);
             
-            $activeTaIds = TahunAjaran::where('is_active', 1)->pluck('id');
+            // Ambil Tahun Ajaran Aktif
+            $activeTa = TahunAjaran::where('is_active', 1)->first();
+            $activeTaId = $activeTa ? $activeTa->id : null;
 
-            $siswa = $this->getSiswa($user->id);
+            // 1. Ambil data siswa dengan relasi riwayat kelas (pivot) yang difilter TA Aktif
+            $siswa = $this->getSiswa($user->id, $activeTaId);
 
             if (!$siswa) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Data profil siswa tidak ditemukan'
+                    'message' => 'Data profil siswa tidak ditemukan atau belum terdaftar di kelas tahun ini'
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            $poin = $this->getPoin($siswa->id);
-            $statsPresensi = $this->getPresensiStats($siswa->id);
+            // 2. Dapatkan objek kelas saat ini dari pivot
+            $riwayatAktif = $siswa->riwayatKelas->first();
+            $kelasObj = $riwayatAktif ? $riwayatAktif->kelas : null;
+            $kelasId = $kelasObj ? $kelasObj->id : null;
+
+            // 3. Ambil statistik yang sudah difilter TA aktif dan Kelas aktif
+            $poin = $this->getPoin($siswa->id, $activeTaId);
+            $statsPresensi = $this->getPresensiStats($siswa->id, $kelasId, $activeTaId);
+            
             $setting = DB::table('sekolah_setting')->first();
-            $akademik = $this->getAkademikData($hariIni, $tigaHariLagi, $activeTaIds);
+            
+            // 4. Ambil data akademik (Kalender, Pengumuman, Berita) dengan format tanggal bersih
+            $akademik = $this->getAkademikData($hariIni, $tigaHariLagi, $activeTaId ? [$activeTaId] : []);
 
             $data = [
                 'user_info' => [
                     'nama' => $siswa->nama_lengkap ?? 'Tanpa Nama',
-                    'kelas' => $siswa->kelas->nama_kelas ?? '-',
-                    'wali_kelas' => $siswa->kelas->waliKelas->nama ?? '-',
+                    'kelas' => $kelasObj->nama_kelas ?? '-',
+                    'wali_kelas' => $kelasObj->waliKelas->nama ?? '-',
                 ],
                 'statistics' => [
                     'presensi' => [
@@ -60,7 +72,7 @@ class DashboardController extends Controller
                     'poin' => $poin
                 ],
                 'sekolah' => [
-                    'buku_poin'    => $setting->buku_poin_path ? asset('storage/' . $setting->buku_poin_path) : null,
+                    'buku_poin'    => ($setting && isset($setting->buku_poin_path)) ? asset('storage/' . $setting->buku_poin_path) : null,
                     'wa_kesiswaan' => $setting->no_wa_kesiswaan ?? null,
                 ],
                 'akademik' => $akademik
@@ -81,31 +93,63 @@ class DashboardController extends Controller
         }
     }
 
-    private function getSiswa($userId)
+    private function getSiswa($userId, $activeTaId)
     {
-        return Siswa::with(['kelas.waliKelas'])
-            ->where('user_id', $userId)
+        return Siswa::where('user_id', $userId)
+            ->with(['riwayatKelas' => function($query) use ($activeTaId) {
+                $query->where('tahun_ajaran_id', $activeTaId)
+                      ->with(['kelas.waliKelas']); 
+            }])
             ->first();
     }
 
-    private function getPoin($siswaId)
+    private function getPoin($siswaId, $activeTaId)
     {
+        $query = PoinSiswa::where('siswa_id', $siswaId);
+        
+        if ($activeTaId) {
+            $query->where('tahun_ajaran_id', $activeTaId);
+        }
+
         return [
-            'total_positif' => (int) PoinSiswa::where('siswa_id', $siswaId)->sum('poin_positif'),
-            'total_negatif' => (int) PoinSiswa::where('siswa_id', $siswaId)->sum('poin_negatif'),
+            'total_positif' => (int) $query->sum('poin_positif'),
+            'total_negatif' => (int) $query->sum('poin_negatif'),
         ];
     }
 
-    private function getPresensiStats($siswaId)
+    private function getPresensiStats($siswaId, $kelasId, $activeTaId)
     {
-        return Presensi::where('siswa_id', $siswaId)
-            ->select('status', DB::raw('count(*) as total'))
+        $query = Presensi::where('siswa_id', $siswaId);
+
+        if ($activeTaId) {
+            $query->where('tahun_ajaran_id', $activeTaId);
+        }
+        
+        if ($kelasId) {
+            $query->where('kelas_id', $kelasId);
+        }
+
+        return $query->select('status', DB::raw('count(*) as total'))
             ->groupBy('status')
             ->pluck('total', 'status');
     }
 
     private function getAkademikData($hariIni, $tigaHariLagi, $activeTaIds)
     {
+        // Ambil pengumuman dan hilangkan format "ZZZ"
+        $pengumuman = Pengumuman::latest()->first();
+        $formattedPengumuman = null;
+
+        if ($pengumuman) {
+            $formattedPengumuman = [
+                'id' => $pengumuman->id,
+                'judul' => $pengumuman->judul,
+                'isi_pengumuman' => $pengumuman->isi_pengumuman,
+                'tanggal_publikasi' => Carbon::parse($pengumuman->created_at)->format('Y-m-d H:i:s'),
+                'penting' => (bool) $pengumuman->penting,
+            ];
+        }
+
         return [
             'kalender' => KalenderAkademik::whereIn('tahun_ajaran_id', $activeTaIds)
                 ->where(function ($q) use ($hariIni, $tigaHariLagi) {
@@ -132,7 +176,7 @@ class DashboardController extends Controller
                             : "H-" . $hariIni->diffInDays($mulai)
                     ];
                 }),
-            'pengumuman_terbaru' => Pengumuman::latest()->first(),
+            'pengumuman_terbaru' => $formattedPengumuman,
             'berita_terbaru' => BeritaResource::collection(Berita::latest()->take(1)->get()),
         ];
     }

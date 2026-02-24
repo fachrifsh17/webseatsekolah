@@ -17,20 +17,27 @@ class StoreSiswaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'kelas_id'      => ['required', 'string', 'exists:kelas,id'],
-            'nis'           => ['required', 'string', 'max:20', 'unique:siswa,nis'],
-            'nisn'          => ['required', 'string', 'size:10', 'unique:siswa,nisn'],
-            'nama_lengkap'  => ['required', 'string', 'max:100'],
-            'tempat_lahir'  => ['nullable', 'string', 'max:100'],
-            'tanggal_lahir' => ['nullable', 'date'],
-            'jenis_kelamin' => ['required', 'in:Laki-laki,Perempuan'],
+            // Data Riwayat Kelas (Tabel siswa_kelas)
+            // tahun_ajaran_id dihapus dari rule karena diambil otomatis dari model Kelas di Controller
+            'kelas_id'        => ['required', 'string', 'exists:kelas,id'],
+
+            // Data Profil Siswa (Tabel siswa)
+            'nis'             => ['required', 'string', 'max:20', 'unique:siswa,nis'],
+            'nisn'            => ['required', 'string', 'size:10', 'unique:siswa,nisn'],
+            'nama_lengkap'    => ['required', 'string', 'max:100'],
+            'tempat_lahir'    => ['nullable', 'string', 'max:100'],
+            'tanggal_lahir'   => ['nullable', 'date'],
+            'jenis_kelamin'   => ['required', 'in:Laki-laki,Perempuan'],
+            
+            // Relasi Orang Tua
             'orangtua'            => ['nullable', 'array'],
-            'orangtua.*.id'       => ['nullable', 'string', 'exists:orangtua,id'],
+            'orangtua.*.id'       => ['required', 'string', 'exists:orangtua,id'],
             'orangtua.*.hubungan' => ['nullable', 'in:ayah,ibu,wali'],
-            'alamat'        => ['nullable', 'string'],
-            'no_telp_siswa' => ['nullable', 'string', 'max:15'],
-            'foto'          => ['sometimes', 'nullable', 'file', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
-            'is_active'     => ['nullable', 'integer', 'in:0,1'],
+            
+            'alamat'          => ['nullable', 'string'],
+            'no_telp_siswa'   => ['nullable', 'string', 'max:15'],
+            'foto'            => ['sometimes', 'nullable', 'file', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
+            'is_active'       => ['nullable', 'integer', 'in:0,1'],
         ];
     }
 
@@ -43,7 +50,8 @@ class StoreSiswaRequest extends FormRequest
             'tempat_lahir'  => $this->filled('tempat_lahir') ? trim($this->tempat_lahir) : null,
             'no_telp_siswa' => $this->filled('no_telp_siswa') ? trim($this->no_telp_siswa) : null,
             'jenis_kelamin' => $this->filled('jenis_kelamin') ? trim($this->jenis_kelamin) : null,
-            'is_active'     => $this->filled('is_active') ? (int) $this->is_active : 1,
+            // Jika is_active tidak dikirim, default ke 1 (aktif)
+            'is_active'     => $this->has('is_active') ? (int) $this->is_active : 1,
         ]);
     }
 
@@ -51,55 +59,33 @@ class StoreSiswaRequest extends FormRequest
     {
         return [
             'nis.required'             => 'NIS tidak boleh kosong.',
-            'nis.max'                  => 'NIS tidak boleh lebih dari 20 karakter.',
             'nis.unique'               => 'NIS sudah terdaftar.',
-
             'nisn.required'            => 'NISN wajib diisi.',
             'nisn.size'                => 'NISN harus tepat 10 karakter.',
-            'nisn.unique'              => 'NISN sudah terdaftar.',
-
             'nama_lengkap.required'    => 'Nama lengkap wajib diisi.',
-            'nama_lengkap.max'         => 'Nama lengkap tidak boleh lebih dari 100 karakter.',
-
             'jenis_kelamin.required'   => 'Jenis kelamin wajib dipilih.',
-            'jenis_kelamin.in'         => 'Jenis kelamin harus Laki-laki atau Perempuan.',
-
-            'foto.file'                => 'File harus berupa berkas.',
-            'foto.image'               => 'File harus berupa gambar.',
-            'foto.mimes'               => 'Format foto harus jpg, jpeg, atau png.',
-            'foto.max'                 => 'Ukuran foto maksimal adalah 2MB.',
-
             'kelas_id.required'        => 'Kelas wajib dipilih.',
-            'kelas_id.string'          => 'Kelas harus berupa ID string.',
             'kelas_id.exists'          => 'Kelas tidak ditemukan.',
-
-            'orangtua.array'           => 'Format orang tua tidak valid.',
-            'orangtua.*.id.string'     => 'ID orang tua harus berupa ID string.',
-            'orangtua.*.id.exists'     => 'Orang tua tidak ditemukan.',
-            'orangtua.*.hubungan.in'   => 'Hubungan harus ayah, ibu, atau wali.',
-
-            'is_active.integer'        => 'Status aktif harus berupa angka.',
-            'is_active.in'             => 'Status aktif tidak valid.',
+            'foto.image'               => 'File harus berupa gambar.',
+            'foto.max'                 => 'Ukuran foto maksimal adalah 2MB.',
+            'orangtua.*.id.required'   => 'ID orang tua wajib diisi jika data orang tua dikirim.',
         ];
     }
 
     public function attributes(): array
     {
         return [
-            'kelas_id'             => 'Kelas',
-            'orangtua'             => 'Orang Tua',
-            'orangtua.*.id'        => 'Orang Tua',
-            'orangtua.*.hubungan'  => 'Hubungan',
-            'nis'                  => 'NIS',
-            'nisn'                 => 'NISN',
-            'nama_lengkap'         => 'Nama lengkap',
-            'tempat_lahir'         => 'Tempat lahir',
-            'tanggal_lahir'        => 'Tanggal lahir',
-            'jenis_kelamin'        => 'Jenis kelamin',
-            'alamat'               => 'Alamat',
-            'no_telp_siswa'        => 'Nomor Telepon Siswa',
-            'foto'                 => 'Foto siswa',
-            'is_active'            => 'Status Aktif',
+            'kelas_id'        => 'Kelas',
+            'nis'             => 'NIS',
+            'nisn'            => 'NISN',
+            'nama_lengkap'    => 'Nama lengkap',
+            'tempat_lahir'    => 'Tempat lahir',
+            'tanggal_lahir'   => 'Tanggal lahir',
+            'jenis_kelamin'   => 'Jenis kelamin',
+            'alamat'          => 'Alamat',
+            'no_telp_siswa'   => 'Nomor Telepon Siswa',
+            'foto'            => 'Foto siswa',
+            'is_active'       => 'Status Aktif',
         ];
     }
 

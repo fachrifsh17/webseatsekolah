@@ -22,8 +22,7 @@ class KelasController extends Controller
         $this->middleware('log.aktivitas')->only([
             'store', 
             'update', 
-            'destroy', 
-            'generateFromPreviousYear'
+            'destroy'
         ]);
         
         $this->authorizeResource(Kelas::class, 'kelas');
@@ -66,33 +65,16 @@ class KelasController extends Controller
             $perPage = (int) $request->get('per_page', 10);
             $kelas = $query->latest()->paginate($perPage);
             
-            $paginationData = $kelas->toArray();
-
-            return response()->json([
+            return KelasResource::collection($kelas)->additional([
                 'success' => true,
                 'message' => "Daftar kelas aktif jurusan berhasil dimuat.",
-                'data'    => KelasResource::collection($kelas),
-                'meta'    => [
-                    'current_page'  => $paginationData['current_page'],
-                    'last_page'     => $paginationData['last_page'],
-                    'per_page'      => $paginationData['per_page'],
-                    'total'         => $paginationData['total'],
-                    'from'          => $paginationData['from'],
-                    'to'            => $paginationData['to'],
-                    'path'          => $paginationData['path'],
-                    'next_page_url' => $paginationData['next_page_url'],
-                    'prev_page_url' => $paginationData['prev_page_url'],
-                    'tahun_ajaran'  => $tahunAktif->nama . " - " . $tahunAktif->semester,
-                    'links'         => array_map(function ($link) {
-                        return [
-                            'url'    => $link['url'],
-                            'label'  => $link['label'],
-                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
-                            'active' => $link['active'],
-                        ];
-                    }, $paginationData['links']),
-                ],
-            ], Response::HTTP_OK);
+                'context' => [
+                    'tahun_ajaran' => $tahunAktif->nama,
+                    'semester' => $tahunAktif->semester,
+                    'jurusan' => $this->getContext()['nama_jurusan']
+                ]
+            ])->response()->setStatusCode(Response::HTTP_OK);
+
         } catch (Throwable $e) {
             Log::error('Index Kelas Kajur Error: ' . $e->getMessage());
             return response()->json([
@@ -170,7 +152,7 @@ class KelasController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Data kelas berhasil ditambahkan.',
-                'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])->loadCount('siswa')),
+                'data' => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])->loadCount('siswa')),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             return response()->json(['success' => false, 'message' => 'Gagal menambahkan data kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
@@ -187,7 +169,7 @@ class KelasController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])->loadCount('siswa')),
+            'data' => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])->loadCount('siswa')),
         ], Response::HTTP_OK);
     }
 
@@ -204,7 +186,7 @@ class KelasController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Data kelas berhasil diperbarui.',
-                'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])->loadCount('siswa')),
+                'data' => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])->loadCount('siswa')),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json(['success' => false, 'message' => 'Gagal memperbarui data kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);

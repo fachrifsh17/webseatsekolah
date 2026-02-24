@@ -58,6 +58,10 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
 
     public function map($siswa): array
     {
+        // Ambil kelas aktif dari relasi riwayatKelas (pivot)
+        $riwayatAktif = $siswa->riwayatKelas ? $siswa->riwayatKelas->where('is_active', 1)->first() : null;
+        $namaKelasSiswa = $riwayatAktif && $riwayatAktif->kelas ? $riwayatAktif->kelas->nama_kelas : '-';
+
         return [
             $siswa->id, 
             "'" . $siswa->nis,
@@ -66,8 +70,8 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             $siswa->tempat_lahir,
             $siswa->tanggal_lahir ? date('d-m-Y', strtotime($siswa->tanggal_lahir)) : '-',
             $siswa->jenis_kelamin,
-            $siswa->kelas->nama_kelas ?? '-',
-            $siswa->no_telp,
+            $namaKelasSiswa,
+            $siswa->no_telp_siswa, 
             $siswa->alamat,
             $siswa->is_active ? 'Aktif' : 'Tidak Aktif', 
         ];
@@ -83,17 +87,28 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $lastCol = 'K';
                 $lastRow = $sheet->getHighestRow();
 
-                // Ambil data tahun ajaran dari database (Sesuai gambar database Anda)
                 $tahunAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
                 $txtTahun = $tahunAktif ? "TAHUN PELAJARAN " . $tahunAktif->nama . " - SEMESTER " . strtoupper($tahunAktif->semester) : "TAHUN PELAJARAN -";
 
                 // --- HEADER / KOP SURAT ---
+                // Penyesuaian berdasarkan image_d3d41d.png dan image_d3d41f.png
                 $namaSekolah = strtoupper($this->profil->nama_sekolah ?? 'SMKN 1 BANTARKALONG');
+                $alamatSekolah = $this->kontak->alamat_lengkap ?? ''; 
+                $telepon = $this->kontak->telepon ?? '';
+                $email = $this->kontak->email_resmi ?? '';
+                $npsn = $this->profil->npsn ?? '';
+
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', $namaSekolah);
-                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', ($this->profil->alamat_sekolah ?? '') . " | Telp: " . ($this->kontak->no_telp ?? ''));
-                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "Email: " . ($this->kontak->email ?? '') . " | NPSN: " . ($this->profil->npsn ?? '-'));
+                
+                // Baris 4: Alamat dan Telepon
+                $sheet->mergeCells("A4:{$lastCol}4"); 
+                $sheet->setCellValue('A4', $alamatSekolah . " | Telp: " . $telepon);
+                
+                // Baris 5: Email dan NPSN
+                $sheet->mergeCells("A5:{$lastCol}5"); 
+                $sheet->setCellValue('A5', "Email: " . $email . " | NPSN: " . $npsn);
                 
                 $sheet->getStyle("A1:{$lastCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
@@ -104,13 +119,13 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getStyle('A7')->getFont()->setBold(true)->setSize(12);
                 $sheet->getStyle("A7")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // --- TAHUN AJARAN (Baris 8) ---
+                // --- TAHUN AJARAN ---
                 $sheet->mergeCells("A8:{$lastCol}8"); 
                 $sheet->setCellValue('A8', $txtTahun);
                 $sheet->getStyle('A8')->getFont()->setBold(true);
                 $sheet->getStyle("A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // --- FILTER INFO (Baris 9) ---
+                // --- FILTER INFO ---
                 $filterTexts = ["Kelas: " . ($this->namaKelas ?? 'Semua Kelas')];
                 $filterTexts[] = "Status: " . ((isset($this->filters['is_active']) && $this->filters['is_active'] == '0') ? 'Tidak Aktif' : 'Aktif');
                 
@@ -130,7 +145,6 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                     'alignment' => ['vertical' => Alignment::VERTICAL_CENTER]
                 ]);
 
-                // Loop untuk warna status dan alignment center
                 for ($row = 12; $row <= $lastRow; $row++) {
                     $val = $sheet->getCell("K{$row}")->getValue();
                     $color = ($val == 'Aktif') ? Color::COLOR_BLACK : 'FFFF0000';
@@ -140,7 +154,6 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                     $sheet->getStyle("A{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 }
 
-                // --- TANGGAL CETAK ---
                 $footerRow = $lastRow + 2; 
                 $sheet->setCellValue("A{$footerRow}", "Dicetak pada: " . Carbon::now()->format('d/m/Y H:i'));
                 $sheet->getStyle("A{$footerRow}")->getFont()->setItalic(true)->setSize(9);

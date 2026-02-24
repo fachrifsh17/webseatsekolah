@@ -10,6 +10,13 @@ class SiswaResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        // Mencari riwayat kelas yang sedang aktif
+        $riwayatAktif = $this->relationLoaded('riwayatKelas') 
+            ? $this->riwayatKelas->firstWhere('is_active', 1) 
+            : null;
+            
+        $dataKelas = $riwayatAktif ? $riwayatAktif->kelas : null;
+
         return [
             'id'            => $this->id,
             'user_id'       => $this->user_id,
@@ -20,13 +27,19 @@ class SiswaResource extends JsonResource
             'tanggal_lahir' => $this->tanggal_lahir?->toDateString(),
             'jenis_kelamin' => $this->jenis_kelamin,
 
-            'kelas' => $this->relationLoaded('kelas') && $this->kelas ? [
-                'id'      => $this->kelas->id,
-                'nama'    => $this->kelas->nama_kelas,
-                'jurusan' => $this->kelas->relationLoaded('jurusan') && $this->kelas->jurusan ? [
-                    'id'   => $this->kelas->jurusan->id,
-                    'nama' => $this->kelas->jurusan->nama_jurusan,
-                ] : null,
+            // Mengambil data dari tabel pivot siswa_kelas melalui relasi riwayatKelas
+            'kelas' => $dataKelas ? [
+                'id'   => $dataKelas->id,
+                'nama' => $dataKelas->nama_kelas,
+                
+                // KUNCI PERUBAHAN DI SINI:
+                // Menggunakan $this->when() agar field 'jurusan' hilang total jika relasi tidak di-load
+                'jurusan' => $this->when($dataKelas->relationLoaded('jurusan') && $dataKelas->jurusan, function() use ($dataKelas) {
+                    return [
+                        'id'   => $dataKelas->jurusan->id,
+                        'nama' => $dataKelas->jurusan->nama_jurusan,
+                    ];
+                }),
             ] : null,
 
             'orangtua' => $this->relationLoaded('orangtua') ? $this->orangtua->map(function ($o) {
@@ -39,7 +52,6 @@ class SiswaResource extends JsonResource
             })->values() : [],
 
             'foto'          => $this->foto,
-            // Menggunakan url() untuk memastikan link menjadi absolut (http://...)
             'foto_url'      => $this->foto ? url(Storage::url($this->foto)) : null,
             'no_telp_siswa' => $this->no_telp_siswa,
             'alamat'        => $this->alamat,

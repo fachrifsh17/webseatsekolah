@@ -34,18 +34,24 @@ class KelasController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = Kelas::with(['jurusan', 'tahunAjaran', 'waliKelas'])
-                ->withCount('siswa');
+            $tahunAktif = TahunAjaran::where('is_active', true)->first();
+            $taId = $request->get('tahun_ajaran_id', $tahunAktif?->id);
+
+            $query = Kelas::with(['jurusan', 'waliKelas'])
+                ->withCount(['siswa as siswa_count' => function($q) use ($taId) {
+                    $q->where('siswa_kelas.is_active', true);
+                    if ($taId) {
+                        $q->where('siswa_kelas.tahun_ajaran_id', $taId);
+                    }
+                }]);
 
             if ($request->filled('search')) {
                 $query->where('nama_kelas', 'like', '%' . $request->search . '%');
             }
 
-            if ($request->filled('tahun_ajaran_id')) {
-                $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
-            } else {
-                $query->whereHas('tahunAjaran', function($q) {
-                    $q->where('is_active', true);
+            if ($taId) {
+                $query->whereHas('siswa', function($q) use ($taId) {
+                    $q->where('siswa_kelas.tahun_ajaran_id', $taId);
                 });
             }
 
@@ -116,23 +122,18 @@ class KelasController extends Controller
                 }
             }
 
-            if ($request->filled('tahun_ajaran_id')) {
-                $ta = TahunAjaran::find($request->tahun_ajaran_id);
-            } else {
-                $ta = TahunAjaran::where('is_active', true)->first();
-                if ($ta) {
-                    $filters['tahun_ajaran_id'] = $ta->id;
-                }
-            }
+            $ta = $request->filled('tahun_ajaran_id') 
+                ? TahunAjaran::find($request->tahun_ajaran_id) 
+                : TahunAjaran::where('is_active', true)->first();
 
-            if (isset($ta)) {
+            if ($ta) {
+                $filters['tahun_ajaran_id'] = $ta->id;
                 $taName = str_replace(['/', ' '], '_', $ta->nama);
                 $semester = strtoupper($ta->semester);
                 $fileNameParts[] = "{$taName}_{$semester}";
             }
 
             $fileNameParts[] = 'AKTIF';
-
             $fileName = implode('_', $fileNameParts) . '.xlsx';
 
             if (ob_get_contents()) ob_end_clean();
@@ -183,72 +184,58 @@ class KelasController extends Controller
 
         try {
             $tahunAktif = TahunAjaran::where('is_active', true)->first();
-            if (!$tahunAktif) {
-                return response()->json(['success' => false, 'message' => 'Gagal: Tidak ada Tahun Ajaran yang aktif.'], Response::HTTP_BAD_REQUEST);
+            
+            if (!$tahunAktif || strtolower($tahunAktif->semester) !== 'genap') {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Gagal: Fitur ini hanya tersedia saat Tahun Ajaran aktif berada di Semester Genap.'
+                ], Response::HTTP_BAD_REQUEST);
             }
 
-            $isGenap = strtolower($tahunAktif->semester) === 'genap';
-            $tahunSumber = $isGenap 
-                ? TahunAjaran::where('nama', $tahunAktif->nama)->where('semester', 'Ganjil')->first()
-                : TahunAjaran::where('id', '<', $tahunAktif->id)->orderBy('id', 'desc')->first();
+            $tahunSumber = TahunAjaran::where('nama', $tahunAktif->nama)
+                ->where('semester', 'Ganjil')
+                ->first();
 
             if (!$tahunSumber) {
-                return response()->json(['success' => false, 'message' => 'Gagal: Data periode sumber tidak ditemukan.'], Response::HTTP_NOT_FOUND);
+                return response()->json(['success' => false, 'message' => 'Gagal: Data Semester Ganjil tidak ditemukan.'], Response::HTTP_NOT_FOUND);
             }
 
-            $kelasLama = Kelas::where('tahun_ajaran_id', $tahunSumber->id)->where('is_active', true)->get();
-            if ($kelasLama->isEmpty()) {
-                return response()->json(['success' => false, 'message' => 'Gagal: Tidak ada data kelas aktif di periode sebelumnya.'], Response::HTTP_NOT_FOUND);
+            $siswaGanjil = DB::table('siswa_kelas')
+                ->where('tahun_ajaran_id', $tahunSumber->id)
+                ->where('is_active', true)
+                ->get();
+
+            if ($siswaGanjil->isEmpty()) {
+                return response()->json(['success' => false, 'message' => 'Gagal: Tidak ada siswa aktif di Semester Ganjil.'], Response::HTTP_NOT_FOUND);
             }
 
-            $countKelas = 0;
             $countSiswa = 0;
-            $countSudahAda = 0;
 
-            DB::transaction(function () use ($kelasLama, $tahunAktif, $isGenap, &$countKelas, &$countSiswa, &$countSudahAda) {
-                foreach ($kelasLama as $item) {
-                    $kelasBaru = Kelas::where('nama_kelas', $item->nama_kelas)
+            DB::transaction(function () use ($siswaGanjil, $tahunAktif, &$countSiswa) {
+                foreach ($siswaGanjil as $item) {
+                    $exists = DB::table('siswa_kelas')
+                        ->where('siswa_id', $item->siswa_id)
                         ->where('tahun_ajaran_id', $tahunAktif->id)
-                        ->first();
+                        ->exists();
 
-                    if (!$kelasBaru) {
-                        $waliId = $item->wali_kelas_id;
-                        if ($waliId && Kelas::where('tahun_ajaran_id', $tahunAktif->id)->where('wali_kelas_id', $waliId)->exists()) {
-                            $waliId = null;
-                        }
-
-                        $kelasBaru = Kelas::create([
-                            'nama_kelas'      => $item->nama_kelas,
-                            'jurusan_id'      => $item->jurusan_id,
+                    if (!$exists) {
+                        DB::table('siswa_kelas')->insert([
+                            'siswa_id'        => $item->siswa_id,
+                            'kelas_id'        => $item->kelas_id,
                             'tahun_ajaran_id' => $tahunAktif->id,
                             'is_active'       => true,
-                            'wali_kelas_id'   => $isGenap ? $waliId : null,
+                            'created_at'      => now(),
+                            'updated_at'      => now()
                         ]);
-                        $countKelas++;
-                    } else {
-                        $countSudahAda++;
-                    }
-
-                    if ($isGenap) {
-                        $countSiswa += Siswa::where('kelas_id', $item->id)
-                            ->where('is_active', true)
-                            ->update(['kelas_id' => $kelasBaru->id]);
+                        $countSiswa++;
                     }
                 }
             });
 
-            if ($countKelas === 0 && $countSudahAda > 0) {
-                return response()->json([
-                    'success' => true, 
-                    'message' => 'Semua data kelas dari periode sebelumnya sudah dipindahkan ke Tahun Ajaran aktif.'
-                ], Response::HTTP_OK);
-            }
-
-            $msg = $isGenap 
-                ? "Berhasil menyalin {$countKelas} kelas dan memindahkan {$countSiswa} siswa ke Semester Genap."
-                : "Berhasil menyalin {$countKelas} data kelas ke tahun ajaran baru.";
-
-            return response()->json(['success' => true, 'message' => $msg], Response::HTTP_CREATED);
+            return response()->json([
+                'success' => true, 
+                'message' => "Berhasil memindahkan {$countSiswa} siswa ke Semester Genap."
+            ], Response::HTTP_CREATED);
 
         } catch (Throwable $e) {
             Log::error('Failed to generate kelas', ['error' => $e->getMessage()]);
@@ -263,38 +250,26 @@ class KelasController extends Controller
     public function store(StoreKelasRequest $request): JsonResponse
     {
         $validated = $request->validated();
-        $tahunAktif = TahunAjaran::where('is_active', true)->first();
-
-        if (!$tahunAktif) {
-            return response()->json(['success' => false, 'message' => 'Gagal: Tidak ada Tahun Ajaran yang aktif.'], Response::HTTP_BAD_REQUEST);
-        }
 
         if (!empty($validated['jurusan_id'])) {
             $jurusanAktif = Jurusan::where('id', $validated['jurusan_id'])->where('is_active', 1)->exists();
             if (!$jurusanAktif) {
-                return response()->json(['success' => false, 'message' => 'Gagal: Jurusan yang dipilih tidak aktif atau tidak ditemukan.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                return response()->json(['success' => false, 'message' => 'Gagal: Jurusan tidak aktif.'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
         }
 
-        $validated['tahun_ajaran_id'] = $tahunAktif->id;
+        if (Kelas::where('nama_kelas', $validated['nama_kelas'])->exists()) {
+            return response()->json(['success' => false, 'message' => 'Conflict: Nama kelas sudah terdaftar.'], Response::HTTP_CONFLICT);
+        }
+
         $validated['is_active'] = true;
-
-        if (!empty($validated['wali_kelas_id'])) {
-            if (Kelas::where('wali_kelas_id', $validated['wali_kelas_id'])->where('tahun_ajaran_id', $tahunAktif->id)->exists()) {
-                return response()->json(['success' => false, 'message' => 'Conflict: Guru tersebut sudah menjadi wali kelas di tahun ajaran aktif.'], Response::HTTP_CONFLICT);
-            }
-        }
-
-        if (Kelas::where('nama_kelas', $validated['nama_kelas'])->where('tahun_ajaran_id', $tahunAktif->id)->exists()) {
-            return response()->json(['success' => false, 'message' => 'Conflict: Nama kelas sudah terdaftar di tahun ajaran aktif.'], Response::HTTP_CONFLICT);
-        }
 
         try {
             $kelas = DB::transaction(fn() => Kelas::create($validated));
             return response()->json([
                 'success' => true,
                 'message' => 'Data kelas berhasil ditambahkan.',
-                'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])->loadCount('siswa')),
+                'data'    => new KelasResource($kelas->load(['jurusan', 'waliKelas'])->loadCount(['siswa as siswa_count' => fn($q) => $q->where('siswa_kelas.is_active', true)])),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             Log::error('Failed to create kelas', ['payload' => $validated, 'error' => $e->getMessage()]);
@@ -306,7 +281,7 @@ class KelasController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])->loadCount('siswa')),
+            'data'    => new KelasResource($kelas->load(['jurusan', 'waliKelas'])->loadCount(['siswa as siswa_count' => fn($q) => $q->where('siswa_kelas.is_active', true)])),
         ], Response::HTTP_OK);
     }
 
@@ -317,21 +292,13 @@ class KelasController extends Controller
         if (!empty($validated['jurusan_id'])) {
             $jurusanAktif = Jurusan::where('id', $validated['jurusan_id'])->where('is_active', 1)->exists();
             if (!$jurusanAktif) {
-                return response()->json(['success' => false, 'message' => 'Gagal: Jurusan yang dipilih tidak aktif atau tidak ditemukan.'], Response::HTTP_UNPROCESSABLE_ENTITY);
-            }
-        }
-
-        $waliId = $validated['wali_kelas_id'] ?? $kelas->wali_kelas_id;
-
-        if (!empty($waliId)) {
-            if (Kelas::where('wali_kelas_id', $waliId)->where('tahun_ajaran_id', $kelas->tahun_ajaran_id)->where('id', '!=', $kelas->id)->exists()) {
-                return response()->json(['success' => false, 'message' => 'Conflict: Guru tersebut sudah menjadi wali kelas di periode ini.'], Response::HTTP_CONFLICT);
+                return response()->json(['success' => false, 'message' => 'Gagal: Jurusan tidak aktif.'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
         }
 
         if (!empty($validated['nama_kelas'])) {
-            if (Kelas::where('nama_kelas', $validated['nama_kelas'])->where('tahun_ajaran_id', $kelas->tahun_ajaran_id)->where('id', '!=', $kelas->id)->exists()) {
-                return response()->json(['success' => false, 'message' => 'Conflict: Nama kelas sudah terdaftar di periode ini.'], Response::HTTP_CONFLICT);
+            if (Kelas::where('nama_kelas', $validated['nama_kelas'])->where('id', '!=', $kelas->id)->exists()) {
+                return response()->json(['success' => false, 'message' => 'Conflict: Nama kelas sudah digunakan.'], Response::HTTP_CONFLICT);
             }
         }
 
@@ -340,7 +307,7 @@ class KelasController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Data kelas berhasil diperbarui.',
-                'data'    => new KelasResource($kelas->load(['jurusan', 'tahunAjaran', 'waliKelas'])->loadCount('siswa')),
+                'data'    => new KelasResource($kelas->load(['jurusan', 'waliKelas'])->loadCount(['siswa as siswa_count' => fn($q) => $q->where('siswa_kelas.is_active', true)])),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json(['success' => false, 'message' => 'Gagal memperbarui data kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
@@ -350,8 +317,8 @@ class KelasController extends Controller
     public function destroy(Kelas $kelas): JsonResponse
     {
         try {
-            if ($kelas->siswa()->exists()) {
-                return response()->json(['success' => false, 'message' => 'Gagal: Kelas tidak bisa dihapus karena masih memiliki data siswa.'], Response::HTTP_CONFLICT);
+            if (DB::table('siswa_kelas')->where('kelas_id', $kelas->id)->exists()) {
+                return response()->json(['success' => false, 'message' => 'Gagal: Kelas memiliki riwayat data siswa.'], Response::HTTP_CONFLICT);
             }
 
             DB::transaction(fn() => $kelas->delete());

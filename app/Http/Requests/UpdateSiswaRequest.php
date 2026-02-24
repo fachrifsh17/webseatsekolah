@@ -17,17 +17,20 @@ class UpdateSiswaRequest extends FormRequest
 
     public function rules(): array
     {
-        $siswaId = $this->siswa->id ?? $this->route('siswa');
+        // Mengambil objek atau ID siswa dari route agar validasi unique ignore bekerja
+        // Biasanya $this->route('siswa') mengembalikan objek model atau ID tergantung route binding
+        $siswa = $this->route('siswa');
+        $siswaId = is_object($siswa) ? $siswa->id : $siswa;
 
         return [
-            'nis'           => [
+            'nis' => [
                 'sometimes', 
                 'required', 
                 'string', 
                 'max:20', 
                 Rule::unique('siswa', 'nis')->ignore($siswaId)
             ],
-            'nisn'          => [
+            'nisn' => [
                 'sometimes',
                 'required',
                 'string',
@@ -38,10 +41,15 @@ class UpdateSiswaRequest extends FormRequest
             'tempat_lahir'  => ['nullable', 'string', 'max:100'],
             'tanggal_lahir' => ['nullable', 'date'],
             'jenis_kelamin' => ['sometimes', 'required', 'in:Laki-laki,Perempuan'],
+            
+            // Validasi untuk tabel riwayat (siswa_kelas)
+            // tahun_ajaran_id dihapus karena sudah dihandle otomatis oleh sistem berdasarkan kelas_id
             'kelas_id'      => ['sometimes', 'required', 'string', 'exists:kelas,id'],
+
             'orangtua'            => ['nullable', 'array'],
             'orangtua.*.id'       => ['required', 'string', 'exists:orangtua,id'],
             'orangtua.*.hubungan' => ['nullable', 'in:ayah,ibu,wali'],
+            
             'foto'          => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
             'no_telp_siswa' => ['nullable', 'string', 'max:15'],
             'alamat'        => ['nullable', 'string'],
@@ -65,55 +73,24 @@ class UpdateSiswaRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'nis.required'             => 'NIS wajib diisi.',
-            'nis.max'                  => 'NIS tidak boleh lebih dari 20 karakter.',
-            'nis.unique'               => 'NIS sudah digunakan oleh siswa lain.',
-
-            'nisn.required'            => 'NISN wajib diisi.',
-            'nisn.size'                => 'NISN harus tepat 10 karakter.',
-            'nisn.unique'              => 'NISN sudah terdaftar di sistem.',
-
-            'nama_lengkap.required'    => 'Nama lengkap wajib diisi.',
-            'nama_lengkap.max'         => 'Nama lengkap tidak boleh lebih dari 100 karakter.',
-
-            'jenis_kelamin.required'   => 'Jenis kelamin wajib dipilih.',
-            'jenis_kelamin.in'         => 'Jenis kelamin harus Laki-laki atau Perempuan.',
-
-            'kelas_id.required'        => 'Kelas wajib dipilih.',
-            'kelas_id.exists'          => 'Kelas tidak ditemukan.',
-
-            'orangtua.array'           => 'Format orang tua tidak valid.',
-            'orangtua.*.id.required'   => 'ID orang tua wajib diisi.',
-            'orangtua.*.id.exists'     => 'Orang tua tidak ditemukan.',
-            'orangtua.*.hubungan.in'   => 'Hubungan harus ayah, ibu, atau wali.',
-
-            'is_active.required'       => 'Status aktif wajib diisi.',
-            'is_active.in'             => 'Status aktif tidak valid.',
-
-            'foto.image'               => 'File harus berupa gambar.',
-            'foto.mimes'               => 'Format foto harus jpg, jpeg, atau png.',
-            'foto.max'                 => 'Ukuran foto maksimal adalah 2MB.',
-            'tanggal_lahir.date'       => 'Format tanggal lahir tidak valid.',
+            'nis.unique'             => 'NIS sudah digunakan oleh siswa lain.',
+            'nisn.size'               => 'NISN harus tepat 10 karakter.',
+            'nisn.unique'            => 'NISN sudah terdaftar di sistem.',
+            'kelas_id.exists'         => 'Kelas tidak ditemukan.',
+            'foto.image'              => 'File harus berupa gambar.',
+            'foto.max'                => 'Ukuran foto maksimal adalah 2MB.',
+            'orangtua.*.id.exists'    => 'Data orang tua tidak ditemukan.',
         ];
     }
 
     public function attributes(): array
     {
         return [
-            'nis'                  => 'NIS',
-            'nisn'                 => 'NISN',
-            'nama_lengkap'         => 'Nama lengkap',
-            'tempat_lahir'         => 'Tempat lahir',
-            'tanggal_lahir'        => 'Tanggal lahir',
-            'jenis_kelamin'        => 'Jenis kelamin',
-            'kelas_id'             => 'Kelas',
-            'orangtua'             => 'Orang Tua',
-            'orangtua.*.id'        => 'Orang Tua',
-            'orangtua.*.hubungan'  => 'Hubungan',
-            'foto'                 => 'Foto siswa',
-            'no_telp_siswa'        => 'Nomor Telepon Siswa',
-            'alamat'               => 'Alamat',
-            'is_active'            => 'Status Aktif',
+            'nis'           => 'NIS',
+            'nisn'          => 'NISN',
+            'nama_lengkap'  => 'Nama lengkap',
+            'kelas_id'      => 'Kelas',
+            'is_active'     => 'Status Aktif',
         ];
     }
 

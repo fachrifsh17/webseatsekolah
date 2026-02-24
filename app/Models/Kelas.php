@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Kelas extends Model
 {
@@ -21,7 +22,7 @@ class Kelas extends Model
         'nama_kelas',
         'jurusan_id',
         'wali_kelas_id',
-        'tahun_ajaran_id',
+        // 'tahun_ajaran_id', // <-- DIHAPUS karena kolom sudah tidak ada di tabel
     ];
 
     protected static function boot()
@@ -47,14 +48,25 @@ class Kelas extends Model
         return $this->belongsTo(Jurusan::class, 'jurusan_id');
     }
 
-    public function tahunAjaran(): BelongsTo
+    /**
+     * Relasi tahunAjaran DIHAPUS karena tabel kelas 
+     * sekarang bersifat statis (tidak terikat tahun tertentu).
+     */
+    /* public function tahunAjaran(): BelongsTo
     {
         return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id');
     }
+    */
 
-    public function siswa(): HasMany
+    public function siswa(): BelongsToMany
     {
-        return $this->hasMany(Siswa::class, 'kelas_id');
+        /**
+         * Karena tahun_ajaran_id ada di tabel pivot 'siswa_kelas',
+         * kita tetap bisa mengakses informasi tahun ajaran lewat relasi ini.
+         */
+        return $this->belongsToMany(Siswa::class, 'siswa_kelas', 'kelas_id', 'siswa_id')
+                    ->withPivot('is_active', 'tahun_ajaran_id')
+                    ->withTimestamps();
     }
 
     public function guruMapel(): HasMany
