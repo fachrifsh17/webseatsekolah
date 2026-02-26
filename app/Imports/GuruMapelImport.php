@@ -43,8 +43,8 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
             ->where('is_active', 1)
             ->first();
 
+        // PENYESUAIAN: Mencari kelas hanya berdasarkan nama dan status aktif (tanpa tahun_ajaran_id)
         $kelas = Kelas::where('nama_kelas', 'LIKE', '%' . $inputKelas . '%')
-            ->where('tahun_ajaran_id', $tahunAktif->id)
             ->where('is_active', 1)
             ->first();
         
@@ -65,7 +65,7 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
             return null;
         }
         if (!$kelas) {
-            $this->importMessages[] = "Baris {$this->rows}: Conflict! Kelas '{$inputKelas}' tidak ditemukan pada Tahun Ajaran Aktif.";
+            $this->importMessages[] = "Baris {$this->rows}: Conflict! Kelas '{$inputKelas}' tidak ditemukan atau non-aktif.";
             return null;
         }
         if (!$jamMulai || !$jamSelesai) {

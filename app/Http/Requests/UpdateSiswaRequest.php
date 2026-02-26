@@ -17,8 +17,6 @@ class UpdateSiswaRequest extends FormRequest
 
     public function rules(): array
     {
-        // Mengambil objek atau ID siswa dari route agar validasi unique ignore bekerja
-        // Biasanya $this->route('siswa') mengembalikan objek model atau ID tergantung route binding
         $siswa = $this->route('siswa');
         $siswaId = is_object($siswa) ? $siswa->id : $siswa;
 
@@ -27,7 +25,7 @@ class UpdateSiswaRequest extends FormRequest
                 'sometimes', 
                 'required', 
                 'string', 
-                'max:20', 
+                'size:8', // Diubah dari max:20 menjadi size:8
                 Rule::unique('siswa', 'nis')->ignore($siswaId)
             ],
             'nisn' => [
@@ -42,8 +40,6 @@ class UpdateSiswaRequest extends FormRequest
             'tanggal_lahir' => ['nullable', 'date'],
             'jenis_kelamin' => ['sometimes', 'required', 'in:Laki-laki,Perempuan'],
             
-            // Validasi untuk tabel riwayat (siswa_kelas)
-            // tahun_ajaran_id dihapus karena sudah dihandle otomatis oleh sistem berdasarkan kelas_id
             'kelas_id'      => ['sometimes', 'required', 'string', 'exists:kelas,id'],
 
             'orangtua'            => ['nullable', 'array'],
@@ -73,13 +69,17 @@ class UpdateSiswaRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'nis.required'           => 'NIS tidak boleh kosong.',
+            'nis.size'               => 'NIS harus tepat 8 karakter.',
             'nis.unique'             => 'NIS sudah digunakan oleh siswa lain.',
-            'nisn.size'               => 'NISN harus tepat 10 karakter.',
+            'nisn.required'          => 'NISN tidak boleh kosong.',
+            'nisn.size'              => 'NISN harus tepat 10 karakter.',
             'nisn.unique'            => 'NISN sudah terdaftar di sistem.',
-            'kelas_id.exists'         => 'Kelas tidak ditemukan.',
-            'foto.image'              => 'File harus berupa gambar.',
-            'foto.max'                => 'Ukuran foto maksimal adalah 2MB.',
-            'orangtua.*.id.exists'    => 'Data orang tua tidak ditemukan.',
+            'kelas_id.exists'        => 'Kelas tidak ditemukan.',
+            'foto.image'             => 'File harus berupa gambar.',
+            'foto.max'               => 'Ukuran foto maksimal adalah 2MB.',
+            'orangtua.*.id.exists'   => 'Data orang tua tidak ditemukan.',
+            'orangtua.*.id.required' => 'ID orang tua wajib diisi.',
         ];
     }
 

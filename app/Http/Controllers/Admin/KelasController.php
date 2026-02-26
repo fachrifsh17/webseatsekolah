@@ -49,12 +49,6 @@ class KelasController extends Controller
                 $query->where('nama_kelas', 'like', '%' . $request->search . '%');
             }
 
-            if ($taId) {
-                $query->whereHas('siswa', function($q) use ($taId) {
-                    $q->where('siswa_kelas.tahun_ajaran_id', $taId);
-                });
-            }
-
             $filters = ['jurusan_id', 'wali_kelas_id'];
             foreach ($filters as $filter) {
                 if ($request->filled($filter)) {
@@ -69,7 +63,7 @@ class KelasController extends Controller
             }
 
             $perPage = $request->get('per_page', 10);
-            $kelas = $query->latest()->paginate($perPage);
+            $kelas = $query->orderBy('nama_kelas', 'asc')->paginate($perPage);
             $paginationData = $kelas->toArray();
 
             return response()->json([
@@ -105,6 +99,7 @@ class KelasController extends Controller
         try {
             $filters = $request->only(['search', 'jurusan_id', 'wali_kelas_id', 'tahun_ajaran_id']);
             $filters['is_active'] = true;
+            $filters['identitas_laporan'] = 'SEMUA JURUSAN';
 
             $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 
             $kontak = DataKontak::first() ?? new DataKontak(); 
@@ -118,6 +113,7 @@ class KelasController extends Controller
             if ($request->filled('jurusan_id')) {
                 $jurusan = Jurusan::find($request->jurusan_id);
                 if ($jurusan) {
+                    $filters['identitas_laporan'] = 'JURUSAN ' . strtoupper($jurusan->nama_jurusan);
                     $fileNameParts[] = strtoupper(str_replace([' ', '-'], '_', $jurusan->nama_jurusan));
                 }
             }
@@ -300,6 +296,10 @@ class KelasController extends Controller
             if (Kelas::where('nama_kelas', $validated['nama_kelas'])->where('id', '!=', $kelas->id)->exists()) {
                 return response()->json(['success' => false, 'message' => 'Conflict: Nama kelas sudah digunakan.'], Response::HTTP_CONFLICT);
             }
+        }
+
+        if ($request->has('is_active')) {
+            $validated['is_active'] = filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN);
         }
 
         try {

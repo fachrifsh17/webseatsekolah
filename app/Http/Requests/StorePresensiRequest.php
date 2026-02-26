@@ -9,6 +9,7 @@ use Symfony\Component\HttpFoundation\Response;
 use App\Models\Kelas;
 use App\Models\TahunAjaran;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB; // Tambahkan DB
 
 class StorePresensiRequest extends FormRequest
 {
@@ -23,19 +24,17 @@ class StorePresensiRequest extends FormRequest
         $guru = $user->guruStaf;
 
         if ($guru && !$this->has('kelas_id')) {
-            $taAktif = TahunAjaran::where('is_active', true)->first();
-            
-            if ($taAktif) {
-                $kelas = Kelas::where('wali_kelas_id', $guru->id)
-                    ->where('tahun_ajaran_id', $taAktif->id)
-                    ->where('is_active', 1)
-                    ->first();
+            // Kita cari kelas berdasarkan wali_kelas_id saja
+            // Karena satu guru biasanya hanya jadi wali di 1 kelas aktif
+            $kelas = DB::table('kelas')
+                ->where('wali_kelas_id', $guru->id)
+                ->where('is_active', 1)
+                ->first();
 
-                if ($kelas) {
-                    $this->merge([
-                        'kelas_id' => $kelas->id,
-                    ]);
-                }
+            if ($kelas) {
+                $this->merge([
+                    'kelas_id' => $kelas->id,
+                ]);
             }
         }
 
@@ -58,6 +57,8 @@ class StorePresensiRequest extends FormRequest
         ];
     }
 
+    // ... (sisanya messages, attributes, dan failedValidation tetap sama)
+    
     public function messages(): array
     {
         return [

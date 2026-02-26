@@ -34,9 +34,10 @@ class GuruMapelController extends Controller
 
     private function applyBaseFilters(Request $request)
     {
-        $kelasId = $this->getKelasIdSiswa();
         $siswa = Auth::user()->siswa;
         $riwayatAktif = $siswa?->riwayatKelas()->where('is_active', true)->first();
+        
+        $kelasId = $riwayatAktif?->kelas_id;
         $tahunAktifId = $riwayatAktif?->tahun_ajaran_id ?? TahunAjaran::where('is_active', 1)->value('id');
 
         $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran', 'jamMulai', 'jamSelesai'])
@@ -86,7 +87,7 @@ class GuruMapelController extends Controller
         }
 
         $riwayat = $siswa?->riwayatKelas()
-            ->with(['kelas', 'tahunAjaran'])
+            ->with(['kelas' => fn($q) => $q->where('is_active', 1), 'tahunAjaran'])
             ->where('is_active', true)
             ->first();
 
@@ -138,7 +139,10 @@ class GuruMapelController extends Controller
             $kontak = DataKontak::first() ?? new DataKontak();
             
             $siswa = Auth::user()->siswa;
-            $riwayat = $siswa->riwayatKelas()->where('is_active', true)->with('kelas.waliKelas', 'tahunAjaran')->first();
+            $riwayat = $siswa->riwayatKelas()
+                ->where('is_active', true)
+                ->with(['kelas' => fn($q) => $q->where('is_active', 1)->with('waliKelas'), 'tahunAjaran'])
+                ->first();
             
             $kelas = $riwayat?->kelas?->nama_kelas ?? 'Kelas Siswa';
             $wali = $riwayat?->kelas?->waliKelas?->nama ?? '...........................';
@@ -191,25 +195,28 @@ class GuruMapelController extends Controller
             }
             
             $siswa = Auth::user()->siswa;
-            $riwayat = $siswa->riwayatKelas()->where('is_active', true)->with('kelas.waliKelas', 'tahunAjaran')->first();
+            $riwayat = $siswa->riwayatKelas()
+                ->where('is_active', true)
+                ->with(['kelas' => fn($q) => $q->where('is_active', 1)->with('waliKelas'), 'tahunAjaran'])
+                ->first();
 
             $kepsekData = StrukturJabatan::where('jabatan_id', 1)->with('guruStaf')->first();
             $wakaKurData = StrukturJabatan::where('jabatan_id', 2)->with('guruStaf')->first();
 
             $filters = [
-                'q'              => $request->get('q'),
-                'hari'           => $request->filled('hari') ? $request->hari : 'SEMUA HARI',
-                'tahun_ajaran'   => $riwayat?->tahunAjaran?->nama ?? 'Semua',
-                'semester'       => $riwayat?->tahunAjaran?->semester ?? 'Semua', 
-                'kelas'          => $riwayat?->kelas?->nama_kelas ?? 'Kelas Siswa',
-                'tipe_mapel'     => $request->get('tipe_mapel', 'Semua Tipe'),
-                'kategori_mapel' => $request->get('kategori_mapel', 'Semua Kategori'),
-                'wali'           => $riwayat?->kelas?->waliKelas?->nama ?? '...........................',
-                'nipWali'        => $riwayat?->kelas?->waliKelas?->nip ?? '...........................',
-                'kepsek'         => $kepsekData?->guruStaf?->nama ?? '...........................',
-                'nipKepsek'      => $kepsekData?->guruStaf?->nip ?? '...........................',
-                'wakaKur'        => $wakaKurData?->guruStaf?->nama ?? '...........................',
-                'nipWakaKur'     => $wakaKurData?->guruStaf?->nip ?? '...........................',
+                'q'               => $request->get('q'),
+                'hari'            => $request->filled('hari') ? $request->hari : 'SEMUA HARI',
+                'tahun_ajaran'    => $riwayat?->tahunAjaran?->nama ?? 'Semua',
+                'semester'        => $riwayat?->tahunAjaran?->semester ?? 'Semua', 
+                'kelas'           => $riwayat?->kelas?->nama_kelas ?? 'Kelas Siswa',
+                'tipe_mapel'      => $request->get('tipe_mapel', 'Semua Tipe'),
+                'kategori_mapel'  => $request->get('kategori_mapel', 'Semua Kategori'),
+                'wali'            => $riwayat?->kelas?->waliKelas?->nama ?? '...........................',
+                'nipWali'         => $riwayat?->kelas?->waliKelas?->nip ?? '...........................',
+                'kepsek'          => $kepsekData?->guruStaf?->nama ?? '...........................',
+                'nipKepsek'       => $kepsekData?->guruStaf?->nip ?? '...........................',
+                'wakaKur'         => $wakaKurData?->guruStaf?->nama ?? '...........................',
+                'nipWakaKur'      => $wakaKurData?->guruStaf?->nip ?? '...........................',
             ];
 
             $profil = ProfilSekolah::first() ?? new ProfilSekolah();

@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Presensi, TahunAjaran}; // Hapus RiwayatKelas dari sini
+use App\Models\{Presensi, TahunAjaran};
 use Illuminate\Http\{JsonResponse, Request};
-use Illuminate\Support\Facades\{Auth, Log};
+use Illuminate\Support\Facades\{Auth, DB, Log};
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Symfony\Component\HttpFoundation\Response;
 use Carbon\Carbon;
@@ -35,52 +35,21 @@ class PresensiController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            $tahunAjaranId = $request->tahun_ajaran_id;
-            if (!$tahunAjaranId) {
-                $tahunAktif = TahunAjaran::where('is_active', 1)->first();
-                $tahunAjaranId = $tahunAktif?->id;
-            } else {
-                $tahunAktif = TahunAjaran::find($tahunAjaranId);
-            }
+            $tahunAktif = TahunAjaran::where('is_active', 1)->first();
+            $tahunAjaranId = $request->get('tahun_ajaran_id', $tahunAktif?->id);
 
-            // MENGGUNAKAN RELASI DARI MODEL SISWA
+            $query = $this->buildQuery($siswaId, $tahunAjaranId, $request);
+            $summary = $this->getSummary($query);
+            
             $riwayat = $siswa->riwayatKelas()
+                ->where('siswa_kelas.tahun_ajaran_id', $tahunAjaranId)
+                ->where('siswa_kelas.is_active', 1)
                 ->with('kelas')
-                ->where('tahun_ajaran_id', $tahunAjaranId)
-                ->when($request->filled('kelas_id'), function($q) use ($request) {
-                    $q->where('kelas_id', $request->kelas_id);
-                })
                 ->first();
 
-            $query = Presensi::where('siswa_id', $siswaId);
-
-            if ($tahunAjaranId) {
-                $query->where('tahun_ajaran_id', $tahunAjaranId);
-            }
-
-            if ($request->filled('kelas_id')) {
-                $query->where('kelas_id', $request->kelas_id);
-            }
-
-            if ($request->filled('search')) {
-                $search = $request->search;
-                $query->where(function($q) use ($search) {
-                    $q->where('status', 'like', "%{$search}%")
-                      ->orWhere('keterangan', 'like', "%{$search}%")
-                      ->orWhere('tanggal', 'like', "%{$search}%");
-                });
-            }
-
-            if ($request->filled('tanggal')) {
-                $query->whereDate('tanggal', $request->tanggal);
-            }
-
+            $tahunTampil = $tahunAjaranId ? TahunAjaran::find($tahunAjaranId) : $tahunAktif;
             $perPage = $request->integer('per_page', 10);
-            $data = $query->orderBy('tanggal', 'desc')
-                          ->orderBy('id', 'desc')
-                          ->paginate($perPage);
-
-            $paginationData = $data->toArray();
+            $paginator = $query->orderBy('tanggal', 'desc')->orderBy('id', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -88,31 +57,18 @@ class PresensiController extends Controller
                 'header' => [
                     'nama' => $siswa?->nama_lengkap,
                     'kelas' => $riwayat?->kelas?->nama_kelas ?? 'Tanpa Kelas',
-                    'tahun_ajaran' => $tahunAktif?->nama ?? 'Tidak Diketahui',
-                    'semester' => $tahunAktif?->semester ?? '-',
+                    'tahun_ajaran' => $tahunTampil?->nama ?? 'Tidak Diketahui',
+                    'semester' => $tahunTampil?->semester ?? '-',
                 ],
-                'data' => collect($data->items())->map(function($item) {
-                    return [
-                        'id' => $item->id,
-                        'tanggal' => Carbon::parse($item->tanggal)->format('Y-m-d'),
-                        'status' => $item->status,
-                        'keterangan' => $item->keterangan,
-                    ];
-                }),
-                'meta' => [
-                    'current_page'  => $paginationData['current_page'],
-                    'last_page'     => $paginationData['last_page'],
-                    'per_page'      => $paginationData['per_page'],
-                    'total'         => $paginationData['total'],
-                    'links'         => array_map(function ($link) {
-                        return [
-                            'url'    => $link['url'],
-                            'label'  => $link['label'],
-                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
-                            'active' => $link['active'],
-                        ];
-                    }, $paginationData['links']),
+                'summary' => [
+                    'hadir' => (int)($summary->hadir ?? 0),
+                    'izin'  => (int)($summary->izin ?? 0),
+                    'sakit' => (int)($summary->sakit ?? 0),
+                    'alpa'  => (int)($summary->alpa ?? 0),
+                    'total_hari' => (int)($summary->total_hari ?? 0)
                 ],
+                'data' => $this->mapData($paginator),
+                'meta' => $this->formatPagination($paginator),
             ], Response::HTTP_OK);
 
         } catch (Throwable $e) {
@@ -123,5 +79,71 @@ class PresensiController extends Controller
                 'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private function buildQuery($siswaId, $tahunAjaranId, Request $request)
+    {
+        $query = Presensi::where('siswa_id', $siswaId);
+
+        if ($tahunAjaranId) {
+            $query->where('tahun_ajaran_id', $tahunAjaranId);
+        }
+
+        if ($request->filled('kelas_id')) {
+            $query->where('kelas_id', $request->kelas_id);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('status', 'like', "%{$search}%")
+                  ->orWhere('keterangan', 'like', "%{$search}%")
+                  ->orWhere('tanggal', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('tanggal')) {
+            $query->whereDate('tanggal', $request->tanggal);
+        }
+
+        return $query;
+    }
+
+    private function getSummary($query)
+    {
+        return (clone $query)->select(
+            DB::raw("CAST(SUM(CASE WHEN status = 'Hadir' THEN 1 ELSE 0 END) AS SIGNED) as hadir"),
+            DB::raw("CAST(SUM(CASE WHEN status = 'Izin' THEN 1 ELSE 0 END) AS SIGNED) as izin"),
+            DB::raw("CAST(SUM(CASE WHEN status = 'Sakit' THEN 1 ELSE 0 END) AS SIGNED) as sakit"),
+            DB::raw("CAST(SUM(CASE WHEN status = 'Alpa' THEN 1 ELSE 0 END) AS SIGNED) as alpa"),
+            DB::raw("COUNT(*) as total_hari")
+        )->first();
+    }
+
+    private function mapData($paginator)
+    {
+        return collect($paginator->items())->map(fn($item) => [
+            'id' => $item->id,
+            'tanggal' => Carbon::parse($item->tanggal)->format('Y-m-d'),
+            'status' => $item->status,
+            'keterangan' => $item->keterangan,
+        ]);
+    }
+
+    private function formatPagination($paginator)
+    {
+        $data = $paginator->toArray();
+        return [
+            'current_page' => $data['current_page'],
+            'last_page'    => $data['last_page'],
+            'per_page'     => $data['per_page'],
+            'total'        => $data['total'],
+            'links'        => array_map(fn($link) => [
+                'url'    => $link['url'],
+                'label'  => $link['label'],
+                'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                'active' => $link['active'],
+            ], $data['links']),
+        ];
     }
 }

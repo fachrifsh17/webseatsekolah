@@ -72,16 +72,19 @@ class DashboardController extends Controller
             'total_pengumuman'     => Pengumuman::count(),
             'guru_aktif'           => GuruStaf::where('is_active', 1)->count(),
             'siswa_aktif'          => Siswa::where('is_active', 1)
-                ->whereHas('kelas', function($q) use ($activeTaIds) {
-                    $q->whereIn('tahun_ajaran_id', $activeTaIds);
+                ->whereHas('riwayatKelas', function($q) use ($activeTaIds) {
+                    $q->whereIn('tahun_ajaran_id', $activeTaIds)
+                      ->where('is_active', 1);
                 })->count(),
             'orangtua_aktif'       => Orangtua::where('is_active', 1)
                 ->whereHas('siswa', function($q) use ($activeTaIds) {
-                    $q->whereHas('kelas', function($sq) use ($activeTaIds) {
-                        $sq->whereIn('tahun_ajaran_id', $activeTaIds);
+                    $q->where('is_active', 1)
+                      ->whereHas('riwayatKelas', function($sq) use ($activeTaIds) {
+                        $sq->whereIn('tahun_ajaran_id', $activeTaIds)
+                           ->where('is_active', 1);
                     });
                 })->count(),
-            'total_kelas'          => Kelas::whereIn('tahun_ajaran_id', $activeTaIds)->count(),
+            'total_kelas'          => Kelas::where('is_active', 1)->count(),
             'total_jurusan'        => Jurusan::count(),
             'tahun_ajaran_aktif'   => $activeTaIds->count(),
             'total_ekstrakurikuler'=> Ekstrakurikuler::count(),

@@ -17,12 +17,12 @@ class StoreSiswaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // Data Riwayat Kelas (Tabel siswa_kelas)
-            // tahun_ajaran_id dihapus dari rule karena diambil otomatis dari model Kelas di Controller
+            // Data Riwayat Kelas
             'kelas_id'        => ['required', 'string', 'exists:kelas,id'],
 
-            // Data Profil Siswa (Tabel siswa)
-            'nis'             => ['required', 'string', 'max:20', 'unique:siswa,nis'],
+            // Data Profil Siswa
+            // NIS diubah menjadi string dengan size:8 agar tepat 8 karakter
+            'nis'             => ['required', 'string', 'size:8', 'unique:siswa,nis'],
             'nisn'            => ['required', 'string', 'size:10', 'unique:siswa,nisn'],
             'nama_lengkap'    => ['required', 'string', 'max:100'],
             'tempat_lahir'    => ['nullable', 'string', 'max:100'],
@@ -50,7 +50,6 @@ class StoreSiswaRequest extends FormRequest
             'tempat_lahir'  => $this->filled('tempat_lahir') ? trim($this->tempat_lahir) : null,
             'no_telp_siswa' => $this->filled('no_telp_siswa') ? trim($this->no_telp_siswa) : null,
             'jenis_kelamin' => $this->filled('jenis_kelamin') ? trim($this->jenis_kelamin) : null,
-            // Jika is_active tidak dikirim, default ke 1 (aktif)
             'is_active'     => $this->has('is_active') ? (int) $this->is_active : 1,
         ]);
     }
@@ -59,16 +58,18 @@ class StoreSiswaRequest extends FormRequest
     {
         return [
             'nis.required'             => 'NIS tidak boleh kosong.',
+            'nis.size'                 => 'NIS harus tepat 8 karakter.',
             'nis.unique'               => 'NIS sudah terdaftar.',
             'nisn.required'            => 'NISN wajib diisi.',
             'nisn.size'                => 'NISN harus tepat 10 karakter.',
+            'nisn.unique'              => 'NISN sudah terdaftar.',
             'nama_lengkap.required'    => 'Nama lengkap wajib diisi.',
             'jenis_kelamin.required'   => 'Jenis kelamin wajib dipilih.',
             'kelas_id.required'        => 'Kelas wajib dipilih.',
             'kelas_id.exists'          => 'Kelas tidak ditemukan.',
             'foto.image'               => 'File harus berupa gambar.',
             'foto.max'                 => 'Ukuran foto maksimal adalah 2MB.',
-            'orangtua.*.id.required'   => 'ID orang tua wajib diisi jika data orang tua dikirim.',
+            'orangtua.*.id.required'   => 'ID orang tua wajib diisi.',
         ];
     }
 

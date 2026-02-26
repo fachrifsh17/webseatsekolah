@@ -3,12 +3,11 @@
 namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Berita, Pengumuman, Siswa, Presensi, PoinSiswa, KalenderAkademik, TahunAjaran};
+use App\Models\{Berita, Pengumuman, Siswa, Presensi, PoinSiswa, KalenderAkademik, TahunAjaran, GuruMapel};
 use App\Http\Resources\{BeritaResource};
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\{Log, DB};
 use Symfony\Component\HttpFoundation\Response;
 use Carbon\Carbon;
 use Throwable;
@@ -28,11 +27,9 @@ class DashboardController extends Controller
             $hariIni = today();
             $tigaHariLagi = today()->addDays(3);
             
-            // Ambil Tahun Ajaran Aktif
             $activeTa = TahunAjaran::where('is_active', 1)->first();
             $activeTaId = $activeTa ? $activeTa->id : null;
 
-            // 1. Ambil data siswa dengan relasi riwayat kelas (pivot) yang difilter TA Aktif
             $siswa = $this->getSiswa($user->id, $activeTaId);
 
             if (!$siswa) {
@@ -42,34 +39,40 @@ class DashboardController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            // 2. Dapatkan objek kelas saat ini dari pivot
             $riwayatAktif = $siswa->riwayatKelas->first();
             $kelasObj = $riwayatAktif ? $riwayatAktif->kelas : null;
             $kelasId = $kelasObj ? $kelasObj->id : null;
 
-            // 3. Ambil statistik yang sudah difilter TA aktif dan Kelas aktif
-            $poin = $this->getPoin($siswa->id, $activeTaId);
+            $poin = $this->getPoinAkumulatif($siswa->id);
             $statsPresensi = $this->getPresensiStats($siswa->id, $kelasId, $activeTaId);
-            
+            $jadwalHariIniCount = $this->getJadwalCount($kelasId, $activeTaId);
+
             $setting = DB::table('sekolah_setting')->first();
-            
-            // 4. Ambil data akademik (Kalender, Pengumuman, Berita) dengan format tanggal bersih
             $akademik = $this->getAkademikData($hariIni, $tigaHariLagi, $activeTaId ? [$activeTaId] : []);
 
             $data = [
+                'header' => [
+                    'tahun_ajaran' => $activeTa?->nama ?? '-',
+                    'semester'     => $activeTa?->semester ?? '-',
+                ],
                 'user_info' => [
-                    'nama' => $siswa->nama_lengkap ?? 'Tanpa Nama',
-                    'kelas' => $kelasObj->nama_kelas ?? '-',
+                    'nama'       => $siswa->nama_lengkap ?? 'Tanpa Nama',
+                    'kelas'      => $kelasObj->nama_kelas ?? '-',
                     'wali_kelas' => $kelasObj->waliKelas->nama ?? '-',
                 ],
                 'statistics' => [
                     'presensi' => [
-                        'hadir' => $statsPresensi['Hadir'] ?? 0,
-                        'izin'  => $statsPresensi['Izin'] ?? 0,
-                        'sakit' => $statsPresensi['Sakit'] ?? 0,
-                        'alpa'  => $statsPresensi['Alpa'] ?? 0,
+                        'hadir' => (int)($statsPresensi['Hadir'] ?? 0),
+                        'izin'  => (int)($statsPresensi['Izin'] ?? 0),
+                        'sakit' => (int)($statsPresensi['Sakit'] ?? 0),
+                        'alpa'  => (int)($statsPresensi['Alpa'] ?? 0),
                     ],
-                    'poin' => $poin
+                    'poin' => [
+                        'total_positif' => $poin['total_positif'],
+                        'total_negatif' => $poin['total_negatif'],
+                        'akumulasi'     => $poin['total_positif'] - $poin['total_negatif'],
+                    ],
+                    'total_jadwal_hari_ini' => $jadwalHariIniCount
                 ],
                 'sekolah' => [
                     'buku_poin'    => ($setting && isset($setting->buku_poin_path)) ? asset('storage/' . $setting->buku_poin_path) : null,
@@ -88,9 +91,21 @@ class DashboardController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memuat dashboard',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private function getJadwalCount($kelasId, $activeTaId)
+    {
+        if (!$kelasId || !$activeTaId) return 0;
+
+        return GuruMapel::where('kelas_id', $kelasId)
+            ->where('tahun_ajaran_id', $activeTaId)
+            ->where('hari', Carbon::now()->translatedFormat('l'))
+            ->whereHas('mapel', function($q) {
+                $q->where('is_active', 1);
+            })
+            ->count();
     }
 
     private function getSiswa($userId, $activeTaId)
@@ -98,22 +113,25 @@ class DashboardController extends Controller
         return Siswa::where('user_id', $userId)
             ->with(['riwayatKelas' => function($query) use ($activeTaId) {
                 $query->where('tahun_ajaran_id', $activeTaId)
-                      ->with(['kelas.waliKelas']); 
+                     ->where('is_active', 1) 
+                     ->with(['kelas' => function($q) {
+                          $q->where('is_active', 1)->with('waliKelas'); 
+                     }]); 
             }])
             ->first();
     }
 
-    private function getPoin($siswaId, $activeTaId)
+    private function getPoinAkumulatif($siswaId)
     {
-        $query = PoinSiswa::where('siswa_id', $siswaId);
-        
-        if ($activeTaId) {
-            $query->where('tahun_ajaran_id', $activeTaId);
-        }
+        $summary = PoinSiswa::where('siswa_id', $siswaId)
+            ->select(
+                DB::raw('CAST(SUM(poin_positif) AS SIGNED) as total_plus'),
+                DB::raw('CAST(SUM(poin_negatif) AS SIGNED) as total_minus')
+            )->first();
 
         return [
-            'total_positif' => (int) $query->sum('poin_positif'),
-            'total_negatif' => (int) $query->sum('poin_negatif'),
+            'total_positif' => (int) ($summary->total_plus ?? 0),
+            'total_negatif' => (int) ($summary->total_minus ?? 0),
         ];
     }
 
@@ -136,17 +154,16 @@ class DashboardController extends Controller
 
     private function getAkademikData($hariIni, $tigaHariLagi, $activeTaIds)
     {
-        // Ambil pengumuman dan hilangkan format "ZZZ"
         $pengumuman = Pengumuman::latest()->first();
         $formattedPengumuman = null;
 
         if ($pengumuman) {
             $formattedPengumuman = [
-                'id' => $pengumuman->id,
-                'judul' => $pengumuman->judul,
-                'isi_pengumuman' => $pengumuman->isi_pengumuman,
+                'id'                => $pengumuman->id,
+                'judul'             => $pengumuman->judul,
+                'isi_pengumuman'    => $pengumuman->isi_pengumuman,
                 'tanggal_publikasi' => Carbon::parse($pengumuman->created_at)->format('Y-m-d H:i:s'),
-                'penting' => (bool) $pengumuman->penting,
+                'penting'           => (bool) $pengumuman->penting,
             ];
         }
 
@@ -167,17 +184,17 @@ class DashboardController extends Controller
                     $selesai = Carbon::parse($item->tanggal_selesai);
 
                     return [
-                        'kegiatan' => $item->kegiatan,
-                        'tanggal_mulai' => $mulai->format('Y-m-d'),
+                        'kegiatan'        => $item->kegiatan,
+                        'tanggal_mulai'   => $mulai->format('Y-m-d'),
                         'tanggal_selesai' => $selesai->format('Y-m-d'),
-                        'kategori' => $item->kategori,
-                        'status' => $hariIni->between($mulai, $selesai)
+                        'kategori'        => $item->kategori,
+                        'status'          => $hariIni->between($mulai, $selesai)
                             ? "Sedang Berlangsung"
                             : "H-" . $hariIni->diffInDays($mulai)
                     ];
                 }),
             'pengumuman_terbaru' => $formattedPengumuman,
-            'berita_terbaru' => BeritaResource::collection(Berita::latest()->take(1)->get()),
+            'berita_terbaru'     => BeritaResource::collection(Berita::latest()->take(1)->get()),
         ];
     }
 }

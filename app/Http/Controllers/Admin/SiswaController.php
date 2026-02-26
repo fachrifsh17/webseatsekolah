@@ -27,7 +27,6 @@ class SiswaController extends Controller
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
-
         $this->authorizeResource(Siswa::class, 'siswa');
     }
 
@@ -39,7 +38,9 @@ class SiswaController extends Controller
 
         if ($request->filled('kelas_id')) {
             $query->whereHas('riwayatKelas', fn($q) => $q->where('kelas_id', $request->kelas_id));
-        } elseif ($request->filled('tahun_ajaran_id')) {
+        }
+
+        if ($request->filled('tahun_ajaran_id')) {
             $query->whereHas('riwayatKelas', function($q) use ($request) {
                 $q->where('tahun_ajaran_id', $request->tahun_ajaran_id);
             });
@@ -77,7 +78,9 @@ class SiswaController extends Controller
         $query = $this->applyFilters($request, $query);
 
         $perPage = $request->get('per_page', $request->filled('search') ? 10 : 20);
-        $items = $query->latest()->paginate($perPage);
+        
+        // Perubahan: Menggunakan orderByRaw agar case-insensitive (A-Z)
+        $items = $query->orderByRaw('LOWER(nama_lengkap) ASC')->paginate($perPage);
         $paginationData = $items->toArray();
 
         $tahunAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
@@ -114,6 +117,9 @@ class SiswaController extends Controller
 
         $query = Siswa::query()->with(['riwayatKelas.kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
+        
+        // Perubahan: Menggunakan orderByRaw agar hasil export juga case-insensitive
+        $query->orderByRaw('LOWER(nama_lengkap) ASC');
 
         if ($request->filled('tahun_ajaran_id')) {
             $tahunFocus = DB::table('tahun_ajaran')->where('id', $request->tahun_ajaran_id)->first();
@@ -189,15 +195,12 @@ class SiswaController extends Controller
     public function store(StoreSiswaRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $tahunAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
 
-        $kelas = Kelas::where('id', $validated['kelas_id'])
-            ->whereHas('tahunAjaran', fn($q) => $q->where('is_active', 1))
-            ->first();
-
-        if (!$kelas) {
+        if (!$tahunAktif) {
             return response()->json([
                 'success' => false,
-                'message' => 'Kelas yang dipilih harus berada pada tahun ajaran aktif.'
+                'message' => 'Tidak ada tahun ajaran aktif yang ditemukan.'
             ], 422);
         }
 
@@ -208,7 +211,7 @@ class SiswaController extends Controller
         }
 
         try {
-            $siswa = DB::transaction(function() use ($data, $validated, $kelas) {
+            $siswa = DB::transaction(function() use ($data, $validated, $tahunAktif) {
                 if (User::where('username', $data['nis'])->exists()) {
                     throw ValidationException::withMessages([
                         'nis' => ["NIS {$data['nis']} sudah terdaftar sebagai pengguna lain."]
@@ -253,7 +256,7 @@ class SiswaController extends Controller
                 SiswaKelas::create([
                     'siswa_id'        => $newSiswaId,
                     'kelas_id'        => $validated['kelas_id'],
-                    'tahun_ajaran_id' => $kelas->tahun_ajaran_id,
+                    'tahun_ajaran_id' => $tahunAktif->id,
                     'is_active'       => 1
                 ]);
 
@@ -286,20 +289,7 @@ class SiswaController extends Controller
     public function update(UpdateSiswaRequest $request, Siswa $siswa): JsonResponse
     {
         $validated = $request->validated();
-
-        $kelas = null;
-        if (isset($validated['kelas_id'])) {
-            $kelas = Kelas::where('id', $validated['kelas_id'])
-                ->whereHas('tahunAjaran', fn($q) => $q->where('is_active', 1))
-                ->first();
-
-            if (!$kelas) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Kelas tujuan harus berada pada tahun ajaran aktif.'
-                ], 422);
-            }
-        }
+        $tahunAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
 
         $data = Arr::only($validated, (new Siswa())->getFillable());
         $oldFoto = $siswa->foto;
@@ -309,7 +299,7 @@ class SiswaController extends Controller
         }
 
         try {
-            DB::transaction(function() use ($siswa, $data, $validated, $kelas) {
+            DB::transaction(function() use ($siswa, $data, $validated, $tahunAktif) {
                 if (isset($data['nis']) && $siswa->user_id) {
                     $isTaken = User::where('username', $data['nis'])
                                    ->where('id', '!=', $siswa->user_id)
@@ -323,7 +313,7 @@ class SiswaController extends Controller
 
                 $siswa->update($data);
 
-                if (isset($validated['kelas_id']) && $kelas) {
+                if (isset($validated['kelas_id']) && $tahunAktif) {
                     SiswaKelas::where('siswa_id', $siswa->id)
                         ->where('is_active', 1)
                         ->update(['is_active' => 0]);
@@ -332,19 +322,23 @@ class SiswaController extends Controller
                         [
                             'siswa_id'        => $siswa->id,
                             'kelas_id'        => $validated['kelas_id'],
-                            'tahun_ajaran_id' => $kelas->tahun_ajaran_id
+                            'tahun_ajaran_id' => $tahunAktif->id
                         ],
                         ['is_active' => 1]
                     );
                 }
 
                 if ($siswa->user_id) {
-                    $userData = [];
-                    if (isset($data['nis'])) $userData['username'] = $data['nis'];
-                    if (isset($data['is_active'])) $userData['is_active'] = $data['is_active'];
-                    
-                    if (!empty($userData)) {
-                        User::where('id', $siswa->user_id)->update($userData);
+                    $user = User::find($siswa->user_id);
+                    if ($user) {
+                        if (isset($data['nis'])) {
+                            $user->username = $data['nis'];
+                            $user->password = Hash::make($data['nis']);
+                        }
+                        if (isset($data['is_active'])) {
+                            $user->is_active = $data['is_active'];
+                        }
+                        $user->save();
                     }
                 }
             });

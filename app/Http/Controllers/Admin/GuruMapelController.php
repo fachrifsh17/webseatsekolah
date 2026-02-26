@@ -9,6 +9,7 @@ use App\Models\TahunAjaran;
 use App\Models\GuruStaf;
 use App\Models\MataPelajaran;
 use App\Models\Kelas;
+use App\Models\Jurusan;
 use App\Models\ProfilSekolah;
 use App\Models\DataKontak;
 use App\Http\Resources\GuruMapelResource;
@@ -47,7 +48,6 @@ class GuruMapelController extends Controller
                 $q->where('is_active', 1);
             });
 
-            // Tambahan: Pastikan kelas yang dijadwalkan juga sedang aktif
             $query->whereHas('kelas', function ($q) {
                 $q->where('is_active', 1);
             });
@@ -55,6 +55,10 @@ class GuruMapelController extends Controller
 
         $query->when($request->tipe_mapel, function ($q, $tipe) {
             return $q->whereHas('mapel', fn($m) => $m->where('tipe_mapel', $tipe));
+        });
+
+        $query->when($request->jurusan_id, function ($q, $jurusanId) {
+            return $q->whereHas('mapel.jurusan', fn($j) => $j->where('id', $jurusanId));
         });
 
         $tahunAktif = TahunAjaran::where('is_active', 1)->first();
@@ -114,19 +118,18 @@ class GuruMapelController extends Controller
             
             $kelasId = $request->get('kelas_id') ?? $request->get('klas_id');
             $guruId = $request->get('guru_staf_id') ?? $request->get('guru_id');
+            $jurusanId = $request->get('jurusan_id');
 
             $filters = [
                 'q'            => $request->get('q'),
                 'hari'         => $request->get('hari'),
                 'tahun_ajaran' => 'Semua',
                 'semester'     => 'Semua',
-                'guru'         => 'Semua Guru',
-                'mapel'        => 'Semua Mapel',
-                'kelas'        => 'Semua Kelas',
                 'tipe_mapel'   => $request->get('tipe_mapel', 'Semua Tipe'),
-                'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Hanya Mapel Aktif'
+                'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Aktif'
             ];
 
+            $kriteria = [];
             $nameParts = ['JADWAL_GURU_MAPEL'];
 
             if ($request->filled('tahun_ajaran_id')) {
@@ -143,14 +146,18 @@ class GuruMapelController extends Controller
                 $nameParts[] = "{$taClean}_{$semester}";
             }
 
-            if ($request->filled('tipe_mapel')) {
-                $nameParts[] = strtoupper(str_replace(' ', '_', $request->tipe_mapel));
+            if ($jurusanId) {
+                $jurusan = Jurusan::find($jurusanId);
+                if ($jurusan) {
+                    $kriteria[] = "JURUSAN: " . strtoupper($jurusan->nama_jurusan);
+                    $nameParts[] = strtoupper(str_replace(' ', '_', $jurusan->nama_jurusan));
+                }
             }
 
             if ($guruId) {
                 $guru = GuruStaf::find($guruId);
                 if ($guru) {
-                    $filters['guru'] = $guru->nama;
+                    $kriteria[] = "GURU: " . strtoupper($guru->nama);
                     $nameParts[] = strtoupper(str_replace(' ', '_', $guru->nama));
                 }
             }
@@ -158,7 +165,7 @@ class GuruMapelController extends Controller
             if ($request->filled('mata_pelajaran_id')) {
                 $mapel = MataPelajaran::find($request->mata_pelajaran_id);
                 if ($mapel) {
-                    $filters['mapel'] = $mapel->nama_mapel;
+                    $kriteria[] = "MAPEL: " . strtoupper($mapel->nama_mapel);
                     $nameParts[] = strtoupper(str_replace(' ', '_', $mapel->nama_mapel));
                 }
             }
@@ -166,17 +173,23 @@ class GuruMapelController extends Controller
             if ($kelasId) {
                 $kelas = Kelas::find($kelasId);
                 if ($kelas) {
-                    $filters['kelas'] = $kelas->nama_kelas;
+                    $kriteria[] = "KELAS: " . strtoupper($kelas->nama_kelas);
                     $nameParts[] = strtoupper(str_replace(' ', '_', $kelas->nama_kelas));
                 }
             }
 
             if ($request->filled('hari')) {
+                $kriteria[] = "HARI: " . strtoupper($request->hari);
                 $nameParts[] = strtoupper($request->hari);
             }
 
-            $nameParts[] = 'AKTIF';
+            if ($request->filled('tipe_mapel')) {
+                $kriteria[] = "TIPE: " . strtoupper($request->tipe_mapel);
+            }
 
+            $filters['identitas_laporan'] = count($kriteria) > 0 ? implode(' | ', $kriteria) : 'SEMUA DATA';
+            
+            $nameParts[] = 'AKTIF';
             $fileName = implode('_', $nameParts) . '.xlsx';
 
             $profil = ProfilSekolah::first();
@@ -194,7 +207,6 @@ class GuruMapelController extends Controller
     public function import(Request $request): JsonResponse
     {
         $this->authorize('create', GuruMapel::class);
-
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
         try {
@@ -230,7 +242,6 @@ class GuruMapelController extends Controller
     public function getJamByHari(Request $request): JsonResponse
     {
         $this->authorize('viewAny', GuruMapel::class);
-
         $hari = $request->query('hari');
         $tahunAktif = TahunAjaran::where('is_active', 1)->first();
 
@@ -264,7 +275,6 @@ class GuruMapelController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        // Pengecekan Kelas berdasarkan is_active (Konsep Kelas Statis)
         $kelas = Kelas::find($validated['kelas_id']);
         if (!$kelas || $kelas->is_active == 0) {
             return response()->json([

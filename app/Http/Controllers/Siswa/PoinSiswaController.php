@@ -26,38 +26,18 @@ class PoinSiswaController extends Controller
         try {
             $this->authorize('viewAny', PoinSiswa::class);
 
-            // Ambil data siswa dari user yang login
             $siswa = Auth::user()->siswa;
             if ($error = $this->validateSiswa($siswa)) return $error;
 
-            $query = PoinSiswa::query()->where('siswa_id', $siswa->id);
-            $this->applyFilters($query, $request);
+            $tahunAktif = TahunAjaran::where('is_active', true)->first();
+            $tahunAjaranId = $request->get('tahun_ajaran_id', $tahunAktif?->id);
 
-            // Hitung summary berdasarkan query yang sudah difilter
-            $summaryData = (clone $query)->select(
-                DB::raw('CAST(SUM(poin_positif) AS SIGNED) as total_plus'),
-                DB::raw('CAST(SUM(poin_negatif) AS SIGNED) as total_minus'),
-                DB::raw('COUNT(*) as total_catatan')
-            )->first();
-
-            // Ambil info tahun ajaran untuk header
-            $tahunTampil = $request->filled('tahun_ajaran_id') 
-                ? TahunAjaran::find($request->tahun_ajaran_id) 
-                : TahunAjaran::where('is_active', true)->first();
+            $summaryData = $this->getSummaryAkumulatif($siswa->id);
+            $query = $this->buildQuery($siswa->id, $tahunAjaranId, $request);
             
-            $perPage = min((int) $request->get('per_page', 10), 100);
-            
-            // PENYESUAIAN: Menggunakan riwayatKelas yang difilter is_active
-            $paginator = $query->with([
-                                    'guruStaf', 
-                                    'tahunAjaran', 
-                                    'siswa.riwayatKelas' => fn($q) => $q->where('is_active', true)->with('kelas')
-                                ])
-                                ->latest()
-                                ->paginate($perPage);
-
-            // PENYESUAIAN: Mengambil nama kelas dari koleksi riwayatKelas yang aktif
-            $kelasAktif = $siswa->riwayatKelas()->where('is_active', true)->with('kelas')->first();
+            $tahunTampil = $tahunAjaranId ? TahunAjaran::find($tahunAjaranId) : $tahunAktif;
+            $paginator = $this->getPaginator($query, $tahunAjaranId, $request);
+            $kelasPeriode = $this->getKelasPeriode($siswa, $tahunAjaranId);
 
             return response()->json([
                 'success' => true,
@@ -65,24 +45,17 @@ class PoinSiswaController extends Controller
                 'header'  => [
                     'nama'         => $siswa->nama_lengkap,
                     'nis'          => $siswa->nis,
-                    // PENYESUAIAN: Ambil dari riwayatKelas pertama yang aktif
-                    'kelas'        => $kelasAktif?->kelas?->nama_kelas ?? '-',
+                    'kelas'        => $kelasPeriode?->kelas?->nama_kelas ?? '-',
                     'tahun_ajaran' => $tahunTampil?->nama,
                     'semester'     => $tahunTampil?->semester,
                 ],
                 'summary' => [
-                    'total_positif' => $summaryData->total_plus ?? 0,
-                    'total_negatif' => $summaryData->total_minus ?? 0,
-                    'total_catatan' => $summaryData->total_catatan ?? 0,
+                    'total_positif' => (int)($summaryData->total_plus ?? 0),
+                    'total_negatif' => (int)($summaryData->total_minus ?? 0),
+                    'total_catatan' => (int)($summaryData->total_catatan ?? 0),
+                    'saldo_poin'    => (int)($summaryData->total_plus ?? 0) - (int)($summaryData->total_minus ?? 0),
                 ],
-                'data' => collect($paginator->items())->map(fn($item) => [
-                    'id'         => $item->id,
-                    'tanggal'    => Carbon::parse($item->tanggal)->format('d-m-Y'),
-                    'positif'    => (int)$item->poin_positif,
-                    'negatif'    => (int)$item->poin_negatif,
-                    'keterangan' => $item->indikator ?? $item->keterangan,
-                    'pelapor'    => $item->guruStaf?->nama,
-                ]),
+                'data' => $this->mapData($paginator),
                 'meta' => $this->formatPagination($paginator),
             ], Response::HTTP_OK);
 
@@ -93,6 +66,58 @@ class PoinSiswaController extends Controller
                 'message' => 'Gagal mengambil data poin.',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private function getSummaryAkumulatif($siswaId)
+    {
+        return PoinSiswa::where('siswa_id', $siswaId)
+            ->select(
+                DB::raw('CAST(SUM(poin_positif) AS SIGNED) as total_plus'),
+                DB::raw('CAST(SUM(poin_negatif) AS SIGNED) as total_minus'),
+                DB::raw('COUNT(*) as total_catatan')
+            )->first();
+    }
+
+    private function buildQuery($siswaId, $tahunAjaranId, Request $request)
+    {
+        $query = PoinSiswa::query()->where('siswa_id', $siswaId);
+        
+        if ($tahunAjaranId) {
+            $query->where('tahun_ajaran_id', $tahunAjaranId);
+        }
+
+        $this->applyFilters($query, $request);
+        return $query;
+    }
+
+    private function getPaginator($query, $tahunAjaranId, Request $request)
+    {
+        $perPage = min((int) $request->get('per_page', 10), 100);
+        return $query->with([
+            'guruStaf', 
+            'tahunAjaran', 
+            'siswa.riwayatKelas' => fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId)->with('kelas')
+        ])->latest()->paginate($perPage);
+    }
+
+    private function getKelasPeriode($siswa, $tahunAjaranId)
+    {
+        return $siswa->riwayatKelas()
+            ->where('tahun_ajaran_id', $tahunAjaranId)
+            ->with('kelas')
+            ->first();
+    }
+
+    private function mapData($paginator)
+    {
+        return collect($paginator->items())->map(fn($item) => [
+            'id'         => $item->id,
+            'tanggal'    => Carbon::parse($item->tanggal)->format('d-m-Y'),
+            'positif'    => (int)$item->poin_positif,
+            'negatif'    => (int)$item->poin_negatif,
+            'keterangan' => $item->indikator ?? $item->keterangan,
+            'pelapor'    => $item->guruStaf?->nama,
+        ]);
     }
 
     private function validateSiswa($siswa)
@@ -108,10 +133,6 @@ class PoinSiswaController extends Controller
 
     private function applyFilters($query, Request $request)
     {
-        if ($request->filled('tahun_ajaran_id')) {
-            $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
-        }
-
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
@@ -138,17 +159,8 @@ class PoinSiswaController extends Controller
             'last_page'     => $data['last_page'],
             'per_page'      => $data['per_page'],
             'total'         => $data['total'],
-            'from'          => $data['from'],
-            'to'            => $data['to'],
-            'path'          => $data['path'],
             'next_page_url' => $data['next_page_url'],
             'prev_page_url' => $data['prev_page_url'],
-            'links'         => array_map(fn($link) => [
-                'url'    => $link['url'],
-                'label'  => $link['label'],
-                'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
-                'active' => $link['active'],
-            ], $data['links']),
         ];
     }
 
@@ -160,15 +172,15 @@ class PoinSiswaController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'id' => $poinSiswa->id,
-                    'tanggal' => Carbon::parse($poinSiswa->tanggal)->format('d-m-Y'),
+                    'id'           => $poinSiswa->id,
+                    'tanggal'      => Carbon::parse($poinSiswa->tanggal)->format('d-m-Y'),
                     'poin_positif' => (int)$poinSiswa->poin_positif,
                     'poin_negatif' => (int)$poinSiswa->poin_negatif,
-                    'keterangan' => $poinSiswa->indikator ?? $poinSiswa->keterangan,
-                    'pelapor' => $poinSiswa->guruStaf?->nama_lengkap ?? $poinSiswa->guruStaf?->nama,
+                    'keterangan'   => $poinSiswa->indikator ?? $poinSiswa->keterangan,
+                    'pelapor'      => $poinSiswa->guruStaf?->nama_lengkap ?? $poinSiswa->guruStaf?->nama,
                     'tahun_ajaran' => $poinSiswa->tahunAjaran?->nama,
-                    'semester' => $poinSiswa->tahunAjaran?->semester,
-                    'created_at' => $poinSiswa->created_at->format('d-m-Y H:i'),
+                    'semester'     => $poinSiswa->tahunAjaran?->semester,
+                    'created_at'   => $poinSiswa->created_at->format('d-m-Y H:i'),
                 ],
             ], Response::HTTP_OK);
             
@@ -176,7 +188,6 @@ class PoinSiswaController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Data poin tidak ditemukan atau akses dilarang.',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_FORBIDDEN);
         }
     }

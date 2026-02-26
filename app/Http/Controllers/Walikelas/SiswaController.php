@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Walikelas;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Siswa, Kelas, User, TahunAjaran};
+use App\Models\{Siswa, Kelas, TahunAjaran};
 use App\Http\Resources\SiswaResource;
 use App\Exports\SiswaExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\{Auth, DB, Log, Hash};
+use Illuminate\Support\Facades\{Auth, DB, Log};
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -19,7 +19,7 @@ class SiswaController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Guru');
-        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'export']);
+        $this->middleware('log.aktivitas')->only(['export']);
     }
 
     private function getIdentity(): array
@@ -33,7 +33,6 @@ class SiswaController extends Controller
         if (!$taAktif) return [$guru, null, null];
 
         $kelas = Kelas::where('wali_kelas_id', $guru->id)
-            ->where('tahun_ajaran_id', $taAktif->id)
             ->where('is_active', 1)
             ->first();
 
@@ -44,7 +43,8 @@ class SiswaController extends Controller
     {
         $query->whereHas('riwayatKelas', function ($q) use ($kelasId, $taId) {
             $q->where('kelas_id', $kelasId)
-              ->where('tahun_ajaran_id', $taId);
+              ->where('tahun_ajaran_id', $taId)
+              ->where('is_active', 1);
         });
 
         $isActive = $request->get('is_active', 1);
@@ -77,16 +77,15 @@ class SiswaController extends Controller
             $query = Siswa::with(['user', 'orangtua']);
             $query = $this->applyFilters($request, $query, $kelas->id, $taAktif->id);
 
+            // PAGINATION & SORTING A-Z
             $perPage = min((int) $request->get('per_page', 20), 100);
             $paginatedData = $query->orderBy('nama_lengkap', 'asc')->paginate($perPage);
 
             $transformedData = collect($paginatedData->items())->map(function($siswa) {
                 $resource = (new SiswaResource($siswa))->toArray(request());
                 
-                // Menghapus data kelas dari tiap item siswa agar tidak duplikat
                 unset($resource['kelas']);
 
-                // Sederhanakan data orangtua (hanya nama)
                 if (isset($resource['orangtua'])) {
                     $resource['orangtua'] = collect($resource['orangtua'])->map(function($ortu) {
                         return [
@@ -110,7 +109,11 @@ class SiswaController extends Controller
                 'meta'    => [
                     'current_page' => $paginatedData->currentPage(),
                     'last_page'    => $paginatedData->lastPage(),
+                    'per_page'     => $paginatedData->perPage(),
                     'total'        => $paginatedData->total(),
+                    'has_more'     => $paginatedData->hasMorePages(),
+                    'next_page_url' => $paginatedData->nextPageUrl(),
+                    'prev_page_url' => $paginatedData->previousPageUrl(),
                 ]
             ], Response::HTTP_OK);
 
@@ -123,184 +126,40 @@ class SiswaController extends Controller
         }
     }
 
-    public function store(Request $request): JsonResponse
+    public function show(string $id): JsonResponse
     {
-        [$guru, $kelas, $taAktif] = $this->getIdentity();
-        
-        if (!$kelas) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Akses ditolak. Anda tidak memiliki kelas perwalian aktif.'
-            ], Response::HTTP_FORBIDDEN);
-        }
-
-        $request->validate([
-            'nama_lengkap' => 'required|string|max:255',
-            'nisn'         => 'required|string|unique:siswa,nisn',
-            'email'        => 'required|email|unique:users,email',
-            'jenis_kelamin'=> 'required|in:L,P',
-        ]);
-
         try {
-            DB::beginTransaction();
+            [$guru, $kelas, $taAktif] = $this->getIdentity();
 
-            $user = User::create([
-                'name'     => $request->nama_lengkap,
-                'email'    => $request->email,
-                'password' => Hash::make($request->nisn),
-                'role'     => 'Siswa'
-            ]);
-
-            $siswa = Siswa::create(array_merge($request->except(['email']), [
-                'user_id'   => $user->id,
-                'is_active' => 1
-            ]));
-
-            $siswa->riwayatKelas()->create([
-                'kelas_id' => $kelas->id,
-                'tahun_ajaran_id' => $taAktif->id,
-                'is_active' => 1
-            ]);
-
-            DB::commit();
-            
-            $result = (new SiswaResource($siswa->load(['user', 'orangtua'])))->toArray($request);
-            
-            // Konsistensi: Hapus key kelas dari individual data dan filter ortu
-            unset($result['kelas']);
-            if (isset($result['orangtua'])) {
-                $result['orangtua'] = collect($result['orangtua'])->map(fn($o) => ['nama_lengkap' => $o['nama_lengkap'] ?? null])->values();
+            if (!$kelas) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akses ditolak. Anda bukan wali kelas aktif.'
+                ], Response::HTTP_FORBIDDEN);
             }
+
+            // Pastikan siswa yang dicari memang anggota kelas perwaliannya
+            $siswa = Siswa::with(['user', 'orangtua', 'riwayatKelas' => function($q) use ($taAktif) {
+                $q->where('tahun_ajaran_id', $taAktif->id)->with('kelas');
+            }])
+            ->whereHas('riwayatKelas', function ($q) use ($kelas, $taAktif) {
+                $q->where('kelas_id', $kelas->id)
+                  ->where('tahun_ajaran_id', $taAktif->id);
+            })
+            ->findOrFail($id);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Siswa berhasil ditambahkan.',
-                'info'    => [
-                    'id_kelas'   => $kelas->id,
-                    'nama_kelas' => $kelas->nama_kelas
-                ],
-                'data'    => $result
-            ], Response::HTTP_CREATED);
+                'message' => "Detail siswa berhasil dimuat.",
+                'data'    => new SiswaResource($siswa)
+            ], Response::HTTP_OK);
 
         } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('Store Siswa Wali Error: ' . $e->getMessage());
+            Log::error('Walikelas Siswa Show Error: ' . $e->getMessage());
             return response()->json([
-                'success' => false, 
-                'message' => 'Gagal menambah data.'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    public function show(Siswa $siswa): JsonResponse
-    {
-        [$guru, $kelas, $taAktif] = $this->getIdentity();
-        
-        if (!$kelas) {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
-        }
-
-        $isMember = $siswa->riwayatKelas()
-            ->where('kelas_id', $kelas->id)
-            ->where('tahun_ajaran_id', $taAktif->id)
-            ->exists();
-
-        if (!$isMember) {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
-        }
-
-        $result = (new SiswaResource($siswa->load(['user', 'orangtua'])))->toArray(request());
-        
-        // Hapus key kelas dari data individual
-        unset($result['kelas']);
-        
-        if (isset($result['orangtua'])) {
-            $result['orangtua'] = collect($result['orangtua'])->map(fn($o) => ['nama_lengkap' => $o['nama_lengkap'] ?? null])->values();
-        }
-
-        return response()->json([
-            'success' => true,
-            'info'    => [
-                'id_kelas'   => $kelas->id,
-                'nama_kelas' => $kelas->nama_kelas
-            ],
-            'data'    => $result
-        ], Response::HTTP_OK);
-    }
-
-    public function update(Request $request, Siswa $siswa): JsonResponse
-    {
-        [$guru, $kelas, $taAktif] = $this->getIdentity();
-        
-        if (!$kelas) {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
-        }
-
-        $isMember = $siswa->riwayatKelas()
-            ->where('kelas_id', $kelas->id)
-            ->where('tahun_ajaran_id', $taAktif->id)
-            ->exists();
-
-        if (!$isMember) {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
-        }
-
-        $request->validate([
-            'nama_lengkap' => 'sometimes|string|max:255',
-            'nisn'         => 'sometimes|string|unique:siswa,nisn,' . $siswa->id,
-        ]);
-
-        try {
-            DB::beginTransaction();
-            $siswa->update($request->all());
-            
-            if ($request->filled('nama_lengkap')) {
-                $siswa->user->update(['name' => $request->nama_lengkap]);
-            }
-
-            DB::commit();
-            return response()->json(['success' => true, 'message' => 'Data berhasil diperbarui.'], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false, 
-                'message' => 'Gagal update data.'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    public function destroy(Siswa $siswa): JsonResponse
-    {
-        [$guru, $kelas, $taAktif] = $this->getIdentity();
-        
-        if (!$kelas) {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
-        }
-
-        $isMember = $siswa->riwayatKelas()
-            ->where('kelas_id', $kelas->id)
-            ->where('tahun_ajaran_id', $taAktif->id)
-            ->exists();
-
-        if (!$isMember) {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
-        }
-
-        try {
-            DB::beginTransaction();
-            $user = $siswa->user;
-            $siswa->riwayatKelas()->delete();
-            $siswa->delete();
-            if ($user) $user->delete();
-            DB::commit();
-
-            return response()->json(['success' => true, 'message' => 'Siswa berhasil dihapus.'], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false, 
-                'message' => 'Gagal menghapus data.'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+                'success' => false,
+                'message' => 'Siswa tidak ditemukan dalam kelas perwalian Anda.',
+            ], Response::HTTP_NOT_FOUND);
         }
     }
 
@@ -315,6 +174,9 @@ class SiswaController extends Controller
 
             $query = Siswa::query();
             $query = $this->applyFilters($request, $query, $kelas->id, $taAktif->id);
+            
+            // Urutkan A-Z juga saat ekspor
+            $query->orderBy('nama_lengkap', 'asc');
 
             $nameParts = ['DATA_SISWA'];
             $nameParts[] = strtoupper(str_replace([' ', '-'], '_', $kelas->nama_kelas));

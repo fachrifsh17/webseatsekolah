@@ -40,7 +40,6 @@ class DashboardController extends Controller
 
             $kelasWaliIds = Kelas::where('wali_kelas_id', $guruStafId)
                 ->where('is_active', 1)
-                ->whereIn('tahun_ajaran_id', $activeTaIds)
                 ->pluck('id');
 
             $siswaBinaanIds = SiswaKelas::whereIn('kelas_id', $kelasWaliIds)
@@ -155,7 +154,7 @@ class DashboardController extends Controller
             case 'Waka Sarpras':
                 $res['summary'] = [
                     'total_fasilitas' => \App\Models\Fasilitas::count(),
-                    'total_ruangan' => Kelas::where('is_active', 1)->whereIn('tahun_ajaran_id', $activeTaIds)->count(),
+                    'total_ruangan' => Kelas::where('is_active', 1)->count(),
                     'media_sarpras' => \App\Models\Media::count()
                 ];
                 break;
@@ -179,7 +178,7 @@ class DashboardController extends Controller
                               $qk->where('jurusan_id', $jurusanId);
                           });
                     })->where('is_active', 1)->count(),
-                    'kelas_jurusan' => Kelas::where('jurusan_id', $jurusanId)->whereIn('tahun_ajaran_id', $activeTaIds)->where('is_active', 1)->count(),
+                    'kelas_jurusan' => Kelas::where('jurusan_id', $jurusanId)->where('is_active', 1)->count(),
                     'guru_jurusan' => GuruMapel::whereHas('mapel', function($q) use ($jurusanId) {
                         $q->where('jurusan_id', $jurusanId);
                     })->distinct('guru_staf_id')->count(),

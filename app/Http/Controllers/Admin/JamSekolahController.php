@@ -83,11 +83,19 @@ class JamSekolahController extends Controller
             }
 
             $ta = TahunAjaran::find($tahunAjaranId);
-            $namaTA = $ta ? str_replace(['/', '\\', ' '], '-', $ta->nama) : date('Ymd_His');
+            
+            // Perubahan di sini: Menambahkan Semester ke nama file
+            if ($ta) {
+                $namaTA = str_replace(['/', '\\', ' '], '-', $ta->nama);
+                $semester = strtoupper(str_replace(' ', '-', $ta->semester));
+                $labelFile = $namaTA . '-' . $semester;
+            } else {
+                $labelFile = date('Ymd_His');
+            }
 
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
-            $fileName = 'jam_sekolah_' . $namaTA . '.xlsx';
+            $fileName = 'jam_sekolah_' . $labelFile . '.xlsx';
 
             return Excel::download(new JamSekolahExport($profil, $kontak, $tahunAjaranId), $fileName);
         } catch (Throwable $e) {

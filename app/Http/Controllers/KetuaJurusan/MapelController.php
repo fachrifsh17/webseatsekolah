@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\KetuaJurusan;
 
 use App\Http\Controllers\Controller;
-use App\Models\{MataPelajaran, GuruStaf, ProfilSekolah, DataKontak};
+use App\Models\{MataPelajaran, GuruStaf, ProfilSekolah, DataKontak, TahunAjaran};
 use App\Http\Resources\MapelResource;
 use App\Exports\MapelExport;
 use Illuminate\Support\Facades\{Log, Auth, DB};
@@ -22,8 +22,7 @@ class MapelController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'export']);
-        $this->authorizeResource(MataPelajaran::class, 'mata_pelajaran');
+        $this->middleware('log.aktivitas')->only(['export']);
     }
 
     private function getJurusanId()
@@ -112,43 +111,6 @@ class MapelController extends Controller
         }
     }
 
-    public function store(Request $request): JsonResponse
-    {
-        $jurusanId = $this->getJurusanId();
-
-        if (!$jurusanId) {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
-        }
-
-        $request->validate([
-            'nama_mapel'     => 'required|string|max:255',
-            'kode_mapel'     => 'required|string|unique:mata_pelajaran,kode_mapel',
-            'tipe_mapel'     => 'required|in:Nasional,Kewilayahan,Kejuruan',
-            'kategori_mapel' => 'required|string',
-            'is_active'      => 'boolean'
-        ]);
-
-        try {
-            DB::beginTransaction();
-
-            $data = $request->all();
-            $data['jurusan_id'] = $jurusanId;
-            
-            $mapel = MataPelajaran::create($data);
-
-            DB::commit();
-            return response()->json([
-                'success' => true,
-                'message' => 'Mata pelajaran berhasil ditambahkan',
-                'data'    => new MapelResource($mapel->load('jurusan'))
-            ], Response::HTTP_CREATED);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('Store Mapel Error', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal menambahkan mata pelajaran'], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
     public function show(MataPelajaran $mataPelajaran): JsonResponse
     {
         $jurusanId = $this->getJurusanId();
@@ -166,60 +128,13 @@ class MapelController extends Controller
         ], Response::HTTP_OK);
     }
 
-    public function update(Request $request, MataPelajaran $mataPelajaran): JsonResponse
-    {
-        $jurusanId = $this->getJurusanId();
-
-        if (!$jurusanId || $mataPelajaran->jurusan_id !== $jurusanId) {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
-        }
-
-        $request->validate([
-            'nama_mapel' => 'sometimes|string|max:255',
-            'kode_mapel' => 'sometimes|string|unique:mata_pelajaran,kode_mapel,' . $mataPelajaran->id,
-        ]);
-
-        try {
-            $mataPelajaran->update($request->all());
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Mata pelajaran berhasil diperbarui',
-                'data'    => new MapelResource($mataPelajaran->load('jurusan'))
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Update Mapel Error', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal memperbarui mata pelajaran'], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    public function destroy(MataPelajaran $mataPelajaran): JsonResponse
-    {
-        $jurusanId = $this->getJurusanId();
-
-        if (!$jurusanId || $mataPelajaran->jurusan_id !== $jurusanId) {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
-        }
-
-        try {
-            $mataPelajaran->delete();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Mata pelajaran berhasil dihapus'
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Delete Mapel Error', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Gagal menghapus mata pelajaran'], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
     public function export(Request $request)
     {
         try {
             $this->authorize('viewAny', MataPelajaran::class);
             $jurusanId = $this->getJurusanId();
             $namaJurusan = $this->getNamaJurusan();
+            $taAktif = TahunAjaran::where('is_active', 1)->first();
 
             if (!$jurusanId) {
                 return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
@@ -230,21 +145,22 @@ class MapelController extends Controller
                 'search'           => $request->query('search'),
                 'tipe_mapel'       => $request->query('tipe_mapel'),
                 'kategori_mapel'   => $request->query('kategori_mapel'),
-                'include_inactive' => $request->boolean('include_inactive'),
+                'is_active'        => $request->boolean('include_inactive') ? null : 1,
             ];
 
-            $nameParts = ['DATA_MATA_PELAJARAN'];
+            $nameParts = ['DATA_MAPEL'];
             
             if ($namaJurusan) {
                 $nameParts[] = strtoupper(str_replace([' ', '-'], '_', $namaJurusan));
             }
 
-            if ($request->filled('tipe_mapel')) {
-                $nameParts[] = strtoupper($request->tipe_mapel);
-            }
-
-            if ($request->filled('search')) {
-                $nameParts[] = strtoupper(str_replace([' ', '.'], '_', $request->search));
+            if ($taAktif) {
+                $namaTa = strtoupper(str_replace([' ', '-', '/'], '_', $taAktif->nama));
+                $semester = strtoupper($taAktif->semester ?? '');
+                $nameParts[] = $namaTa;
+                if ($semester) {
+                    $nameParts[] = $semester;
+                }
             }
 
             $nameParts[] = $request->boolean('include_inactive') ? 'SEMUA' : 'AKTIF';

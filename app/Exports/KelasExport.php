@@ -3,7 +3,6 @@
 namespace App\Exports;
 
 use App\Models\Kelas;
-use App\Models\Jurusan;
 use App\Models\TahunAjaran;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -16,8 +15,7 @@ use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Style\Color;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
@@ -34,12 +32,14 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
 
     public function startCell(): string 
     { 
-        return 'A12'; 
+        return 'A14'; 
     }
 
     public function query()
     {
-        $query = Kelas::with(['jurusan', 'tahunAjaran', 'waliKelas']);
+        $query = Kelas::query()->with(['jurusan', 'waliKelas']);
+        
+        $query->where('is_active', 1);
 
         if (!empty($this->filters['search'])) {
             $query->where('nama_kelas', 'like', '%' . $this->filters['search'] . '%');
@@ -53,19 +53,7 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             $query->where('wali_kelas_id', $this->filters['wali_kelas_id']);
         }
 
-        if (!empty($this->filters['tahun_ajaran_id'])) {
-            $query->where('tahun_ajaran_id', $this->filters['tahun_ajaran_id']);
-        } else {
-            $query->whereHas('tahunAjaran', function($q) {
-                $q->where('is_active', true);
-            });
-        }
-
-        if (isset($this->filters['is_active'])) {
-            $query->where('is_active', $this->filters['is_active']);
-        }
-
-        return $query->latest();
+        return $query->orderBy('nama_kelas', 'asc');
     }
 
     public function headings(): array
@@ -75,6 +63,8 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             'ID KELAS',
             'NAMA KELAS',
             'JURUSAN',
+            'NIP',
+            'NUPTK',
             'WALI KELAS',
             'STATUS'
         ];
@@ -82,13 +72,17 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
 
     public function map($kelas): array
     {
+        $wali = $kelas->waliKelas;
+        
         return [
             ++$this->rowNumber,
             $kelas->id,
             $kelas->nama_kelas,
             $kelas->jurusan->nama_jurusan ?? '-',
-            $kelas->waliKelas->nama_lengkap ?? $kelas->waliKelas->nama ?? '-',
-            $kelas->is_active ? 'AKTIF' : 'TIDAK AKTIF',
+            $wali && $wali->nip ? "'" . $wali->nip : '-', 
+            $wali && $wali->nuptk ? "'" . $wali->nuptk : '-', 
+            $wali->nama ?? '-',
+            'AKTIF',
         ];
     }
 
@@ -99,90 +93,105 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
-                $lastCol = 'F';
+                $lastCol = 'H';
                 $lastRow = $sheet->getHighestRow();
 
-                // Kop Surat
-                $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
-                $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
-                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', ($this->kontak->alamat_lengkap ?? '') . " | Telp: " . ($this->kontak->telepon ?? ''));
-                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "Email: " . ($this->kontak->email_resmi ?? '') . " | NPSN: " . ($this->profil->npsn ?? '-'));
-                
-                $sheet->getStyle("A1:{$lastCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
-                $sheet->getStyle("A5:{$lastCol}5")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
+                $kepsek = DB::table('struktur_jabatan')
+                    ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
+                    ->where('struktur_jabatan.jabatan_id', 1) 
+                    ->select('guru_staf.nama', 'guru_staf.nip')
+                    ->first();
 
-                // Judul Laporan
-                $sheet->mergeCells("A7:{$lastCol}7"); 
-                $sheet->setCellValue('A7', 'DAFTAR DATA KELAS');
-                $sheet->getStyle("A7")->getFont()->setBold(true)->setSize(14);
+                $wakaKur = DB::table('struktur_jabatan')
+                    ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
+                    ->where('struktur_jabatan.jabatan_id', 2) 
+                    ->select('guru_staf.nama', 'guru_staf.nip')
+                    ->first();
+
+                $provAsli = $this->kontak->provinsi ?? 'Jawa Barat';
+                $provKapital = strtoupper($provAsli);
+                $alamatJalan = $this->kontak->alamat_jalan ?? '-';
+                $desaKec = "Desa " . ($this->kontak->desa_kelurahan ?? '-') . " Kec. " . ($this->kontak->kecamatan ?? '-');
+                $kotaKab = ($this->kontak->kabupaten_kota ?? 'Tasikmalaya');
+
+                $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
+                $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
+                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
+                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
+                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "{$alamatJalan}, {$desaKec}, {$kotaKab} - {$provAsli}");
+                $sheet->mergeCells("A6:{$lastCol}6"); $sheet->setCellValue('A6', "Telp: " . ($this->kontak->telepon ?? '-') . " | Email: " . ($this->kontak->email_resmi ?? '-') . " | NPSN: " . ($this->profil->npsn ?? '-'));
                 
-                $ta = !empty($this->filters['tahun_ajaran_id']) 
-                        ? TahunAjaran::find($this->filters['tahun_ajaran_id']) 
-                        : TahunAjaran::where('is_active', 1)->first();
+                $sheet->getStyle("A1:{$lastCol}6")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true);
+                $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
                 $sheet->mergeCells("A8:{$lastCol}8"); 
+                $sheet->setCellValue('A8', 'DAFTAR DATA KELAS AKTIF');
+                $sheet->getStyle("A8")->getFont()->setBold(true)->setSize(14);
+                
+                $taId = $this->filters['tahun_ajaran_id'] ?? null;
+                $ta = $taId ? TahunAjaran::find($taId) : TahunAjaran::where('is_active', 1)->first();
+                
+                $sheet->mergeCells("A9:{$lastCol}9"); 
                 $taText = $ta ? "TAHUN PELAJARAN {$ta->nama} - SEMESTER " . strtoupper($ta->semester) : 'TAHUN PELAJARAN -';
-                $sheet->setCellValue('A8', $taText);
-                $sheet->getStyle("A8")->getFont()->setBold(true)->setSize(11);
-                $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->setCellValue('A9', $taText);
+                $sheet->getStyle("A8:A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // Filter Info (Baris 9)
-                $jurusanName = 'Semua Jurusan';
-                if (!empty($this->filters['jurusan_id'])) {
-                    $jurusan = Jurusan::find($this->filters['jurusan_id']);
-                    $jurusanName = $jurusan ? $jurusan->nama_jurusan : 'Semua Jurusan';
-                }
-                $statusLabel = isset($this->filters['is_active']) ? ($this->filters['is_active'] == 1 ? 'Aktif' : 'Tidak Aktif') : 'Semua Status';
+                $jurusanStr = str_replace('JURUSAN ', '', ($this->filters['identitas_laporan'] ?? 'SEMUA JURUSAN'));
+                $searchStr = !empty($this->filters['search']) ? strtoupper($this->filters['search']) : '-';
+                
+                $sheet->setCellValue('A10', "JURUSAN : " . $jurusanStr);
+                $sheet->setCellValue('A11', "PENCARIAN : " . $searchStr);
+                $sheet->setCellValue('A12', "STATUS : AKTIF");
 
-                $filterText = "Filter: Jurusan ($jurusanName) | Status ($statusLabel)";
-                $sheet->mergeCells("A9:{$lastCol}9");
-                $sheet->setCellValue('A9', $filterText);
-                $sheet->getStyle("A9")->getFont()->setItalic(true)->setSize(10);
-                $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A10:A12")->getFont()->setItalic(true)->setBold(false);
+                $sheet->getStyle("A10:A12")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
 
-                // Baris 10 dibersihkan (untuk jarak)
-                $sheet->setCellValue('A10', '');
-
-                // Header Tabel (Baris 12)
-                $sheet->getStyle("A12:{$lastCol}12")->applyFromArray([
-                    'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_BLACK]],
-                    'fill' => ['fillType' => Fill::FILL_NONE],
-                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
-                ]);
-
-                // Garis Tabel Hitam dan Alignment Isi
-                $sheet->getStyle("A12:{$lastCol}{$lastRow}")->applyFromArray([
-                    'borders' => [
-                        'allBorders' => [
-                            'borderStyle' => Border::BORDER_THIN,
-                            'color' => ['argb' => Color::COLOR_BLACK],
-                        ],
-                    ],
+                $sheet->getStyle("A14:{$lastCol}14")->getFont()->setBold(true);
+                $sheet->getStyle("A14:{$lastCol}{$lastRow}")->applyFromArray([
+                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
                     'alignment' => [
-                        'horizontal' => Alignment::HORIZONTAL_CENTER,
+                        'horizontal' => Alignment::HORIZONTAL_CENTER, 
                         'vertical' => Alignment::VERTICAL_CENTER,
+                        'wrapText' => true
                     ],
                 ]);
 
-                // --- PERUBAHAN WARNA STATUS ---
-                for ($i = 13; $i <= $lastRow; $i++) {
-                    $val = $sheet->getCell("F$i")->getValue();
-                    
-                    // AKTIF = HITAM, TIDAK AKTIF = MERAH
-                    $color = ($val == 'AKTIF') ? Color::COLOR_BLACK : 'FFFF0000';
-                    
-                    $sheet->getStyle("F$i")->getFont()->getColor()->setARGB($color);
-                }
+                $ttgRow = $lastRow + 3;
+                $sheet->mergeCells("F{$ttgRow}:{$lastCol}{$ttgRow}"); 
+                $lokasiTtd = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
+                $sheet->setCellValue("F{$ttgRow}", $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
+                $sheet->getStyle("F{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // --- TANGGAL CETAK (DI BAWAH KIRI) ---
-                $footerRow = $lastRow + 2; 
-                $sheet->setCellValue("A{$footerRow}", "Dicetak pada: " . Carbon::now()->format('d/m/Y H:i'));
-                $sheet->getStyle("A{$footerRow}")->getFont()->setItalic(true)->setSize(9);
+                $ttgRow++;
+                $sheet->mergeCells("A{$ttgRow}:C{$ttgRow}");
+                $sheet->setCellValue("A{$ttgRow}", "Mengetahui,\nWaka Kurikulum");
+                
+                $sheet->mergeCells("F{$ttgRow}:{$lastCol}{$ttgRow}");
+                $sheet->setCellValue("F{$ttgRow}", "Menyetujui,\nKepala Sekolah");
+                
+                $sheet->getStyle("A{$ttgRow}:{$lastCol}{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
+                $sheet->getStyle("A{$ttgRow}:{$lastCol}{$ttgRow}")->getFont()->setBold(true);
 
-                // Page Setup
-                $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_PORTRAIT);
+                $namaRow = $ttgRow + 4;
+                $sheet->mergeCells("A{$namaRow}:C{$namaRow}");
+                $sheet->setCellValue("A{$namaRow}", "( " . strtoupper($wakaKur->nama ?? '____________________') . " )"); 
+                
+                $sheet->mergeCells("F{$namaRow}:{$lastCol}{$namaRow}");
+                $sheet->setCellValue("F{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
+                
+                $sheet->getStyle("A{$namaRow}:{$lastCol}{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A{$namaRow}:{$lastCol}{$namaRow}")->getFont()->setBold(true);
+
+                $nipRow = $namaRow + 1;
+                $sheet->mergeCells("A{$nipRow}:C{$nipRow}");
+                $sheet->setCellValue("A{$nipRow}", "NIP. " . ($wakaKur->nip ?? '...........................'));
+                
+                $sheet->mergeCells("F{$nipRow}:{$lastCol}{$nipRow}");
+                $sheet->setCellValue("F{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
+                $sheet->getStyle("A{$nipRow}:{$lastCol}{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+                $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE);
                 $sheet->getPageSetup()->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_A4);
             },
         ];

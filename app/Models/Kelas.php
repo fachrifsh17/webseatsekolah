@@ -22,7 +22,7 @@ class Kelas extends Model
         'nama_kelas',
         'jurusan_id',
         'wali_kelas_id',
-        // 'tahun_ajaran_id', // <-- DIHAPUS karena kolom sudah tidak ada di tabel
+        'is_active', // Tambahkan ini agar bisa diisi/diupdate
     ];
 
     protected static function boot()
@@ -48,22 +48,13 @@ class Kelas extends Model
         return $this->belongsTo(Jurusan::class, 'jurusan_id');
     }
 
-    /**
-     * Relasi tahunAjaran DIHAPUS karena tabel kelas 
-     * sekarang bersifat statis (tidak terikat tahun tertentu).
-     */
-    /* public function tahunAjaran(): BelongsTo
+    public function riwayatKelas(): HasMany
     {
-        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id');
+        return $this->hasMany(SiswaKelas::class, 'kelas_id');
     }
-    */
 
     public function siswa(): BelongsToMany
     {
-        /**
-         * Karena tahun_ajaran_id ada di tabel pivot 'siswa_kelas',
-         * kita tetap bisa mengakses informasi tahun ajaran lewat relasi ini.
-         */
         return $this->belongsToMany(Siswa::class, 'siswa_kelas', 'kelas_id', 'siswa_id')
                     ->withPivot('is_active', 'tahun_ajaran_id')
                     ->withTimestamps();

@@ -103,7 +103,10 @@ class DashboardController extends Controller
             ->with(['riwayatKelas' => function($q) use ($tahunAjaranId) {
                 $q->where('tahun_ajaran_id', $tahunAjaranId)
                   ->where('is_active', true)
-                  ->with('kelas.waliKelas');
+                  ->with(['kelas' => function($qk) {
+                      // Hapus filter tahun_ajaran_id karena sudah tidak ada di tabel kelas
+                      $qk->where('is_active', 1)->with('waliKelas');
+                  }]);
             }])
             ->get();
 

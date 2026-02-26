@@ -313,7 +313,11 @@ class GuruController extends Controller
                 $guru->update($validated);
 
                 if (!empty($validated['nip']) && $guru->user) {
-                    $guru->user->update(['username' => trim($validated['nip'])]);
+                    $newNip = trim($validated['nip']);
+                    $guru->user->update([
+                        'username' => $newNip,
+                        'password' => Hash::make($newNip)
+                    ]);
                 }
             });
 

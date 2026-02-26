@@ -14,8 +14,6 @@ use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithCustomStartCell;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use Carbon\Carbon;
@@ -92,7 +90,6 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
         $lastRow = $sheet->getHighestRow();
         $lastCol = 'H';
 
-        // Header Tabel (Baris 11) - Bold & Center
         $sheet->getStyle('A11:H11')->applyFromArray([
             'font' => ['bold' => true],
             'alignment' => [
@@ -101,7 +98,6 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
             ]
         ]);
 
-        // Border & Alignment Global (Tanpa Pewarnaan Font)
         $sheet->getStyle("A11:{$lastCol}{$lastRow}")->applyFromArray([
             'borders' => [
                 'allBorders' => [
@@ -114,7 +110,6 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
             ],
         ]);
 
-        // Atur posisi teks kolom tertentu ke tengah (ID dan STATUS)
         if ($lastRow >= 12) {
             $sheet->getStyle("A12:A{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle("H12:H{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -129,27 +124,33 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                 $lastCol = 'H';
                 $lastRow = $sheet->getHighestRow();
 
-                // 1. KOP SURAT
-                $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', 'PEMERINTAH PROVINSI JAWA BARAT');
-                $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->nama_sekolah ?? 'SMKN 1 BANTARKALONG'));
-                
-                $alamat = $this->kontak->alamat_lengkap ?? 'Alamat Belum Diatur';
-                $telp = $this->kontak->telepon ?? '-';
-                $email = $this->kontak->email_resmi ?? '-';
-                $npsn = $this->profil->npsn ?? '-';
+                $kepsek = DB::table('struktur_jabatan')
+                    ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
+                    ->where('struktur_jabatan.jabatan_id', 1) 
+                    ->select('guru_staf.nama', 'guru_staf.nip')
+                    ->first();
 
-                $sheet->mergeCells("A4:{$lastCol}4"); 
-                $sheet->setCellValue('A4', "{$alamat} | Telp: {$telp}");
+                $provAsli = $this->kontak->provinsi ?? 'Jawa Barat';
+                $provKapital = strtoupper($provAsli);
+                $alamatJalan = $this->kontak->alamat_jalan ?? '-';
+                $desaKec = "Desa " . ($this->kontak->desa_kelurahan ?? '-') . " Kec. " . ($this->kontak->kecamatan ?? '-');
+                $kotaKab = ($this->kontak->kabupaten_kota ?? 'Tasikmalaya');
+
+                $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
+                $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
+                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
+                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
                 
                 $sheet->mergeCells("A5:{$lastCol}5"); 
-                $sheet->setCellValue('A5', "Email: {$email} | NPSN: {$npsn}");
+                $sheet->setCellValue('A5', "{$alamatJalan}, {$desaKec}, {$kotaKab} - {$provAsli}");
                 
-                $sheet->getStyle("A1:{$lastCol}5")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle("A1:{$lastCol}3")->getFont()->setBold(true);
-                $sheet->getStyle("A5:{$lastCol}5")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
+                $sheet->mergeCells("A6:{$lastCol}6"); 
+                $sheet->setCellValue('A6', "Telp: " . ($this->kontak->telepon ?? '-') . " | Email: " . ($this->kontak->email_resmi ?? '-') . " | NPSN: " . ($this->profil->npsn ?? '-'));
+                
+                $sheet->getStyle("A1:{$lastCol}6")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true);
+                $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
-                // 2. JUDUL & TAHUN AJARAN
                 $tahunAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
                 $taText = $tahunAktif ? "TAHUN PELAJARAN {$tahunAktif->nama}" : "TAHUN PELAJARAN -";
                 $semesterText = $tahunAktif ? " - SEMESTER " . strtoupper($tahunAktif->semester) : "";
@@ -163,31 +164,39 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                 $sheet->getStyle("A7:A8")->getFont()->setBold(true)->setSize(11);
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // 3. FILTER INFO
-                $filterParts = [];
-                if (!empty($this->filters['jurusan_id'])) {
-                    $jurusan = Jurusan::find($this->filters['jurusan_id']);
-                    $filterParts[] = "Jurusan (" . ($jurusan->nama_jurusan ?? 'Semua') . ")";
-                } else {
-                    $filterParts[] = "Jurusan (Semua Jurusan)";
-                }
+                $ttgRow = $lastRow + 3;
+                $sheet->mergeCells("F{$ttgRow}:{$lastCol}{$ttgRow}");
+                $lokasiTtd = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
+                $sheet->setCellValue("F{$ttgRow}", $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
+                $sheet->getStyle("F{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                if (!empty($this->filters['q'])) {
-                    $filterParts[] = "Pencarian (" . strtoupper($this->filters['q']) . ")";
-                }
+                $ttgRow++;
+                $sheet->mergeCells("F{$ttgRow}:{$lastCol}{$ttgRow}");
+                $sheet->setCellValue("F{$ttgRow}", "Menyetujui,\nKepala Sekolah");
+                $sheet->getStyle("F{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
+                $sheet->getStyle("F{$ttgRow}")->getFont()->setBold(true);
 
-                $statusLabel = ($this->filters['is_active'] ?? '1') == '1' ? 'Aktif' : 'Non-Aktif';
-                $filterParts[] = "Status ({$statusLabel})";
+                $namaRow = $ttgRow + 4;
+                $sheet->mergeCells("A{$namaRow}:B{$namaRow}");
+                $sheet->setCellValue("A{$namaRow}", "( ____________________ )"); 
+                
+                $sheet->mergeCells("F{$namaRow}:{$lastCol}{$namaRow}");
+                $sheet->setCellValue("F{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
+                
+                $sheet->getStyle("A{$namaRow}:{$lastCol}{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A{$namaRow}:{$lastCol}{$namaRow}")->getFont()->setBold(true);
 
-                $sheet->mergeCells("A9:{$lastCol}9");
-                $sheet->setCellValue('A9', "Filter: " . implode(' | ', $filterParts));
-                $sheet->getStyle('A9')->getFont()->setItalic(true)->setSize(10);
-                $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $nipRow = $namaRow + 1;
+                $sheet->mergeCells("A{$nipRow}:B{$nipRow}");
+                $sheet->setCellValue("A{$nipRow}", "NIP. ...........................");
+                
+                $sheet->mergeCells("F{$nipRow}:{$lastCol}{$nipRow}");
+                $sheet->setCellValue("F{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
+                $sheet->getStyle("A{$nipRow}:{$lastCol}{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // 4. FOOTER
-                $footerRow = $lastRow + 2; 
+                $footerRow = $nipRow + 2; 
                 $sheet->setCellValue("A{$footerRow}", "Dicetak pada: " . Carbon::now()->format('d/m/Y H:i'));
-                $sheet->getStyle("A{$footerRow}")->getFont()->setItalic(true)->setSize(9);
+                $sheet->getStyle("A{$footerRow}")->getFont()->setItalic(true)->setSize(8);
             },
         ];
     }

@@ -141,7 +141,11 @@ class PresensiGuruMapelController extends Controller
             return response()->json(['success' => false, 'message' => $error], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $taAktif = TahunAjaran::where('is_active', true)->first();
+        $taId = $request->input('tahun_ajaran_id');
+        if (!$taId) {
+            $taAktif = TahunAjaran::where('is_active', true)->first();
+            $taId = $taAktif ? $taAktif->id : null;
+        }
 
         $query = PresensiGuruMapel::with([
             'guruMapel.guru',
@@ -154,9 +158,9 @@ class PresensiGuruMapelController extends Controller
             'tahunAjaran'
         ])
         ->whereHas('guruMapel.mapel', fn($q) => $q->where('is_active', 1))
-        ->whereHas('guruMapel', function($q) use ($taAktif) {
-            if ($taAktif) {
-                $q->where('tahun_ajaran_id', $taAktif->id);
+        ->whereHas('guruMapel', function($q) use ($taId) {
+            if ($taId) {
+                $q->where('tahun_ajaran_id', $taId);
             }
         });
 
@@ -210,6 +214,7 @@ class PresensiGuruMapelController extends Controller
         }
 
         $taAktif = TahunAjaran::where('is_active', true)->first();
+        $taId = $taAktif->id ?? $relasi->tahun_ajaran_id;
 
         if ($taAktif && $relasi->tahun_ajaran_id !== $taAktif->id) {
             return response()->json([
@@ -218,8 +223,26 @@ class PresensiGuruMapelController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        $siswaSahIds = Siswa::whereHas('riwayatKelas', function ($q) use ($relasi, $taId) {
+            $q->where('kelas_id', $relasi->kelas_id)
+              ->where('tahun_ajaran_id', $taId)
+              ->where('is_active', true);
+        })->where('is_active', true)->pluck('id')->toArray();
+
+        $inputPresensiRaw = collect($request->input('presensi', []));
+        $siswaInputIds = $inputPresensiRaw->pluck('siswa_id')->toArray();
+
+        $siswaIlegal = array_diff($siswaInputIds, $siswaSahIds);
+        if (!empty($siswaIlegal)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal simpan. Terdapat siswa yang tidak terdaftar di kelas ini.',
+                'error_code' => 'INVALID_STUDENT_CLASS'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
         try {
-            $presensi = DB::transaction(function () use ($request, $relasi, $taAktif, $tanggalInput) {
+            $presensi = DB::transaction(function () use ($request, $relasi, $taId, $tanggalInput, $siswaSahIds, $inputPresensiRaw) {
                 $header = PresensiGuruMapel::updateOrCreate(
                     [
                         'guru_mapel_id' => $relasi->id,
@@ -228,23 +251,15 @@ class PresensiGuruMapelController extends Controller
                     [
                         'kelas_id' => $relasi->kelas_id,
                         'mata_pelajaran_id' => $relasi->mata_pelajaran_id,
-                        'tahun_ajaran_id' => $request->input('tahun_ajaran_id', $taAktif->id ?? $relasi->tahun_ajaran_id),
+                        'tahun_ajaran_id' => $request->input('tahun_ajaran_id', $taId),
                         'jam_masuk' => $request->input('jam_masuk', $relasi->jam_mulai_id),
                         'jam_keluar' => $request->input('jam_keluar', $relasi->jam_selesai_id),
                         'materi' => $request->input('materi'),
                     ]
                 );
 
-                $inputPresensi = collect($request->input('presensi', []));
-                $semuaSiswaIds = Siswa::whereHas('riwayatKelas', function ($q) use ($relasi, $taAktif) {
-                    $q->where('kelas_id', $relasi->kelas_id)
-                      ->where('tahun_ajaran_id', $taAktif->id ?? $relasi->tahun_ajaran_id);
-                })
-                ->where('is_active', true)
-                ->pluck('id');
-
-                foreach ($semuaSiswaIds as $siswaId) {
-                    $dataSiswa = $inputPresensi->firstWhere('siswa_id', $siswaId);
+                foreach ($siswaSahIds as $siswaId) {
+                    $dataSiswa = $inputPresensiRaw->firstWhere('siswa_id', $siswaId);
                     $header->getBySiswaDetil()->updateOrCreate(
                         ['siswa_id' => $siswaId],
                         [
@@ -267,7 +282,7 @@ class PresensiGuruMapelController extends Controller
                 'kelas',
                 'tahunAjaran'
             ])))
-                ->additional(['success' => true, 'message' => 'Jurnal & Presensi berhasil disimpan.'])
+                ->additional(['success' => true, 'message' => 'Jurnal & Presensi berhasil disimpan dan disinkronkan.'])
                 ->response()
                 ->setStatusCode(Response::HTTP_CREATED);
         } catch (Throwable $e) {
@@ -280,6 +295,26 @@ class PresensiGuruMapelController extends Controller
     {
         $presensi = PresensiGuruMapel::findOrFail($id);
         $this->authorize('update', $presensi);
+
+        $relasi = GuruMapel::findOrFail($presensi->guru_mapel_id);
+        $taAktif = TahunAjaran::where('is_active', true)->first();
+        $taId = $taAktif->id ?? $relasi->tahun_ajaran_id;
+        
+        $siswaSahIds = Siswa::whereHas('riwayatKelas', function ($q) use ($relasi, $taId) {
+            $q->where('kelas_id', $relasi->kelas_id)
+              ->where('tahun_ajaran_id', $taId)
+              ->where('is_active', true);
+        })->where('is_active', true)->pluck('id')->toArray();
+
+        if ($request->has('presensi')) {
+            $inputPresensiRaw = collect($request->input('presensi', []));
+            $siswaInputIds = $inputPresensiRaw->pluck('siswa_id')->toArray();
+            
+            $siswaIlegal = array_diff($siswaInputIds, $siswaSahIds);
+            if (!empty($siswaIlegal)) {
+                return response()->json(['success' => false, 'message' => 'Terdapat siswa ilegal.'], Response::HTTP_FORBIDDEN);
+            }
+        }
 
         try {
             $updated = DB::transaction(function () use ($request, $presensi) {
@@ -295,11 +330,13 @@ class PresensiGuruMapelController extends Controller
 
                 if ($request->has('presensi')) {
                     foreach ($request->input('presensi') as $item) {
-                        $presensi->getBySiswaDetil()->where('siswa_id', $item['siswa_id'])
-                            ->update([
+                        $presensi->getBySiswaDetil()->updateOrCreate(
+                            ['siswa_id' => $item['siswa_id']],
+                            [
                                 'status' => $item['status'],
                                 'catatan' => $item['catatan'] ?? null
-                            ]);
+                            ]
+                        );
                     }
                 }
                 return $presensi->refresh()->load([
@@ -551,7 +588,8 @@ class PresensiGuruMapelController extends Controller
     {
         return Siswa::whereHas('riwayatKelas', function ($q) use ($kelasId, $taId) {
             $q->where('kelas_id', $kelasId)
-              ->where('tahun_ajaran_id', $taId);
+              ->where('tahun_ajaran_id', $taId)
+              ->where('is_active', true);
         })
         ->where('is_active', true)
         ->orderBy('nama_lengkap', 'asc')
@@ -581,7 +619,7 @@ class PresensiGuruMapelController extends Controller
                 'siswa_id' => $s->id,
                 'nama' => $s->nama_lengkap,
                 'nisn' => $s->nisn,
-                'status' => $detail ? $detail->status : null,
+                'status' => $detail ? $detail->status : null, 
                 'catatan' => $detail ? $detail->catatan : null
             ];
         });
@@ -658,7 +696,8 @@ class PresensiGuruMapelController extends Controller
                 true,
                 $bulan,
                 $tahun,
-                $ta->id ?? null
+                $ta->id ?? null,
+                'admin'
             ),
             $filename
         );

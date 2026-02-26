@@ -33,16 +33,14 @@ class PresensiController extends Controller
             }
 
             $query = $this->buildQuery($siswaIds, $tahunAjaranId, $request);
-            if ($query instanceof JsonResponse) {
-                return $query;
-            }
+            
+            if ($query instanceof JsonResponse) return $query;
 
             $summary = $this->getSummary($query);
+            $tahunTampil = $tahunAjaranId ? TahunAjaran::find($tahunAjaranId) : $tahunAktif;
             $perPage = $request->integer('per_page', 10);
             
             $data = $query->with(['siswa', 'kelas'])->orderBy('tanggal', 'desc')->paginate($perPage);
-
-            $tahunTampil = $tahunAjaranId ? TahunAjaran::find($tahunAjaranId) : $tahunAktif;
 
             return $this->formatResponse($data, $summary, $tahunTampil);
         } catch (Throwable $e) {
@@ -58,8 +56,7 @@ class PresensiController extends Controller
     {
         return Siswa::whereHas('orangtua', fn($q) => $q->where('user_id', $user->id))
             ->whereHas('riwayatKelas', function($q) use ($tahunAjaranId) {
-                $q->where('tahun_ajaran_id', $tahunAjaranId)
-                  ->where('is_active', true);
+                $q->where('tahun_ajaran_id', $tahunAjaranId);
             })
             ->pluck('id')
             ->toArray();
@@ -89,10 +86,10 @@ class PresensiController extends Controller
     private function getSummary($query)
     {
         return (clone $query)->select(
-            DB::raw("SUM(CASE WHEN status = 'Hadir' THEN 1 ELSE 0 END) as hadir"),
-            DB::raw("SUM(CASE WHEN status = 'Izin' THEN 1 ELSE 0 END) as izin"),
-            DB::raw("SUM(CASE WHEN status = 'Sakit' THEN 1 ELSE 0 END) as sakit"),
-            DB::raw("SUM(CASE WHEN status = 'Alpa' THEN 1 ELSE 0 END) as alpa"),
+            DB::raw("CAST(SUM(CASE WHEN status = 'Hadir' THEN 1 ELSE 0 END) AS SIGNED) as hadir"),
+            DB::raw("CAST(SUM(CASE WHEN status = 'Izin' THEN 1 ELSE 0 END) AS SIGNED) as izin"),
+            DB::raw("CAST(SUM(CASE WHEN status = 'Sakit' THEN 1 ELSE 0 END) AS SIGNED) as sakit"),
+            DB::raw("CAST(SUM(CASE WHEN status = 'Alpa' THEN 1 ELSE 0 END) AS SIGNED) as alpa"),
             DB::raw("COUNT(*) as total_hari")
         )->first();
     }
@@ -140,8 +137,7 @@ class PresensiController extends Controller
 
             $anak = Siswa::whereHas('orangtua', fn($q) => $q->where('user_id', $user->id))
                 ->whereHas('riwayatKelas', function($q) use ($tahunAjaranId) {
-                    $q->where('tahun_ajaran_id', $tahunAjaranId)
-                      ->where('is_active', true);
+                    $q->where('tahun_ajaran_id', $tahunAjaranId);
                 })
                 ->get(['id', 'nama_lengkap as nama']);
 
@@ -162,7 +158,7 @@ class PresensiController extends Controller
     {
         return response()->json([
             'success' => true,
-            'message' => 'Data presensi tidak ditemukan untuk periode ini.',
+            'message' => 'Data presensi tidak ditemukan.',
             'info' => [
                 'tahun_ajaran' => $tahunAktif?->nama,
                 'semester' => $tahunAktif?->semester,

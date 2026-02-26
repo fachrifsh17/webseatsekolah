@@ -11,7 +11,16 @@ class DataKontakResource extends JsonResource
     {
         return [
             'id'               => $this->id,
-            'alamat'           => $this->alamat_lengkap,
+            // Data Alamat Terpisah
+            'alamat_jalan'     => $this->alamat_jalan,
+            'desa_kelurahan'   => $this->desa_kelurahan,
+            'kecamatan'        => $this->kecamatan,
+            'kabupaten_kota'   => $this->kabupaten_kota,
+            'provinsi'         => $this->provinsi,
+            
+            // Helper: Alamat Lengkap Gabungan (untuk kemudahan Front-end)
+            'alamat_lengkap'   => "{$this->alamat_jalan}, {$this->desa_kelurahan}, Kec. {$this->kecamatan}, {$this->kabupaten_kota}, {$this->provinsi}",
+            
             'telepon'          => $this->telepon,       
             'email'            => $this->email_resmi,   
             'maps_embed_code'  => $this->peta_embed_code,

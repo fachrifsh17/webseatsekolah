@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany; // Tambahkan ini
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class TahunAjaran extends Model
 {
@@ -43,24 +43,28 @@ class TahunAjaran extends Model
         });
     }
 
+    /**
+     * Relasi ke riwayat kelas (tabel pivot siswa_kelas)
+     * Ditambahkan untuk mendukung filter list periode di Controller
+     */
+    public function riwayatKelas(): HasMany
+    {
+        // Pastikan nama model 'SiswaKelas' sesuai dengan nama file model pivot kamu
+        return $this->hasMany(SiswaKelas::class, 'tahun_ajaran_id');
+    }
+
     public function kurikulum(): BelongsTo
     {
         return $this->belongsTo(Kurikulum::class, 'kurikulum_id');
     }
 
-    /**
-     * PERUBAHAN: Relasi ke Kelas tidak lagi HasMany langsung, 
-     * melainkan BelongsToMany melalui tabel pivot 'siswa_kelas'.
-     * Ini akan menampilkan daftar kelas yang memiliki siswa aktif di TA ini.
-     */
     public function kelas(): BelongsToMany
     {
         return $this->belongsToMany(Kelas::class, 'siswa_kelas', 'tahun_ajaran_id', 'kelas_id')
                     ->withPivot('is_active')
-                    ->distinct(); // Gunakan distinct agar nama kelas tidak duplikat
+                    ->distinct();
     }
 
-    // Relasi lainnya tetap sama karena mereka masih punya tahun_ajaran_id
     public function presensi(): HasMany
     {
         return $this->hasMany(Presensi::class, 'tahun_ajaran_id');

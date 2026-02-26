@@ -25,10 +25,14 @@ class DataKontakController extends Controller
             $dataKontak = DataKontak::firstOrCreate(
                 ['id' => 1],
                 [
-                    'alamat_lengkap' => '-',
-                    'telepon'        => '-',
-                    'email_resmi'    => '-',
-                    'peta_embed_code'=> null,
+                    'alamat_jalan'    => '-',
+                    'desa_kelurahan'  => '-',
+                    'kecamatan'       => '-',
+                    'kabupaten_kota'  => '-',
+                    'provinsi'        => '-',
+                    'telepon'         => '-',
+                    'email_resmi'     => '-',
+                    'peta_embed_code' => null,
                 ]
             );
 
@@ -54,13 +58,19 @@ class DataKontakController extends Controller
             $dataKontak = DataKontak::firstOrCreate(
                 ['id' => 1],
                 [
-                    'alamat_lengkap' => '-',
-                    'telepon'        => '-',
-                    'email_resmi'    => '-',
-                    'peta_embed_code'=> null,
+                    'alamat_jalan'    => '-',
+                    'desa_kelurahan'  => '-',
+                    'kecamatan'       => '-',
+                    'kabupaten_kota'  => '-',
+                    'provinsi'        => '-',
+                    'telepon'         => '-',
+                    'email_resmi'     => '-',
+                    'peta_embed_code' => null,
                 ]
             );
 
+            // Karena kita menggunakan UpdateDataKontakRequest yang baru, 
+            // $request->validated() sudah berisi alamat_jalan, kecamatan, dll.
             $dataKontak->update($request->validated());
 
             return response()->json([

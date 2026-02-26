@@ -4,7 +4,6 @@ namespace App\Imports;
 
 use App\Models\Kelas;
 use App\Models\Jurusan;
-use App\Models\TahunAjaran;
 use App\Models\GuruStaf;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -20,14 +19,7 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
     {
         $line = isset($row['nama_kelas']) ? $row['nama_kelas'] : 'Unknown';
 
-        // 1. Ambil Tahun Ajaran Aktif
-        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
-        if (!$tahunAktif) {
-            $this->messages[] = "Baris [{$line}]: Gagal! Tidak ada Tahun Ajaran aktif.";
-            return null;
-        }
-
-        // 2. Cari Jurusan (Hanya ID atau Nama Jurusan)
+        // 1. Cari Jurusan (Berdasarkan ID atau Nama Jurusan)
         $inputJurusan = trim((string)($row['jurusan'] ?? ''));
         $jurusan = Jurusan::where(function($q) use ($inputJurusan) {
                 $q->where('id', $inputJurusan)
@@ -45,7 +37,7 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
         $inputWali = trim((string)($row['wali_kelas'] ?? ''));
 
         if (!empty($inputWali)) {
-            // 3. Cari Guru berdasarkan ID (G30) atau Nama (Tanpa NIP)
+            // 2. Cari Guru berdasarkan ID atau Nama
             $guru = GuruStaf::where(function($q) use ($inputWali) {
                     $q->where('id', $inputWali) 
                       ->orWhere('nama', 'LIKE', '%' . $inputWali . '%');
@@ -58,10 +50,8 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
                 return null;
             }
 
-            // 4. Cek apakah sudah jadi Wali Kelas
-            $sudahJadiWali = Kelas::where('wali_kelas_id', $guru->id)
-                ->where('tahun_ajaran_id', $tahunAktif->id)
-                ->exists();
+            // 3. Cek apakah sudah jadi Wali Kelas (Tanpa filter Tahun Ajaran sesuai permintaan)
+            $sudahJadiWali = Kelas::where('wali_kelas_id', $guru->id)->exists();
 
             if ($sudahJadiWali) {
                 $this->messages[] = "Baris [{$line}]: Conflict! Guru '{$guru->nama}' sudah menjabat di kelas lain.";
@@ -71,20 +61,18 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
             $waliKelasId = $guru->id;
         }
 
-        // 5. Cek Duplikasi Nama Kelas
+        // 4. Cek Duplikasi Nama Kelas
         $namaKelas = trim((string)($row['nama_kelas'] ?? ''));
-        $isDuplicate = Kelas::where('nama_kelas', $namaKelas)
-            ->where('tahun_ajaran_id', $tahunAktif->id)
-            ->exists();
+        $isDuplicate = Kelas::where('nama_kelas', $namaKelas)->exists();
 
         if ($isDuplicate) {
             $this->messages[] = "Baris [{$line}]: Skipped! Kelas '{$namaKelas}' sudah terdaftar.";
             return null;
         }
 
-        // 6. Simpan dengan Auto-Numbering ID (K001...)
+        // 5. Simpan dengan Auto-Numbering ID (K001...)
         try {
-            return DB::transaction(function () use ($namaKelas, $tahunAktif, $jurusan, $waliKelasId) {
+            return DB::transaction(function () use ($namaKelas, $jurusan, $waliKelasId) {
                 $lastKelas = Kelas::where('id', 'like', 'K%')
                     ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                     ->lockForUpdate()
@@ -98,7 +86,6 @@ class KelasImport implements ToModel, WithHeadingRow, WithValidation
                     'nama_kelas'      => $namaKelas,
                     'jurusan_id'      => $jurusan->id,
                     'wali_kelas_id'   => $waliKelasId,
-                    'tahun_ajaran_id' => $tahunAktif->id,
                     'is_active'       => 1,
                 ]);
             });

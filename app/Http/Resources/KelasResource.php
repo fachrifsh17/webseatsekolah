@@ -13,8 +13,8 @@ class KelasResource extends JsonResource
             'id'            => $this->id,
             'nama_kelas'    => $this->nama_kelas,
             'wali_kelas_id' => $this->wali_kelas_id,
+            'is_active'     => (bool) $this->is_active,
             
-            // Menampilkan jumlah siswa (menggunakan properti hasil withCount)
             'total_siswa'   => $this->siswa_count ?? 0,
 
             'wali_kelas' => $this->whenLoaded('waliKelas', function () {
