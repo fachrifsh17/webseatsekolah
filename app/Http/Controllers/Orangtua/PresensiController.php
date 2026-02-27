@@ -40,7 +40,8 @@ class PresensiController extends Controller
             $tahunTampil = $tahunAjaranId ? TahunAjaran::find($tahunAjaranId) : $tahunAktif;
             $perPage = $request->integer('per_page', 10);
             
-            $data = $query->with(['siswa', 'kelas'])->orderBy('tanggal', 'desc')->paginate($perPage);
+            // Menggunakan paginate pada query builder hasil join
+            $data = $query->orderBy('presensi.tanggal', 'desc')->paginate($perPage);
 
             return $this->formatResponse($data, $summary, $tahunTampil);
         } catch (Throwable $e) {
@@ -64,10 +65,23 @@ class PresensiController extends Controller
 
     private function buildQuery(array $siswaIds, $tahunAjaranId, Request $request)
     {
-        $query = Presensi::whereIn('siswa_id', $siswaIds);
+        // Penyesuaian ke query builder dengan join presensi_detail
+        $query = DB::table('presensi_detail')
+            ->join('presensi', 'presensi_detail.presensi_id', '=', 'presensi.id')
+            ->join('siswa', 'presensi_detail.siswa_id', '=', 'siswa.id')
+            ->leftJoin('kelas', 'presensi.kelas_id', '=', 'kelas.id')
+            ->whereIn('presensi_detail.siswa_id', $siswaIds)
+            ->select(
+                'presensi_detail.id',
+                'presensi_detail.status',
+                'presensi_detail.keterangan',
+                'presensi.tanggal',
+                'siswa.nama_lengkap as nama_siswa',
+                'kelas.nama_kelas'
+            );
 
         if ($tahunAjaranId) {
-            $query->where('tahun_ajaran_id', $tahunAjaranId);
+            $query->where('presensi.tahun_ajaran_id', $tahunAjaranId);
         }
 
         if ($request->filled('siswa_id')) {
@@ -77,7 +91,7 @@ class PresensiController extends Controller
                     'message' => 'Akses ditolak atau siswa tidak terdaftar di periode ini'
                 ], Response::HTTP_FORBIDDEN);
             }
-            $query->where('siswa_id', $request->siswa_id);
+            $query->where('presensi_detail.siswa_id', $request->siswa_id);
         }
 
         return $query;
@@ -85,11 +99,12 @@ class PresensiController extends Controller
 
     private function getSummary($query)
     {
+        // Hitung summary berdasarkan presensi_detail
         return (clone $query)->select(
-            DB::raw("CAST(SUM(CASE WHEN status = 'Hadir' THEN 1 ELSE 0 END) AS SIGNED) as hadir"),
-            DB::raw("CAST(SUM(CASE WHEN status = 'Izin' THEN 1 ELSE 0 END) AS SIGNED) as izin"),
-            DB::raw("CAST(SUM(CASE WHEN status = 'Sakit' THEN 1 ELSE 0 END) AS SIGNED) as sakit"),
-            DB::raw("CAST(SUM(CASE WHEN status = 'Alpa' THEN 1 ELSE 0 END) AS SIGNED) as alpa"),
+            DB::raw("CAST(SUM(CASE WHEN presensi_detail.status = 'Hadir' THEN 1 ELSE 0 END) AS SIGNED) as hadir"),
+            DB::raw("CAST(SUM(CASE WHEN presensi_detail.status = 'Izin' THEN 1 ELSE 0 END) AS SIGNED) as izin"),
+            DB::raw("CAST(SUM(CASE WHEN presensi_detail.status = 'Sakit' THEN 1 ELSE 0 END) AS SIGNED) as sakit"),
+            DB::raw("CAST(SUM(CASE WHEN presensi_detail.status = 'Alpa' THEN 1 ELSE 0 END) AS SIGNED) as alpa"),
             DB::raw("COUNT(*) as total_hari")
         )->first();
     }
@@ -114,8 +129,8 @@ class PresensiController extends Controller
             ],
             'data' => collect($data->items())->map(fn($item) => [
                 'id' => $item->id,
-                'nama_siswa' => $item->siswa?->nama_lengkap,
-                'kelas' => $item->kelas?->nama_kelas ?? '-',
+                'nama_siswa' => $item->nama_siswa,
+                'kelas' => $item->nama_kelas ?? '-',
                 'tanggal' => Carbon::parse($item->tanggal)->format('d-m-Y'),
                 'status' => $item->status,
                 'keterangan' => $item->keterangan,
@@ -124,6 +139,14 @@ class PresensiController extends Controller
                 'current_page' => $paginationData['current_page'],
                 'last_page'    => $paginationData['last_page'],
                 'total'        => $paginationData['total'],
+                'per_page'     => $paginationData['per_page'],
+            ],
+            // TAMBAHAN: Link Navigasi Pagination
+            'links' => [
+                'first' => $paginationData['first_page_url'],
+                'last'  => $paginationData['last_page_url'],
+                'prev'  => $paginationData['prev_page_url'],
+                'next'  => $paginationData['next_page_url'],
             ],
         ], Response::HTTP_OK);
     }
@@ -165,7 +188,18 @@ class PresensiController extends Controller
             ],
             'summary' => ['hadir' => 0, 'izin' => 0, 'sakit' => 0, 'alpa' => 0, 'total_hari' => 0],
             'data' => [],
-            'meta' => ['total' => 0]
+            'meta' => [
+                'current_page' => 1,
+                'last_page'    => 1,
+                'total'        => 0,
+                'per_page'     => 10,
+            ],
+            'links' => [
+                'first' => null,
+                'last'  => null,
+                'prev'  => null,
+                'next'  => null,
+            ],
         ], Response::HTTP_OK);
     }
 }

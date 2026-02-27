@@ -236,7 +236,7 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     
     Route::get('presensi/export', [AdminPresensi::class, 'export']); 
     Route::get('list-kelas', [AdminPresensi::class, 'listKelas']);
-    Route::get('list-siswa', [AdminPresensi::class, 'listSiswaPresensi']);
+    Route::get('list-siswa/{kelas_id}', [AdminPresensi::class, 'listSiswaPresensi']);
     Route::apiResource('presensi', AdminPresensi::class); 
     
     Route::get('presensi-guru-mapel/export', [PresensiGuruMapelController::class, 'export']); 
@@ -385,6 +385,7 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         Route::get('siswa/export', [WaliSiswa::class, 'export']); 
         Route::get('orangtua/export', [WaliOrtu::class, 'export']); 
         Route::get('presensi/export', [WaliPresensi::class, 'export']);
+        Route::get('list-siswa/{kelas_id}', [WaliPresensi::class, 'listSiswaPresensi']);
         Route::apiResource('siswa', WaliSiswa::class);
         Route::apiResource('orangtua', WaliOrtu::class);
         Route::apiResource('presensi', WaliPresensi::class);

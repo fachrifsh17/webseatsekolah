@@ -6,10 +6,8 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Symfony\Component\HttpFoundation\Response;
-use App\Models\Kelas;
-use App\Models\TahunAjaran;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB; // Tambahkan DB
+use Illuminate\Support\Facades\DB;
 
 class StorePresensiRequest extends FormRequest
 {
@@ -23,9 +21,8 @@ class StorePresensiRequest extends FormRequest
         $user = Auth::user();
         $guru = $user->guruStaf;
 
+        // Logika untuk menentukan kelas_id jika admin/wali kelas tidak mengirimkannya
         if ($guru && !$this->has('kelas_id')) {
-            // Kita cari kelas berdasarkan wali_kelas_id saja
-            // Karena satu guru biasanya hanya jadi wali di 1 kelas aktif
             $kelas = DB::table('kelas')
                 ->where('wali_kelas_id', $guru->id)
                 ->where('is_active', 1)
@@ -47,17 +44,19 @@ class StorePresensiRequest extends FormRequest
 
     public function rules(): array
     {
+        // Validasi struktur data yang dikirim dari frontend
         return [
+            // Data Header
             'kelas_id' => ['required', 'string'],
             'tanggal' => ['required', 'date'],
+            
+            // Data Detail
             'data_presensi' => ['required', 'array', 'min:1'],
-            'data_presensi.*.siswa_id' => ['required', 'string'],
-            'data_presensi.*.status' => ['required', 'in:Hadir,Izin,Sakit,Alpa'],
-            'data_presensi.*.keterangan' => ['nullable', 'string', 'max:255'],
+            'data_presensi.*.siswa_id' => ['required', 'string'], // Ini akan masuk ke presensi_detail
+            'data_presensi.*.status' => ['required', 'in:Hadir,Izin,Sakit,Alpa'], // Ini akan masuk ke presensi_detail
+            'data_presensi.*.keterangan' => ['nullable', 'string', 'max:255'], // Ini akan masuk ke presensi_detail
         ];
     }
-
-    // ... (sisanya messages, attributes, dan failedValidation tetap sama)
     
     public function messages(): array
     {

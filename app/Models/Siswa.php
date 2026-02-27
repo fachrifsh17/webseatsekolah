@@ -27,7 +27,6 @@ class Siswa extends Model
         'tempat_lahir',
         'tanggal_lahir',
         'jenis_kelamin',
-        // 'kelas_id', // <-- HAPUS INI karena kolomnya sudah kita drop di SQL
         'foto',
         'no_telp_siswa',
         'alamat',
@@ -68,26 +67,15 @@ class Siswa extends Model
         return $this->belongsTo(User::class, 'user_id', 'id');
     }
 
-    /**
-     * Mengambil semua riwayat kelas siswa (untuk sejarah)
-     */
     public function riwayatKelas(): HasMany
     {
         return $this->hasMany(SiswaKelas::class, 'siswa_id', 'id');
     }
 
-    /**
-     * Mengambil kelas yang sedang aktif saat ini saja
-     */
     public function kelasAktif(): HasOne
     {
         return $this->hasOne(SiswaKelas::class, 'siswa_id', 'id')->where('is_active', true);
     }
-
-    // public function kelas(): BelongsTo // <-- HAPUS/KOMENTAR relasi lama ini
-    // {
-    //     return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
-    // }
 
     public function orangtua(): BelongsToMany
     {
@@ -100,9 +88,10 @@ class Siswa extends Model
          ->withTimestamps();
     }
 
-    public function presensi(): HasMany
+    // RELASI DIUBAH MENJADI presensiDetail SESUAI PERMINTAAN
+    public function presensiDetail(): HasMany
     {
-        return $this->hasMany(Presensi::class, 'siswa_id');
+        return $this->hasMany(PresensiDetail::class, 'siswa_id');
     }
 
     public function poinSiswa(): HasMany

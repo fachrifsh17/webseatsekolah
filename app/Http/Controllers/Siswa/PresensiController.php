@@ -41,9 +41,10 @@ class PresensiController extends Controller
             $query = $this->buildQuery($siswaId, $tahunAjaranId, $request);
             $summary = $this->getSummary($query);
             
+            // PENYESUAIAN: Menghapus is_active agar bisa melihat riwayat kelas lama
             $riwayat = $siswa->riwayatKelas()
                 ->where('siswa_kelas.tahun_ajaran_id', $tahunAjaranId)
-                ->where('siswa_kelas.is_active', 1)
+                // ->where('siswa_kelas.is_active', 1) // Baris ini dihapus
                 ->with('kelas')
                 ->first();
 
@@ -83,27 +84,31 @@ class PresensiController extends Controller
 
     private function buildQuery($siswaId, $tahunAjaranId, Request $request)
     {
-        $query = Presensi::where('siswa_id', $siswaId);
+        // Query disesuaikan untuk mengambil dari detail presensi berdasarkan siswa_id
+        $query = DB::table('presensi_detail')
+            ->join('presensi', 'presensi_detail.presensi_id', '=', 'presensi.id')
+            ->where('presensi_detail.siswa_id', $siswaId)
+            ->select('presensi_detail.*', 'presensi.tanggal', 'presensi.tahun_ajaran_id', 'presensi.kelas_id');
 
         if ($tahunAjaranId) {
-            $query->where('tahun_ajaran_id', $tahunAjaranId);
+            $query->where('presensi.tahun_ajaran_id', $tahunAjaranId);
         }
 
         if ($request->filled('kelas_id')) {
-            $query->where('kelas_id', $request->kelas_id);
+            $query->where('presensi.kelas_id', $request->kelas_id);
         }
 
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
-                $q->where('status', 'like', "%{$search}%")
-                  ->orWhere('keterangan', 'like', "%{$search}%")
-                  ->orWhere('tanggal', 'like', "%{$search}%");
+                $q->where('presensi_detail.status', 'like', "%{$search}%")
+                  ->orWhere('presensi_detail.keterangan', 'like', "%{$search}%")
+                  ->orWhere('presensi.tanggal', 'like', "%{$search}%");
             });
         }
 
         if ($request->filled('tanggal')) {
-            $query->whereDate('tanggal', $request->tanggal);
+            $query->whereDate('presensi.tanggal', $request->tanggal);
         }
 
         return $query;
@@ -111,17 +116,19 @@ class PresensiController extends Controller
 
     private function getSummary($query)
     {
+        // Menghitung ringkasan berdasarkan query yang sudah disesuaikan
         return (clone $query)->select(
-            DB::raw("CAST(SUM(CASE WHEN status = 'Hadir' THEN 1 ELSE 0 END) AS SIGNED) as hadir"),
-            DB::raw("CAST(SUM(CASE WHEN status = 'Izin' THEN 1 ELSE 0 END) AS SIGNED) as izin"),
-            DB::raw("CAST(SUM(CASE WHEN status = 'Sakit' THEN 1 ELSE 0 END) AS SIGNED) as sakit"),
-            DB::raw("CAST(SUM(CASE WHEN status = 'Alpa' THEN 1 ELSE 0 END) AS SIGNED) as alpa"),
+            DB::raw("CAST(SUM(CASE WHEN presensi_detail.status = 'Hadir' THEN 1 ELSE 0 END) AS SIGNED) as hadir"),
+            DB::raw("CAST(SUM(CASE WHEN presensi_detail.status = 'Izin' THEN 1 ELSE 0 END) AS SIGNED) as izin"),
+            DB::raw("CAST(SUM(CASE WHEN presensi_detail.status = 'Sakit' THEN 1 ELSE 0 END) AS SIGNED) as sakit"),
+            DB::raw("CAST(SUM(CASE WHEN presensi_detail.status = 'Alpa' THEN 1 ELSE 0 END) AS SIGNED) as alpa"),
             DB::raw("COUNT(*) as total_hari")
         )->first();
     }
 
     private function mapData($paginator)
     {
+        // Mapping data dari hasil join
         return collect($paginator->items())->map(fn($item) => [
             'id' => $item->id,
             'tanggal' => Carbon::parse($item->tanggal)->format('Y-m-d'),

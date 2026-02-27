@@ -12,30 +12,39 @@ class PresensiResource extends JsonResource
     {
         $isWali = $request->is('*siswa-wali*');
 
+        // Pastikan relasi ke header ('presensi') dimuat (eager load) di controller
+        $header = $this->presensi; 
+
         return [
-            'id' => $this->id,
-            'tanggal' => $this->tanggal ? Carbon::parse($this->tanggal)->format('Y-m-d') : null,
+            'id' => $this->id, // ID dari presensi_detail
+            
+            // Mengambil tanggal dari tabel header (presensi)
+            'tanggal' => $header && $header->tanggal ? Carbon::parse($header->tanggal)->format('Y-m-d') : null,
+            
+            // Status dan Keterangan dari tabel detail (presensi_detail)
             'status' => $this->status,
             'keterangan' => $this->keterangan,
             
             $this->mergeWhen($isWali, [
                 'siswa_id' => (string) $this->siswa_id,
                 'nama_lengkap' => $this->siswa?->nama_lengkap,
-                // Mengambil langsung dari relasi kelas di model Presensi
-                'kelas' => $this->kelas?->nama_kelas,
+                // Mengambil dari relasi header ke kelas
+                'kelas' => $header?->kelas?->nama_kelas,
             ]),
 
             $this->mergeWhen(!$isWali, [
                 'siswa' => [
                     'id' => (string) $this->siswa_id,
                     'nama' => $this->siswa?->nama_lengkap,
-                    // Mengambil langsung dari relasi kelas di model Presensi
-                    'kelas' => $this->kelas?->nama_kelas,
+                    // Mengambil dari relasi header ke kelas
+                    'kelas' => $header?->kelas?->nama_kelas,
                 ],
-                'guru' => $this->guruStaf?->nama,
+                // Mengambil dari relasi header ke guru
+                'guru' => $header?->guruStaf?->nama,
                 'tahun_ajaran' => [
-                    'tahun' => $this->tahunAjaran?->nama ?? $this->tahunAjaran?->tahun_ajaran,
-                    'semester' => $this->tahunAjaran?->semester,
+                    // Mengambil dari relasi header ke tahun ajaran
+                    'tahun' => $header?->tahunAjaran?->nama ?? $header?->tahunAjaran?->tahun_ajaran,
+                    'semester' => $header?->tahunAjaran?->semester,
                 ],
             ]),
         ];
