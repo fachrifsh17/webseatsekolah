@@ -9,6 +9,7 @@ use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon; // Tambahkan ini untuk memproses tanggal
 
 class GuruImport implements ToModel, WithHeadingRow
 {
@@ -34,7 +35,7 @@ class GuruImport implements ToModel, WithHeadingRow
         if (!empty($nip)) {
             if (GuruStaf::where('nip', $nip)->exists()) {
                 $this->importMessages[] = "Baris {$this->rows}: Guru dengan NIP '{$nip}' sudah terdaftar.";
-                return null; // Stop baris ini, lanjut ke baris berikutnya
+                return null;
             }
         }
 
@@ -42,7 +43,7 @@ class GuruImport implements ToModel, WithHeadingRow
         if (!empty($nuptk)) {
             if (GuruStaf::where('nuptk', $nuptk)->exists()) {
                 $this->importMessages[] = "Baris {$this->rows}: Guru dengan NUPTK '{$nuptk}' sudah terdaftar.";
-                return null; // Stop baris ini, lanjut ke baris berikutnya
+                return null;
             }
         }
 
@@ -96,12 +97,33 @@ class GuruImport implements ToModel, WithHeadingRow
                 }
             }
 
-            // --- SIMPAN DATA GURU ---
+            // --- FUNGSI HELPER TANGGAL ---
+            $formattedTanggalLahir = null;
+            if(isset($row['tanggal_lahir'])) {
+                try {
+                    // Coba format YYYY-MM-DD
+                    $formattedTanggalLahir = Carbon::parse($row['tanggal_lahir'])->format('Y-m-d');
+                } catch (\Exception $e) {
+                    $formattedTanggalLahir = null;
+                }
+            }
+
+            // --- SIMPAN DATA GURU (TAMBAHKAN KOLOM BARU) ---
             return new GuruStaf([
                 'user_id'            => $newUserId,
                 'nip'                => $nip,
                 'nuptk'              => $nuptk,
                 'nama'               => $nama,
+                // Kolom Baru dari Excel
+                'no_hp'              => $row['no_hp'] ?? $row['telepon'] ?? null,
+                'email'              => $row['email'] ?? null,
+                'alamat_lengkap'     => $row['alamat_lengkap'] ?? $row['alamat'] ?? null,
+                'jenis_kelamin'      => $row['jenis_kelamin'] ?? $row['jk'] ?? null,
+                'tempat_lahir'       => $row['tempat_lahir'] ?? null,
+                'tanggal_lahir'      => $formattedTanggalLahir,
+                'agama'              => $row['agama'] ?? null,
+                'pendidikan_terakhir'=> $row['pendidikan_terakhir'] ?? $row['pendidikan'] ?? null,
+                // Kolom Lama
                 'jabatan_fungsional' => $row['jabatan_fungsional'] ?? $row['jabatan'] ?? null,
                 'status_kepegawaian' => $row['status_kepegawaian'] ?? $row['status'] ?? null,
                 'jurusan_id'         => $jurusanId,

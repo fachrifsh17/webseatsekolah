@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon; // Tambahkan ini di bagian atas
 
 class DataKontakSeeder extends Seeder
 {
@@ -12,12 +13,18 @@ class DataKontakSeeder extends Seeder
         DB::table('data_kontak')->updateOrInsert(
             ['id' => 1],
             [
-                'alamat_lengkap' => 'Jl. Pendidikan No. 55, Bantarkalong, Tasikmalaya, Jawa Barat',
+                // Ubah alamat_lengkap menjadi struktur kolom yang benar
+                'alamat_jalan' => 'Jl. Pendidikan No. 55',
+                'desa_kelurahan' => 'Bantarkalong',
+                'kecamatan' => 'Bantarkalong',
+                'kabupaten_kota' => 'Tasikmalaya',
+                'provinsi' => 'Jawa Barat',
+                
                 'telepon' => '0265-119382',
                 'email_resmi' => 'info@sekolahkita.sch.id',
-                // Menggunakan kode embed asli dari Google Maps sesuai gambar
                 'peta_embed_code' => '<iframe src=\'https://maps.google.com.smk/...\'></iframe>',
-                'updated_at' => '2026-01-01 22:24:13',
+                // Gunakan Carbon untuk waktu yang lebih baik
+                'updated_at' => Carbon::now(), 
             ]
         );
     }

@@ -202,7 +202,13 @@ class OrangtuaController extends Controller
                     $user = User::where('id', $orangtua->user_id)->first();
                     if ($user) {
                         $user->username = $validated['telepon'];
-                        $user->password = $validated['telepon'];
+                        $user->password = Hash::make($validated['telepon']);
+                        
+                        // Tambahan: Update status aktif user berdasarkan input orangtua
+                        if (isset($validated['is_active'])) {
+                            $user->is_active = $validated['is_active'];
+                        }
+                        
                         $user->save();
                     }
                 }

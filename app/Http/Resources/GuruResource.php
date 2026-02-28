@@ -24,6 +24,10 @@ class GuruResource extends JsonResource
             'status_kepegawaian' => $this->status_kepegawaian,
             'foto_url'           => $fullFotoUrl,
             
+            // Kolom Baru yang perlu ditampilkan secara publik/umum
+            'no_hp'              => $this->no_hp,
+            'jenis_kelamin'      => $this->jenis_kelamin,
+            
             'jurusan' => $this->whenLoaded('jurusan', function() {
                 return [
                     'id'           => $this->jurusan->id,
@@ -31,13 +35,19 @@ class GuruResource extends JsonResource
                 ];
             }),
 
-            // Data khusus Admin
+            // Data khusus Admin (Sensitif/Detail)
             $this->mergeWhen($isAdmin, [
-                'nuptk'      => $this->nuptk,
-                'is_active'  => (int) $this->is_active,
+                'nuptk'               => $this->nuptk,
+                'email'               => $this->email,
+                'alamat_lengkap'      => $this->alamat_lengkap,
+                'tempat_lahir'        => $this->tempat_lahir,
+                'tanggal_lahir'       => $this->tanggal_lahir,
+                'agama'               => $this->agama,
+                'pendidikan_terakhir' => $this->pendidikan_terakhir,
+                'is_active'           => (int) $this->is_active,
                 
-                // 2. User dibuat sangat simpel: Hanya Username & Foto
-                'user' => $this->whenLoaded('user', function() use ($fullFotoUrl) {
+                // User dibuat sangat simpel: Hanya Username
+                'user' => $this->whenLoaded('user', function() {
                     return [
                         'username' => $this->user->username,
                     ];

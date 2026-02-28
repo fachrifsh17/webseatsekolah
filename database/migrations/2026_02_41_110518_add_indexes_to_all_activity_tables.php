@@ -28,7 +28,13 @@ return new class extends Migration
 
         // 2. Tabel Presensi & Poin (Optimasi Riwayat)
         Schema::table('presensi_guru_mapel', function (Blueprint $table) { $table->index('tanggal'); });
-        Schema::table('presensi_siswa_detail', function (Blueprint $table) { $table->index('status'); });
+        
+        // --- DIPERBARUI: Indeks keterangan dihapus ---
+        Schema::table('presensi_detail', function (Blueprint $table) {
+            $table->index('status');
+            // $table->index(['keterangan(255)'], 'presensi_detail_keterangan_index'); // Ini dihapus
+        });
+        
         Schema::table('presensi', function (Blueprint $table) { $table->index('tanggal'); });
         Schema::table('poin_siswa', function (Blueprint $table) { $table->index('tanggal'); });
 
@@ -69,13 +75,8 @@ return new class extends Migration
         Schema::table('mata_pelajaran', function (Blueprint $table) {
             $table->index('nama_mapel');
             $table->index('is_active');
-            $table->index('tipe_mapel');     
+            $table->index('tipe_mapel');    
             $table->index('kategori_mapel'); 
-        });
-
-        Schema::table('kategori', function (Blueprint $table) {
-            $table->index('nama_kategori');
-            $table->index('is_active');
         });
 
         // 7. Tabel Relasi Siswa_Kelas
@@ -94,7 +95,13 @@ return new class extends Migration
 
         // Rollback Presensi
         Schema::table('presensi_guru_mapel', function (Blueprint $table) { $table->dropIndex(['tanggal']); });
-        Schema::table('presensi_siswa_detail', function (Blueprint $table) { $table->dropIndex(['status']); });
+        
+        // --- DIPERBARUI: Rollback untuk presensi_detail ---
+        Schema::table('presensi_detail', function (Blueprint $table) {
+            $table->dropIndex(['status']);
+            // $table->dropIndex('presensi_detail_keterangan_index'); // Ini dihapus
+        });
+        
         Schema::table('presensi', function (Blueprint $table) { $table->dropIndex(['tanggal']); });
         Schema::table('poin_siswa', function (Blueprint $table) { $table->dropIndex(['tanggal']); });
         Schema::table('guru_mapel', function (Blueprint $table) { $table->dropIndex(['hari']); });
@@ -112,7 +119,7 @@ return new class extends Migration
         Schema::table('jurusan', function (Blueprint $table) { $table->dropIndex(['is_active']); });
         Schema::table('kelas', function (Blueprint $table) { $table->dropIndex(['nama_kelas', 'is_active']); });
         Schema::table('mata_pelajaran', function (Blueprint $table) { $table->dropIndex(['nama_mapel', 'is_active', 'tipe_mapel', 'kategori_mapel']); });
-        Schema::table('kategori', function (Blueprint $table) { $table->dropIndex(['nama_kategori', 'is_active']); });
+        
         Schema::table('siswa_kelas', function (Blueprint $table) { $table->dropIndex(['is_active']); });
     }
 };

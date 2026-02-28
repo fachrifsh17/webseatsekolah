@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany; // Tambahkan ini
 
 class GuruStaf extends Model
 {
@@ -23,6 +24,14 @@ class GuruStaf extends Model
         'nip',
         'nuptk',
         'nama',
+        'no_hp',
+        'email',
+        'alamat_lengkap',
+        'jenis_kelamin',
+        'tempat_lahir',
+        'tanggal_lahir',
+        'agama',
+        'pendidikan_terakhir',
         'jabatan_fungsional',
         'status_kepegawaian',
         'foto',
@@ -34,6 +43,7 @@ class GuruStaf extends Model
         'user_id'    => 'string',
         'jurusan_id' => 'string',
         'is_active'  => 'boolean',
+        'tanggal_lahir' => 'date',
     ];
 
     protected static function boot()
@@ -69,9 +79,15 @@ class GuruStaf extends Model
         return $this->belongsTo(Jurusan::class, 'jurusan_id', 'id');
     }
 
-    public function kelas(): HasOne
+    /**
+     * Relasi ke Kelas melalui tabel pivot kelas_wali_kelas
+     */
+    public function kelas(): BelongsToMany
     {
-        return $this->hasOne(Kelas::class, 'wali_kelas_id', 'id');
+        // Diubah dari HasOne menjadi BelongsToMany
+        return $this->belongsToMany(Kelas::class, 'kelas_wali_kelas', 'guru_staf_id', 'kelas_id')
+                    ->withPivot('tahun_ajaran_id', 'is_active')
+                    ->withTimestamps();
     }
 
     public function guruMapel(): HasMany

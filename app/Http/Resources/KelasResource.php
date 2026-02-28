@@ -12,15 +12,27 @@ class KelasResource extends JsonResource
         return [
             'id'            => $this->id,
             'nama_kelas'    => $this->nama_kelas,
-            'wali_kelas_id' => $this->wali_kelas_id,
             'is_active'     => (bool) $this->is_active,
             
             'total_siswa'   => $this->siswa_count ?? 0,
 
+            // Data Tingkatan
+            'tingkatan' => $this->whenLoaded('tingkatan', function () {
+                return $this->tingkatan ? [
+                    'id'   => $this->tingkatan->id,
+                    'nama' => $this->tingkatan->nama_tingkatan,
+                ] : null;
+            }),
+
+            // Data Wali Kelas (diambil dari tabel pivot)
             'wali_kelas' => $this->whenLoaded('waliKelas', function () {
-                return $this->waliKelas ? [
-                    'id'   => $this->waliKelas->id,
-                    'nama' => $this->waliKelas->name ?? $this->waliKelas->nama ?? null,
+                // Asumsi: Kita hanya mengambil wali kelas yang aktif di tahun ajaran ini
+                $waliAktif = $this->waliKelas->where('pivot.is_active', true)->first();
+                
+                return $waliAktif ? [
+                    'id'   => $waliAktif->id,
+                    'nama' => $waliAktif->nama,
+                    'tahun_ajaran_id' => $waliAktif->pivot->tahun_ajaran_id,
                 ] : null;
             }),
 
@@ -28,14 +40,6 @@ class KelasResource extends JsonResource
                 return $this->jurusan ? [
                     'id'   => $this->jurusan->id,
                     'nama' => $this->jurusan->nama_jurusan ?? null,
-                ] : null;
-            }),
-
-            'tahun_ajaran' => $this->whenLoaded('tahunAjaran', function () {
-                return $this->tahunAjaran ? [
-                    'id'       => $this->tahunAjaran->id,
-                    'nama'     => $this->tahunAjaran->nama ?? null,
-                    'semester' => $this->tahunAjaran->semester ?? null,
                 ] : null;
             }),
 

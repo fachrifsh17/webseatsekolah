@@ -15,13 +15,13 @@ class UserSeeder extends Seeder
 
         $users = [
             [
-                'id' => 'USR001', // ID manual varchar(10)
+                'id' => 'U001', // ID manual varchar(10)
                 'username' => 'adminsekolah',
                 'password' => Hash::make('admin123'),
                 'role_name' => 'Admin',
             ],
             [
-                'id' => 'USR002',
+                'id' => 'U002',
                 'username' => 'gurukimia',
                 'password' => Hash::make('guru123'),
                 'role_name' => 'Guru',

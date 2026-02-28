@@ -10,52 +10,35 @@ class UserPolicy
 {
     use HandlesAuthorization;
 
-    /**
-     * Admin selalu memiliki akses penuh (Super Admin bypass).
-     */
     public function before(User $user, $capability)
     {
-        // Mengecek current_role atau role permanen Admin
-        if ($user->current_role === 'Admin' || $user->hasRole('Admin')) {
-            return true; 
+        if ($user->hasRole('Admin')) {
+            return true;
         }
     }
 
-    /**
-     * Logic untuk ganti role (Switch Role)
-     */
-    public function switchRole(User $user, $targetRole): bool
+    public function updateSelf(User $user, User $model): Response
     {
-        // Siswa dilarang berpindah role ke manapun (jika memang tidak punya role lain)
-        // Dan target role harus dimiliki oleh user di tabel relasi
-        if ($user->current_role === 'Siswa') {
-            return false;
-        }
-
-        return $user->roles()->where('role_name', $targetRole)->exists();
-    }
-
-    /**
-     * Update profil sendiri
-     */
-    public function update(User $user, User $model): Response
-    {
-        // 1. Pastikan yang diupdate adalah dirinya sendiri
         if ($user->id !== $model->id) {
-            return Response::deny('Anda hanya diizinkan mengubah data profil milik sendiri.');
+            return Response::deny('Anda tidak diizinkan mengubah data orang lain.');
         }
 
-        // 2. Cek current_role yang dilarang (Siswa)
+        return Response::allow();
+    }
+
+    public function switchRole(User $user, $targetRole): Response
+    {
+        if (!$user->roles()->where('role_name', $targetRole)->exists()) {
+            return Response::deny("Role $targetRole tidak ditemukan pada user Anda.");
+        }
+
         if ($user->current_role === 'Siswa') {
-            return Response::deny('Akses ditolak. Siswa tidak diizinkan mengubah profil melalui fitur ini.');
+            return Response::deny('Siswa tidak diizinkan berpindah role.');
         }
-
-        // 3. Izinkan jika role aktif adalah Guru atau Admin (Orang Tua sesuai kodingan lama Anda dilarang di update profil?)
-        // Jika Orang Tua juga boleh update, hapus blok ini. 
-        // Namun jika hanya Guru dan Admin:
-        $allowedRoles = ['Guru', 'Admin', 'Orangtua']; // Sesuaikan list ini
-        if (!in_array($user->current_role, $allowedRoles)) {
-            return Response::deny('Role Anda saat ini tidak memiliki izin untuk update profil.');
+        
+        $allowedRoles = ['Guru', 'Orangtua', 'Admin'];
+        if (!in_array($targetRole, $allowedRoles)) {
+            return Response::deny('Target role tidak valid.');
         }
 
         return Response::allow();
@@ -63,12 +46,11 @@ class UserPolicy
 
     public function view(User $user, User $model): bool
     {
-        // Semua role bisa melihat profilnya sendiri
         return $user->id === $model->id;
     }
 
-    // Method lainnya dibuat false secara default karena biasanya ditangani Admin
     public function viewAny(User $user): bool { return false; }
     public function create(User $user): bool { return false; }
+    public function update(User $user, User $model): bool { return false; }
     public function delete(User $user, User $model): bool { return false; }
 }

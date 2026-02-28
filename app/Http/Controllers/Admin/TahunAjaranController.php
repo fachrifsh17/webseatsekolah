@@ -82,12 +82,20 @@ class TahunAjaranController extends Controller
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
-            $tahunAjaran = DB::transaction(function () use ($request) {
+            $activeKurikulum = Kurikulum::where('is_active', true)->first();
+
+            if (!$activeKurikulum) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Kurikulum aktif tidak ditemukan. Wajib membuat kurikulum aktif terlebih dahulu.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $tahunAjaran = DB::transaction(function () use ($request, $activeKurikulum) {
                 $data = $request->validated();
 
                 if (empty($data['kurikulum_id'])) {
-                    $activeKurikulum = Kurikulum::where('is_active', true)->first();
-                    $data['kurikulum_id'] = $activeKurikulum?->id;
+                    $data['kurikulum_id'] = $activeKurikulum->id;
                 }
 
                 if (!empty($data['is_active']) && $data['is_active'] == true) {
@@ -135,12 +143,20 @@ class TahunAjaranController extends Controller
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
-            DB::transaction(function () use ($request, $tahunAjaran) {
+            $activeKurikulum = Kurikulum::where('is_active', true)->first();
+
+            if (!$activeKurikulum) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Kurikulum aktif tidak ditemukan. Wajib membuat kurikulum aktif terlebih dahulu.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            DB::transaction(function () use ($request, $tahunAjaran, $activeKurikulum) {
                 $data = $request->validated();
 
                 if (empty($data['kurikulum_id'])) {
-                    $activeKurikulum = Kurikulum::where('is_active', true)->first();
-                    $data['kurikulum_id'] = $activeKurikulum?->id;
+                    $data['kurikulum_id'] = $activeKurikulum->id;
                 }
 
                 if (!empty($data['is_active']) && $data['is_active'] == true) {

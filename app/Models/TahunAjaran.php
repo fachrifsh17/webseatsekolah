@@ -44,12 +44,21 @@ class TahunAjaran extends Model
     }
 
     /**
+     * Relasi ke riwayat wali kelas melalui tabel pivot kelas_wali_kelas
+     */
+    public function waliKelas(): BelongsToMany
+    {
+        // Menambahkan relasi ke wali kelas berdasarkan tahun ajaran
+        return $this->belongsToMany(GuruStaf::class, 'kelas_wali_kelas', 'tahun_ajaran_id', 'guru_staf_id')
+                    ->withPivot('kelas_id', 'is_active')
+                    ->withTimestamps();
+    }
+
+    /**
      * Relasi ke riwayat kelas (tabel pivot siswa_kelas)
-     * Ditambahkan untuk mendukung filter list periode di Controller
      */
     public function riwayatKelas(): HasMany
     {
-        // Pastikan nama model 'SiswaKelas' sesuai dengan nama file model pivot kamu
         return $this->hasMany(SiswaKelas::class, 'tahun_ajaran_id');
     }
 

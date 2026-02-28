@@ -12,41 +12,39 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('guru_staf', function (Blueprint $table) {
-            // Primary Key menggunakan string(10) sesuai SQL
             $table->string('id', 10)->primary();
-            
-            // Foreign Key ke tabel users
             $table->string('user_id', 10)->nullable();
             
-            // Data Identitas dengan Unique Constraint
-            $table->string('nip', 18)->unique()->nullable()->comment('NIP PNS/PPPK (Bisa NULL)');
-            $table->string('nuptk', 16)->unique()->nullable()->comment('NUPTK Pendidik/Tendik (Bisa NULL)');
+            $table->string('nip', 18)->unique()->nullable();
+            $table->string('nuptk', 16)->unique()->nullable();
             
             $table->string('nama', 100)->nullable();
-            $table->string('jabatan_fungsional', 100)->nullable()->comment('Contoh: Guru, Laboran, Staf TU');
-            $table->string('status_kepegawaian', 50)->nullable()->comment('PNS, Honorer, Yayasan');
-            $table->string('foto', 255)->nullable()->comment('Path/Nama file foto Guru/Staf');
             
-            // Relasi ke Jurusan
+            $table->string('no_hp', 20)->nullable();
+            $table->string('email', 100)->nullable();
+            $table->text('alamat_lengkap')->nullable();
+            $table->string('jenis_kelamin', 15)->nullable();
+            $table->string('tempat_lahir', 100)->nullable();
+            $table->date('tanggal_lahir')->nullable();
+            $table->string('agama', 20)->nullable();
+            $table->string('pendidikan_terakhir', 50)->nullable();
+            
+            $table->string('jabatan_fungsional', 100)->nullable();
+            $table->string('status_kepegawaian', 50)->nullable();
+            $table->string('foto', 255)->nullable();
+            
             $table->string('jurusan_id', 10)->nullable();
-            
-            // Status Aktif (boolean)
             $table->boolean('is_active')->default(true);
             
             $table->timestamps();
 
-            // --- SETTING CONSTRAINTS ---
-
-            // Relasi ke tabel jurusan
             $table->foreign('jurusan_id')->references('id')->on('jurusan')
                   ->onDelete('set null')->onUpdate('cascade');
 
-            // Relasi ke tabel users
             $table->foreign('user_id')->references('id')->on('users')
                   ->onDelete('set null')->onUpdate('cascade');
 
-            // Indexing untuk pencarian cepat
-            $table->index('is_active', 'idx_guru_staff_is_active');
+            $table->index('is_active');
         });
     }
 

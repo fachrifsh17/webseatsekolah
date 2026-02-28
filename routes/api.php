@@ -41,6 +41,8 @@ use App\Http\Controllers\Admin\{
     SettingController, KenaikanKelasController,
     PoinSiswaController as AdminPoin,
     DashboardController as AdminDashboard,
+    KelasWaliKelasController,
+    TingkatanController,
 };
 
 // --- Humas ---
@@ -196,6 +198,9 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::put('ppdb-link', [PpdbLinkController::class, 'update']);
     Route::get('kenaikan-kelas', [KenaikanKelasController::class, 'index']);
     Route::post('kenaikan-kelas/proses', [KenaikanKelasController::class, 'prosesMassal']);
+    Route::post('/kelas-wali-kelas/clone', [KelasWaliKelasController::class, 'cloneToNewYear']);
+    Route::apiResource('kelaswalikelas', KelasWaliKelasController::class,);
+    Route::apiResource('tingkatan', TingkatanController::class,);
     
     Route::apiResource('user', UserController::class);
     Route::apiResource('role', RoleController::class);

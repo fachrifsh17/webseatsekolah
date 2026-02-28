@@ -17,34 +17,36 @@ class StoreKelasRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama_kelas'      => ['required', 'string', 'max:50'],
-            'jurusan_id'      => ['required', 'string', 'exists:jurusan,id'],
-            'wali_kelas_id'   => ['nullable', 'string', 'exists:guru_staf,id'],
+            'nama_kelas'    => ['required', 'string', 'max:50'],
+            'jurusan_id'    => ['required', 'string', 'exists:jurusan,id'],
+            'tingkatan_id'  => ['required', 'string', 'exists:tingkatan,id'], // Ditambahkan
         ];
     }
 
     public function messages(): array
     {
         return [
-            'nama_kelas.required'      => 'Nama kelas tidak boleh kosong.',
-            'nama_kelas.string'        => 'Nama kelas harus berupa teks.',
-            'nama_kelas.max'           => 'Nama kelas maksimal 50 karakter.',
+            'nama_kelas.required'  => 'Nama kelas tidak boleh kosong.',
+            'nama_kelas.string'    => 'Nama kelas harus berupa teks.',
+            'nama_kelas.max'       => 'Nama kelas maksimal 50 karakter.',
 
-            'jurusan_id.required'      => 'Silakan pilih jurusan yang tersedia.',
-            'jurusan_id.string'        => 'Jurusan harus berupa ID string.',
-            'jurusan_id.exists'        => 'Jurusan yang dipilih tidak valid.',
+            'jurusan_id.required'  => 'Silakan pilih jurusan yang tersedia.',
+            'jurusan_id.string'    => 'Jurusan harus berupa ID string.',
+            'jurusan_id.exists'    => 'Jurusan yang dipilih tidak valid.',
 
-            'wali_kelas_id.string'     => 'Wali kelas harus berupa ID string.',
-            'wali_kelas_id.exists'     => 'Wali kelas yang dipilih tidak ditemukan.',
+            // Pesan error untuk tingkatan_id
+            'tingkatan_id.required'=> 'Silakan pilih tingkatan kelas.',
+            'tingkatan_id.string'  => 'Tingkatan harus berupa ID string.',
+            'tingkatan_id.exists'  => 'Tingkatan yang dipilih tidak valid.',
         ];
     }
 
     public function attributes(): array
     {
         return [
-            'nama_kelas'      => 'Nama kelas',
-            'jurusan_id'      => 'Jurusan',
-            'wali_kelas_id'   => 'Wali kelas',
+            'nama_kelas'   => 'Nama kelas',
+            'jurusan_id'   => 'Jurusan',
+            'tingkatan_id' => 'Tingkatan', // Ditambahkan
         ];
     }
 

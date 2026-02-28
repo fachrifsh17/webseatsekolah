@@ -64,6 +64,11 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
             'NIP',
             'NUPTK',
             'NAMA LENGKAP',
+            'JENIS KELAMIN',
+            'TEMPAT LAHIR',
+            'TANGGAL LAHIR',
+            'AGAMA',
+            'PENDIDIKAN TERAKHIR',
             'JABATAN FUNGSIONAL',
             'STATUS KEPEGAWAIAN',
             'JURUSAN',
@@ -78,6 +83,11 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
             $guru->nip ? "'" . $guru->nip : '-',
             $guru->nuptk ? "'" . $guru->nuptk : '-',
             $guru->nama,
+            $guru->jenis_kelamin == 'L' ? 'Laki-laki' : 'Perempuan',
+            $guru->tempat_lahir,
+            $guru->tanggal_lahir ? Carbon::parse($guru->tanggal_lahir)->format('d-m-Y') : '-',
+            $guru->agama,
+            $guru->pendidikan_terakhir,
             $guru->jabatan_fungsional,
             $guru->status_kepegawaian,
             $guru->jurusan->nama_jurusan ?? '-',
@@ -88,9 +98,9 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
     public function styles(Worksheet $sheet)
     {
         $lastRow = $sheet->getHighestRow();
-        $lastCol = 'H';
+        $lastCol = 'M';
 
-        $sheet->getStyle('A11:H11')->applyFromArray([
+        $sheet->getStyle('A11:M11')->applyFromArray([
             'font' => ['bold' => true],
             'alignment' => [
                 'horizontal' => Alignment::HORIZONTAL_CENTER,
@@ -112,7 +122,9 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
 
         if ($lastRow >= 12) {
             $sheet->getStyle("A12:A{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle("H12:H{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("E12:E{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("G12:G{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("M12:M{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         }
     }
 
@@ -121,7 +133,7 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
-                $lastCol = 'H';
+                $lastCol = 'M';
                 $lastRow = $sheet->getHighestRow();
 
                 $kepsek = DB::table('struktur_jabatan')
@@ -165,34 +177,37 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $ttgRow = $lastRow + 3;
-                $sheet->mergeCells("F{$ttgRow}:{$lastCol}{$ttgRow}");
+                $ttgColStart = 'J';
+                $ttgColEnd = 'M';
+                
+                $sheet->mergeCells("{$ttgColStart}{$ttgRow}:{$ttgColEnd}{$ttgRow}");
                 $lokasiTtd = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
-                $sheet->setCellValue("F{$ttgRow}", $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
-                $sheet->getStyle("F{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->setCellValue("{$ttgColStart}{$ttgRow}", $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
+                $sheet->getStyle("{$ttgColStart}{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $ttgRow++;
-                $sheet->mergeCells("F{$ttgRow}:{$lastCol}{$ttgRow}");
-                $sheet->setCellValue("F{$ttgRow}", "Menyetujui,\nKepala Sekolah");
-                $sheet->getStyle("F{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
-                $sheet->getStyle("F{$ttgRow}")->getFont()->setBold(true);
+                $sheet->mergeCells("{$ttgColStart}{$ttgRow}:{$ttgColEnd}{$ttgRow}");
+                $sheet->setCellValue("{$ttgColStart}{$ttgRow}", "Menyetujui,\nKepala Sekolah");
+                $sheet->getStyle("{$ttgColStart}{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
+                $sheet->getStyle("{$ttgColStart}{$ttgRow}")->getFont()->setBold(true);
 
                 $namaRow = $ttgRow + 4;
-                $sheet->mergeCells("A{$namaRow}:B{$namaRow}");
+                $sheet->mergeCells("A{$namaRow}:C{$namaRow}");
                 $sheet->setCellValue("A{$namaRow}", "( ____________________ )"); 
                 
-                $sheet->mergeCells("F{$namaRow}:{$lastCol}{$namaRow}");
-                $sheet->setCellValue("F{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
+                $sheet->mergeCells("{$ttgColStart}{$namaRow}:{$ttgColEnd}{$namaRow}");
+                $sheet->setCellValue("{$ttgColStart}{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
                 
-                $sheet->getStyle("A{$namaRow}:{$lastCol}{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle("A{$namaRow}:{$lastCol}{$namaRow}")->getFont()->setBold(true);
+                $sheet->getStyle("A{$namaRow}:{$ttgColEnd}{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A{$namaRow}:{$ttgColEnd}{$namaRow}")->getFont()->setBold(true);
 
                 $nipRow = $namaRow + 1;
-                $sheet->mergeCells("A{$nipRow}:B{$nipRow}");
+                $sheet->mergeCells("A{$nipRow}:C{$nipRow}");
                 $sheet->setCellValue("A{$nipRow}", "NIP. ...........................");
                 
-                $sheet->mergeCells("F{$nipRow}:{$lastCol}{$nipRow}");
-                $sheet->setCellValue("F{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
-                $sheet->getStyle("A{$nipRow}:{$lastCol}{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->mergeCells("{$ttgColStart}{$nipRow}:{$ttgColEnd}{$nipRow}");
+                $sheet->setCellValue("{$ttgColStart}{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
+                $sheet->getStyle("A{$nipRow}:{$ttgColEnd}{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $footerRow = $nipRow + 2; 
                 $sheet->setCellValue("A{$footerRow}", "Dicetak pada: " . Carbon::now()->format('d/m/Y H:i'));

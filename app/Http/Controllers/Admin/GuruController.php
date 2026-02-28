@@ -273,7 +273,7 @@ class GuruController extends Controller
         }
     }
 
-    public function update(UpdateGuruRequest $request, ?GuruStaf $guru): JsonResponse
+   public function update(UpdateGuruRequest $request, ?GuruStaf $guru): JsonResponse
     {
         if (!$guru) {
             return response()->json([
@@ -312,12 +312,25 @@ class GuruController extends Controller
             DB::transaction(function () use ($guru, $validated) {
                 $guru->update($validated);
 
-                if (!empty($validated['nip']) && $guru->user) {
-                    $newNip = trim($validated['nip']);
-                    $guru->user->update([
-                        'username' => $newNip,
-                        'password' => Hash::make($newNip)
-                    ]);
+                if ($guru->user) {
+                    $userData = [];
+                    
+                    if (isset($validated['is_active']) && $validated['is_active'] == 0) {
+                        $userData['is_active'] = 0;
+                    } 
+                    elseif (isset($validated['is_active']) && $validated['is_active'] == 1) {
+                        $userData['is_active'] = 1;
+                    }
+
+                    if (!empty($validated['nip'])) {
+                        $newNip = trim($validated['nip']);
+                        $userData['username'] = $newNip;
+                        $userData['password'] = Hash::make($newNip);
+                    }
+
+                    if (!empty($userData)) {
+                        $guru->user->update($userData);
+                    }
                 }
             });
 
@@ -356,24 +369,32 @@ class GuruController extends Controller
 
         try {
             DB::transaction(function () use ($guru) {
-                $guru->update(['is_active' => 0]);
-                
-                if ($guru->user_id) {
-                    User::where('id', $guru->user_id)->update(['is_active' => 0]);
+                $fotoPath = $guru->foto;
+                $userId = $guru->user_id;
+
+                if ($userId) {
+                    DB::table('user_roles')->where('user_id', $userId)->delete();
+                    User::where('id', $userId)->delete();
+                }
+
+                $guru->delete();
+
+                if ($fotoPath) {
+                    Storage::disk('public')->delete($fotoPath);
                 }
             });
 
             return response()->json([
                 'success'      => true,
-                'message'      => 'Data guru berhasil dinonaktifkan',
-                'notification' => 'Berhasil dinonaktifkan',
+                'message'      => 'Data guru berhasil dihapus',
+                'notification' => 'Berhasil dihapus',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to deactivate guru', ['error' => $e->getMessage()]);
+            Log::error('Failed to delete guru', ['error' => $e->getMessage()]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menonaktifkan data guru',
+                'message' => 'Gagal menghapus data guru',
                 'errors'  => ['exception' => [$e->getMessage()]],
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }

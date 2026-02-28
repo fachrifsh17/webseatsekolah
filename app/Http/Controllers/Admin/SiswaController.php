@@ -79,7 +79,6 @@ class SiswaController extends Controller
 
         $perPage = $request->get('per_page', $request->filled('search') ? 10 : 20);
         
-        // Perubahan: Menggunakan orderByRaw agar case-insensitive (A-Z)
         $items = $query->orderByRaw('LOWER(nama_lengkap) ASC')->paginate($perPage);
         $paginationData = $items->toArray();
 
@@ -118,7 +117,6 @@ class SiswaController extends Controller
         $query = Siswa::query()->with(['riwayatKelas.kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
         
-        // Perubahan: Menggunakan orderByRaw agar hasil export juga case-insensitive
         $query->orderByRaw('LOWER(nama_lengkap) ASC');
 
         if ($request->filled('tahun_ajaran_id')) {
@@ -313,6 +311,12 @@ class SiswaController extends Controller
 
                 $siswa->update($data);
 
+                if (isset($data['is_active']) && $data['is_active'] == 0) {
+                    SiswaKelas::where('siswa_id', $siswa->id)
+                        ->where('is_active', 1)
+                        ->update(['is_active' => 0]);
+                }
+
                 if (isset($validated['kelas_id']) && $tahunAktif) {
                     SiswaKelas::where('siswa_id', $siswa->id)
                         ->where('is_active', 1)
@@ -380,7 +384,11 @@ class SiswaController extends Controller
                 SiswaKelas::where('siswa_id', $siswa->id)->delete();
                 $siswa->delete();
                 if ($userId) {
-                    User::where('id', $userId)->delete();
+                    $user = User::find($userId);
+                    if ($user) {
+                        $user->is_active = 0;
+                        $user->save();
+                    }
                 }
             });
 
@@ -390,7 +398,7 @@ class SiswaController extends Controller
 
             return response()->json([
                 'success' => true, 
-                'message' => 'Data siswa berhasil dihapus'
+                'message' => 'Data siswa berhasil dinonaktifkan'
             ], Response::HTTP_OK);
 
         } catch (Throwable $e) {

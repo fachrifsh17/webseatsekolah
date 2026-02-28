@@ -22,8 +22,6 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         $user = $request->user();
-
-        // Menggunakan Policy untuk memastikan user boleh melihat datanya sendiri
         $this->authorize('view', $user);
 
         $user->load([
@@ -51,9 +49,6 @@ class AuthController extends Controller
         ], Response::HTTP_OK);
     }
 
-    /**
-     * Switch Role Aktif
-     */
     public function switchRole(Request $request): JsonResponse
     {
         $request->validate([
@@ -63,10 +58,14 @@ class AuthController extends Controller
         $user = $request->user();
         $targetRole = $request->role;
 
-        // --- PENYESUAIAN POLICY ---
-        // Memanggil UserPolicy@switchRole
-        // Jika user adalah 'Siswa' atau tidak memiliki role target, 
-        // Laravel otomatis mengembalikan 403 Forbidden.
+        $hasRole = $user->roles()->where('role_name', $targetRole)->exists();
+        if (!$hasRole) {
+            return response()->json([
+                'success' => false,
+                'message' => "Role $targetRole tidak ditemukan pada user."
+            ], Response::HTTP_FORBIDDEN);
+        }
+
         $this->authorize('switchRole', [$user, $targetRole]);
 
         try {
@@ -87,8 +86,6 @@ class AuthController extends Controller
         }
     }
 
-    // ... refresh dan logout tetap sama ...
-    
     public function refresh(Request $request): JsonResponse
     {
         $request->validate([

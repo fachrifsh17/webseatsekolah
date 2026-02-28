@@ -21,8 +21,8 @@ class Kelas extends Model
         'id',
         'nama_kelas',
         'jurusan_id',
-        'wali_kelas_id',
-        'is_active', // Tambahkan ini agar bisa diisi/diupdate
+        'tingkatan_id', // Ditambahkan: untuk relasi ke tabel tingkatan
+        'is_active',
     ];
 
     protected static function boot()
@@ -38,9 +38,24 @@ class Kelas extends Model
         });
     }
 
-    public function waliKelas(): BelongsTo
+    /**
+     * Relasi ke GuruStaf melalui tabel pivot kelas_wali_kelas
+     */
+    public function waliKelas(): BelongsToMany
     {
-        return $this->belongsTo(GuruStaf::class, 'wali_kelas_id');
+        // Mengubah dari belongsTo menjadi belongsToMany
+        return $this->belongsToMany(GuruStaf::class, 'kelas_wali_kelas', 'kelas_id', 'guru_staf_id')
+                    ->withPivot('tahun_ajaran_id', 'is_active')
+                    ->withTimestamps();
+    }
+
+    /**
+     * Relasi ke tabel Tingkatan (lookup table)
+     */
+    public function tingkatan(): BelongsTo
+    {
+        // Menambahkan relasi ini
+        return $this->belongsTo(Tingkatan::class, 'tingkatan_id');
     }
 
     public function jurusan(): BelongsTo
