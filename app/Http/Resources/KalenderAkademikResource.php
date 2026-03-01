@@ -26,11 +26,15 @@ class KalenderAkademikResource extends JsonResource
 
             'kategori'        => $this->kategori,
             
-            'tahun_ajaran'    => $this->tahunAjaran->nama ?? null,
-            'semester'        => $this->tahunAjaran->semester ?? null,
+            // --- PERUBAHAN DI SINI ---
+            // Mengambil dari relasi semester
+            'semester'        => $this->semester->nama ?? null,
+            // Jika ingin menampilkan nama tahun ajaran melalui semester
+            'tahun_ajaran'    => $this->semester->tahunAjaran->nama ?? null,
 
             $this->mergeWhen($isAdmin, [
-                'tahun_ajaran_id' => $this->tahun_ajaran_id,
+                // --- PERUBAHAN DI SINI ---
+                'semester_id'     => $this->semester_id,
                 'created_at'      => $this->created_at?->format('Y-m-d H:i:s'),
                 'updated_at'      => $this->updated_at?->format('Y-m-d H:i:s'),
             ]),

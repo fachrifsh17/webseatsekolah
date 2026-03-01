@@ -77,7 +77,7 @@
             font-size: 9pt;
             line-height: 1.4;
         }
-        .spacer-ttd { height: 45px; } /* Ruang untuk tanda tangan */
+        .spacer-ttd { height: 60px; position: relative; } /* Ruang untuk tanda tangan */
     </style>
 </head>
 <body>
@@ -163,7 +163,11 @@
                     <br>
                     Mengetahui,<br>
                     Waka Kurikulum
-                    <div class="spacer-ttd"></div>
+                    <div class="spacer-ttd">
+                        @if($waka && $waka->file_ttd)
+                            <img src="{{ public_path('storage/' . $waka->file_ttd) }}" style="max-height: 70px; max-width: 100%; position: absolute; left: 50%; transform: translateX(-50%); top: -5px;">
+                        @endif
+                    </div>
                     <div class="text-bold underline">( {{ strtoupper($waka->nama ?? '____________________') }} )</div>
                     <div>NIP. {{ $waka->nip ?? '...........................' }}</div>
                 </td>
@@ -171,7 +175,11 @@
                     {{ strtoupper($kontak->kabupaten_kota ?? 'TASIKMALAYA') }}, {{ $tanggal_cetak }}<br>
                     Menyetujui,<br>
                     Kepala Sekolah
-                    <div class="spacer-ttd"></div>
+                    <div class="spacer-ttd">
+                        @if($ks && $ks->file_ttd)
+                            <img src="{{ public_path('storage/' . $ks->file_ttd) }}" style="max-height: 70px; max-width: 100%; position: absolute; left: 50%; transform: translateX(-50%); top: -5px;">
+                        @endif
+                    </div>
                     <div class="text-bold underline">( {{ strtoupper($ks->nama ?? '____________________') }} )</div>
                     <div>NIP. {{ $ks->nip ?? '...........................' }}</div>
                 </td>

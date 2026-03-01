@@ -11,15 +11,16 @@ return new class extends Migration
         Schema::create('presensi_guru_mapel', function (Blueprint $table) {
             $table->id(); // ID auto-increment (BigInt)
 
-            // --- PERBAIKAN: Sesuaikan dengan tipe data induknya ---
-            
             // guru_mapel menggunakan BigInt (id)
             $table->unsignedBigInteger('guru_mapel_id'); 
             
             // Tabel induk lainnya menggunakan String (VARCHAR 10)
             $table->string('kelas_id', 10)->nullable();
             $table->string('mata_pelajaran_id', 10)->nullable();
-            $table->string('tahun_ajaran_id', 10)->nullable();
+            
+            // --- PERUBAHAN DI SINI ---
+            // Foreign Key diubah ke tabel semesters (bigint)
+            $table->foreignId('semester_id')->nullable()->constrained('semesters')->onDelete('set null');
             
             $table->date('tanggal');
             $table->string('jam_masuk', 10)->nullable();
@@ -44,9 +45,6 @@ return new class extends Migration
 
             $table->foreign('jam_keluar', 'fk_pgm_jamkeluar')
                   ->references('id')->on('jam_sekolah')->onDelete('cascade');
-
-            $table->foreign('tahun_ajaran_id', 'fk_presensi_mapel_ta')
-                  ->references('id')->on('tahun_ajaran')->onDelete('set null');
             
             // --- Indexes (Kunci untuk optimasi query) ---
             $table->index('tanggal', 'idx_presensi_tanggal');

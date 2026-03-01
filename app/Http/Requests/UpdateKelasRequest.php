@@ -19,7 +19,9 @@ class UpdateKelasRequest extends FormRequest
         return [
             'nama_kelas'   => ['sometimes', 'required', 'string', 'max:50'],
             'jurusan_id'   => ['sometimes', 'required', 'string', 'exists:jurusan,id'],
-            'tingkatan_id' => ['sometimes', 'required', 'string', 'exists:tingkatan,id'], // Ditambahkan
+            // --- PENYESUAIAN DI SINI ---
+            // 'string' diubah menjadi 'integer'
+            'tingkatan_id' => ['sometimes', 'required', 'integer', 'exists:tingkatan,id'], 
         ];
     }
 
@@ -34,9 +36,9 @@ class UpdateKelasRequest extends FormRequest
             'jurusan_id.string'    => 'Jurusan harus berupa ID string.',
             'jurusan_id.exists'    => 'Jurusan yang dipilih tidak valid.',
 
-            // Pesan error untuk tingkatan_id
+            // --- PENYESUAIAN DI SINI ---
             'tingkatan_id.required'=> 'Tingkatan wajib dipilih.',
-            'tingkatan_id.string'  => 'Tingkatan harus berupa ID string.',
+            'tingkatan_id.integer' => 'Tingkatan harus berupa angka (ID integer).',
             'tingkatan_id.exists'  => 'Tingkatan yang dipilih tidak valid.',
         ];
     }
@@ -46,7 +48,7 @@ class UpdateKelasRequest extends FormRequest
         return [
             'nama_kelas'   => 'Nama kelas',
             'jurusan_id'   => 'Jurusan',
-            'tingkatan_id' => 'Tingkatan', // Ditambahkan
+            'tingkatan_id' => 'Tingkatan',
         ];
     }
 

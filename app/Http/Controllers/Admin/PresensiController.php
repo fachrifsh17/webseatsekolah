@@ -186,7 +186,7 @@ class PresensiController extends Controller
             }
 
             $kelas = Kelas::where('is_active', 1)
-                ->select('id', 'nama_kelas', 'wali_kelas_id')
+                ->select('id', 'nama_kelas')
                 ->withCount(['riwayatKelas as siswa_count' => function($q) use ($context) {
                     $q->where('tahun_ajaran_id', $context['ta']->id);
                 }])
@@ -319,7 +319,10 @@ class PresensiController extends Controller
             }
 
             DB::transaction(function () use ($dataInput, $tanggalInput, $taActive, $requestKelasId, $siswaIdWajib) {
-                $waliKelasId = Kelas::where('id', $requestKelasId)->value('wali_kelas_id');
+                
+                $kelas = Kelas::findOrFail($requestKelasId);
+                $waliKelas = $kelas->waliKelas()->wherePivot('is_active', 1)->first();
+                $waliKelasId = $waliKelas ? $waliKelas->id : null;
                 
                 $presensiHeader = Presensi::updateOrCreate(
                     [

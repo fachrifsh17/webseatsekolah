@@ -14,6 +14,7 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 
 class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings
 {
@@ -281,15 +282,15 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
                 }
 
                 $ttdRow = (isset($totalRow) ? $totalRow : $lastRow) + 3;
-                $kepsek = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')->where('jabatans.slug', 'kepala-sekolah')->select('guru_staf.nama', 'guru_staf.nip')->first();
-                $kurikulum = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')->where('jabatans.slug', 'waka-kurikulum')->select('guru_staf.nama', 'guru_staf.nip')->first();
+                $kepsek = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')->where('jabatans.slug', 'kepala-sekolah')->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')->first();
+                $kurikulum = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')->where('jabatans.slug', 'waka-kurikulum')->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')->first();
 
                 if (in_array($this->role, ['admin', 'kesiswaan'])) {
-                    $labelKiri = "Waka Kurikulum,"; $namaKiri = $kurikulum->nama ?? '................'; $nipKiri = $kurikulum->nip ?? '................';
-                    $labelKanan = "Kepala Sekolah,"; $namaKanan = $kepsek->nama ?? '................'; $nipKanan = $kepsek->nip ?? '................';
+                    $labelKiri = "Waka Kurikulum,"; $namaKiri = $kurikulum->nama ?? '................'; $nipKiri = $kurikulum->nip ?? '................'; $ttdKiri = $kurikulum->file_ttd ?? null;
+                    $labelKanan = "Kepala Sekolah,"; $namaKanan = $kepsek->nama ?? '................'; $nipKanan = $kepsek->nip ?? '................'; $ttdKanan = $kepsek->file_ttd ?? null;
                 } else {
-                    $labelKiri = "Guru Mata Pelajaran,"; $namaKiri = $namaGuru; $nipKiri = $nipGuru;
-                    $labelKanan = "Waka Kurikulum,"; $namaKanan = $kurikulum->nama ?? '................'; $nipKanan = $kurikulum->nip ?? '................';
+                    $labelKiri = "Guru Mata Pelajaran,"; $namaKiri = $namaGuru; $nipKiri = $nipGuru; $ttdKiri = null;
+                    $labelKanan = "Waka Kurikulum,"; $namaKanan = $kurikulum->nama ?? '................'; $nipKanan = $kurikulum->nip ?? '................'; $ttdKanan = $kurikulum->file_ttd ?? null;
                 }
 
                 $sheet->mergeCells("A{$ttdRow}:D{$ttdRow}"); $sheet->setCellValue("A" . $ttdRow, "Mengetahui,");
@@ -302,6 +303,24 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
                 $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 1) . ":{$lastCol}" . ($ttdRow + 1)); $sheet->setCellValue($startColTTDKanan . ($ttdRow + 1), $labelKanan);
                 $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 5) . ":{$lastCol}" . ($ttdRow + 5)); $sheet->setCellValue($startColTTDKanan . ($ttdRow + 5), "( " . strtoupper($namaKanan) . " )");
                 $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 6) . ":{$lastCol}" . ($ttdRow + 6)); $sheet->setCellValue($startColTTDKanan . ($ttdRow + 6), "NIP. " . $nipKanan);
+
+                if ($ttdKiri && file_exists(storage_path('app/public/' . $ttdKiri))) {
+                    $drawingKiri = new Drawing();
+                    $drawingKiri->setName('TTD Kiri');
+                    $drawingKiri->setPath(storage_path('app/public/' . $ttdKiri));
+                    $drawingKiri->setHeight(50);
+                    $drawingKiri->setCoordinates('B' . ($ttdRow + 2));
+                    $drawingKiri->setWorksheet($sheet->getDelegate());
+                }
+
+                if ($ttdKanan && file_exists(storage_path('app/public/' . $ttdKanan))) {
+                    $drawingKanan = new Drawing();
+                    $drawingKanan->setName('TTD Kanan');
+                    $drawingKanan->setPath(storage_path('app/public/' . $ttdKanan));
+                    $drawingKanan->setHeight(50);
+                    $drawingKanan->setCoordinates($startColTTDKanan . ($ttdRow + 2));
+                    $drawingKanan->setWorksheet($sheet->getDelegate());
+                }
 
                 $sheet->getStyle("A{$ttdRow}:{$lastCol}" . ($ttdRow + 6))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A" . ($ttdRow + 5) . ":{$lastCol}" . ($ttdRow + 5))->getFont()->setBold(true);

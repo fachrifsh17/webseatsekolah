@@ -15,8 +15,8 @@ class PoinSiswa extends Model
     protected $fillable = [
         'siswa_id',
         'guru_staf_id',
-        'kelas_id', // Tambahkan ini
-        'tahun_ajaran_id',
+        'kelas_id',
+        'semester_id', // --- PERUBAHAN DI SINI ---
         'indikator',
         'poin_positif',
         'poin_negatif',
@@ -49,15 +49,16 @@ class PoinSiswa extends Model
         return $this->guruStaf();
     }
 
-    // Tambahkan relasi ke Kelas
     public function kelas(): BelongsTo
     {
         return $this->belongsTo(Kelas::class, 'kelas_id');
     }
 
-    public function tahunAjaran(): BelongsTo
+    // --- PERUBAHAN DI SINI ---
+    // Nama fungsi dan model yang dirujuk diubah ke Semester
+    public function semester(): BelongsTo
     {
-        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id');
+        return $this->belongsTo(Semester::class, 'semester_id');
     }
 
     public function getTotalPoinAttribute(): int

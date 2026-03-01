@@ -16,13 +16,16 @@ class PoinSiswaResource extends JsonResource
                 'id'    => $this->siswa_id,
                 'nama'  => $this->siswa?->nama_lengkap ?? $this->siswa?->nama ?? 'N/A',
                 'nis'   => $this->siswa?->nis ?? '-',
+                // Asumsi relasi kelasAktif merujuk ke semester_id sekarang
                 'kelas' => $this->siswa?->kelasAktif?->kelas?->nama_kelas ?? 'Tanpa Kelas',
             ],
             'guru_pelapor' => [
                 'id'   => $this->guru_staf_id,
                 'nama' => $this->guruStaf?->nama ?? 'Sistem',
             ],
-            'tahun_ajaran' => $this->tahunAjaran?->nama ?? $this->tahunAjaran?->tahun_ajaran ?? '-',
+            // --- PERUBAHAN DI SINI ---
+            'semester' => $this->semester?->nama ?? '-',
+            
             'indikator'    => $this->indikator,
             'poin_positif' => (int) ($this->poin_positif ?? 0),
             'poin_negatif' => (int) ($this->poin_negatif ?? 0),

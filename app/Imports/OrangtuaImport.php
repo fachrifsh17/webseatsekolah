@@ -5,6 +5,7 @@ namespace App\Imports;
 use App\Models\Orangtua;
 use App\Models\User;
 use App\Models\Siswa;
+use App\Models\Semester;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -17,6 +18,10 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
 
     public function collection(Collection $rows)
     {
+        // Mendapatkan ID Semester yang sedang aktif
+        $activeSemester = Semester::where('is_active', true)->first();
+        $activeSemesterId = $activeSemester ? $activeSemester->id : null;
+
         foreach ($rows as $index => $row) {
             $line = $index + 2;
 
@@ -32,7 +37,8 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
             }
 
             try {
-                DB::transaction(function () use ($row, $line) {
+                DB::transaction(function () use ($row, $line, $activeSemesterId) {
+                    // Generate User ID otomatis (U001, U002, dst)
                     $lastUser = User::where('id', 'like', 'U%')
                         ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                         ->lockForUpdate()->first();
@@ -49,11 +55,12 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
 
                     DB::table('user_roles')->insert([
                         'user_id'    => $newUserId,
-                        'role_id'    => 'R004',
+                        'role_id'    => 'R004', // Asumsi R004 adalah role Orang Tua
                         'created_at' => now(), 
                         'updated_at' => now(),
                     ]);
 
+                    // Generate Orangtua ID otomatis (O001, O002, dst)
                     $lastOrtua = Orangtua::where('id', 'like', 'O%')
                         ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                         ->lockForUpdate()->first();
@@ -75,19 +82,18 @@ class OrangtuaImport implements ToCollection, WithHeadingRow
                         foreach ($nisList as $nis) {
                             $nisClean = trim($nis);
                             
-                            // PERBAIKAN: Mencari siswa melalui relasi riwayatKelas (tabel pivot)
+                            // Mencari siswa yang aktif pada SEMESTER yang aktif
                             $siswa = Siswa::where('nis', $nisClean)
                                 ->where('is_active', 1)
-                                ->whereHas('riwayatKelas', function($q) {
-                                    $q->whereHas('tahunAjaran', function($ta) {
-                                        $ta->where('is_active', 1);
-                                    });
+                                ->whereHas('riwayatKelas', function($q) use ($activeSemesterId) {
+                                    $q->where('semester_id', $activeSemesterId);
                                 })->first();
 
                             if (!$siswa) {
-                                throw new \Exception("Siswa NIS {$nisClean} tidak ditemukan atau tidak aktif di Tahun Ajaran ini.");
+                                throw new \Exception("Siswa NIS {$nisClean} tidak ditemukan atau tidak aktif di Semester ini.");
                             }
 
+                            // Cek apakah relasi sudah ada untuk mencegah duplikasi data
                             $existsRelasi = DB::table('orangtua_siswa')
                                 ->where('siswa_id', $siswa->id)
                                 ->where('hubungan', $hubunganInput)

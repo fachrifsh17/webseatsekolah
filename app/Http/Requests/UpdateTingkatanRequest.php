@@ -13,8 +13,12 @@ class UpdateTingkatanRequest extends FormRequest
 
     public function rules(): array
     {
+        // Mendapatkan ID tingkatan yang sedang diupdate dari route
+        $tingkatanId = $this->route('tingkatan')->id;
+
         return [
-            'nama_tingkatan' => 'required|string|max:50|unique:tingkatan,nama_tingkatan,' . $this->tingkatan->id,
+            // Validasi unik berdasarkan nama_tingkatan, kecuali untuk record yang sedang diedit
+            'nama_tingkatan' => 'required|string|max:50|unique:tingkatan,nama_tingkatan,' . $tingkatanId,
         ];
     }
 

@@ -12,7 +12,7 @@ class SiswaKelas extends Model
     protected $fillable = [
         'siswa_id',
         'kelas_id',
-        'tahun_ajaran_id',
+        'semester_id', // --- PERUBAHAN DI SINI ---
         'is_active'
     ];
 
@@ -26,8 +26,10 @@ class SiswaKelas extends Model
         return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
     }
 
-    public function tahunAjaran(): BelongsTo
+    // --- PERUBAHAN DI SINI ---
+    // Nama fungsi dan model yang dirujuk diubah ke Semester
+    public function semester(): BelongsTo
     {
-        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id', 'id');
+        return $this->belongsTo(Semester::class, 'semester_id', 'id');
     }
 }

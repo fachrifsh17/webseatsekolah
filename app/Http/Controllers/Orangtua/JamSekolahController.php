@@ -72,16 +72,18 @@ class JamSekolahController extends Controller
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
 
+            // PERBAIKAN: Mengambil file_ttd langsung dari struktur_jabatan
             $ks = DB::table('struktur_jabatan')
                 ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                 ->where('struktur_jabatan.jabatan_id', 1) 
-                ->select('guru_staf.nama', 'guru_staf.nip')
+                ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
                 ->first();
 
+            // PERBAIKAN: Mengambil file_ttd langsung dari struktur_jabatan
             $waka = DB::table('struktur_jabatan')
                 ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                 ->where('struktur_jabatan.jabatan_id', 2) 
-                ->select('guru_staf.nama', 'guru_staf.nip')
+                ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
                 ->first();
 
             $alamat_lengkap = ($kontak->alamat_jalan ?? '') . 

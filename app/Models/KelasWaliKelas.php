@@ -14,7 +14,7 @@ class KelasWaliKelas extends Model
     protected $fillable = [
         'kelas_id',
         'guru_staf_id',
-        'tahun_ajaran_id',
+        'semester_id', // PERUBAHAN: Ganti tahun_ajaran_id jadi semester_id
         'is_active',
     ];
 
@@ -35,10 +35,10 @@ class KelasWaliKelas extends Model
     }
 
     /**
-     * Relasi ke model TahunAjaran
+     * Relasi ke model Semester
      */
-    public function tahunAjaran(): BelongsTo
+    public function semester(): BelongsTo // PERUBAHAN: Ganti nama fungsi relasi
     {
-        return $this->belongsTo(TahunAjaran::class);
+        return $this->belongsTo(Semester::class); // PERUBAHAN: Ganti Model relasi
     }
 }

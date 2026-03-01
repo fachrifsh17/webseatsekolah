@@ -9,7 +9,7 @@ use App\Exports\GuruMapelExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\{JsonResponse, Request};
-use Illuminate\Support\Facades\{Log, Auth};
+use Illuminate\Support\Facades\{Log, Auth, DB}; // Tambahkan DB disini
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 use Throwable;
@@ -148,13 +148,27 @@ class GuruMapelController extends Controller
             $wali = $riwayat?->kelas?->waliKelas?->nama ?? '...........................';
             $nipWali = $riwayat?->kelas?->waliKelas?->nip ?? '...........................';
 
-            $kepsekData = StrukturJabatan::where('jabatan_id', 1)->with('guruStaf')->first();
-            $kepsek = $kepsekData?->guruStaf?->nama ?? $profil->nama_kepala_sekolah ?? '...........................';
-            $nipKepsek = $kepsekData?->guruStaf?->nip ?? $profil->nip_kepala_sekolah ?? '...........................';
+            // PERBAIKAN: Mengambil data TTD Kepala Sekolah dengan file_ttd
+            $ksData = DB::table('struktur_jabatan')
+                ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
+                ->where('struktur_jabatan.jabatan_id', 1) 
+                ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
+                ->first();
+                
+            $kepsek = $ksData->nama ?? $profil->nama_kepala_sekolah ?? '...........................';
+            $nipKepsek = $ksData->nip ?? $profil->nip_kepala_sekolah ?? '...........................';
+            $ttdKepsek = $ksData->file_ttd ?? null; // Tambahkan ini
 
-            $wakaKurData = StrukturJabatan::where('jabatan_id', 2)->with('guruStaf')->first();
-            $wakaKur = $wakaKurData?->guruStaf?->nama ?? '...........................';
-            $nipWakaKur = $wakaKurData?->guruStaf?->nip ?? '...........................';
+            // PERBAIKAN: Mengambil data TTD Waka dengan file_ttd
+            $wakaKurData = DB::table('struktur_jabatan')
+                ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
+                ->where('struktur_jabatan.jabatan_id', 2) 
+                ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
+                ->first();
+                
+            $wakaKur = $wakaKurData->nama ?? '...........................';
+            $nipWakaKur = $wakaKurData->nip ?? '...........................';
+            $ttdWakaKur = $wakaKurData->file_ttd ?? null; // Tambahkan ini
             
             $fileName = 'JADWAL_SISWA_' . strtoupper(Str::slug($kelas, '_')) . '.pdf';
 
@@ -171,8 +185,10 @@ class GuruMapelController extends Controller
                 'nipWali'    => $nipWali,
                 'kepsek'     => $kepsek,
                 'nipKepsek'  => $nipKepsek,
+                'ttdKepsek'  => $ttdKepsek, // Tambahkan ke view
                 'wakaKur'    => $wakaKur,
                 'nipWakaKur' => $nipWakaKur,
+                'ttdWakaKur' => $ttdWakaKur, // Tambahkan ke view
                 'kategori'   => $request->get('kategori_mapel', 'Semua Kategori')
             ]);
 
@@ -200,8 +216,18 @@ class GuruMapelController extends Controller
                 ->with(['kelas' => fn($q) => $q->where('is_active', 1)->with('waliKelas'), 'tahunAjaran'])
                 ->first();
 
-            $kepsekData = StrukturJabatan::where('jabatan_id', 1)->with('guruStaf')->first();
-            $wakaKurData = StrukturJabatan::where('jabatan_id', 2)->with('guruStaf')->first();
+            // PERBAIKAN: Gunakan DB query untuk mengambil file_ttd di Excel
+            $ksData = DB::table('struktur_jabatan')
+                ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
+                ->where('struktur_jabatan.jabatan_id', 1) 
+                ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
+                ->first();
+
+            $wakaKurData = DB::table('struktur_jabatan')
+                ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
+                ->where('struktur_jabatan.jabatan_id', 2) 
+                ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
+                ->first();
 
             $filters = [
                 'q'               => $request->get('q'),
@@ -213,10 +239,15 @@ class GuruMapelController extends Controller
                 'kategori_mapel'  => $request->get('kategori_mapel', 'Semua Kategori'),
                 'wali'            => $riwayat?->kelas?->waliKelas?->nama ?? '...........................',
                 'nipWali'         => $riwayat?->kelas?->waliKelas?->nip ?? '...........................',
-                'kepsek'          => $kepsekData?->guruStaf?->nama ?? '...........................',
-                'nipKepsek'       => $kepsekData?->guruStaf?->nip ?? '...........................',
-                'wakaKur'         => $wakaKurData?->guruStaf?->nama ?? '...........................',
-                'nipWakaKur'      => $wakaKurData?->guruStaf?->nip ?? '...........................',
+                
+                // Gunakan data join
+                'kepsek'          => $ksData->nama ?? '...........................',
+                'nipKepsek'       => $ksData->nip ?? '...........................',
+                'ttdKepsek'       => $ksData->file_ttd ?? null, // Tambahkan ke filter Excel
+                
+                'wakaKur'         => $wakaKurData->nama ?? '...........................',
+                'nipWakaKur'      => $wakaKurData->nip ?? '...........................',
+                'ttdWakaKur'      => $wakaKurData->file_ttd ?? null, // Tambahkan ke filter Excel
             ];
 
             $profil = ProfilSekolah::first() ?? new ProfilSekolah();

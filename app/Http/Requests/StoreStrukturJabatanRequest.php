@@ -21,6 +21,9 @@ class StoreStrukturJabatanRequest extends FormRequest
             'jabatan_id'    => ['required', 'exists:jabatans,id'],
             'periode_mulai' => ['nullable', 'date'],
             'urutan_tampil' => ['nullable', 'integer'],
+            // --- TAMBAHAN VALIDASI TTD ---
+            'file_ttd'      => ['nullable', 'image', 'mimes:jpeg,png,jpg', 'max:2048'], // Maks 2MB
+            // ----------------------------
         ];
     }
 
@@ -36,6 +39,12 @@ class StoreStrukturJabatanRequest extends FormRequest
 
             'periode_mulai.date'    => 'Format periode mulai tidak valid.',
             'urutan_tampil.integer' => 'Urutan tampil harus berupa angka.',
+
+            // --- TAMBAHAN PESAN VALIDASI TTD ---
+            'file_ttd.image'        => 'Tanda tangan harus berupa gambar.',
+            'file_ttd.mimes'        => 'Format tanda tangan harus jpeg, png, atau jpg.',
+            'file_ttd.max'          => 'Ukuran tanda tangan maksimal 2MB.',
+            // ------------------------------------
         ];
     }
 
@@ -46,6 +55,7 @@ class StoreStrukturJabatanRequest extends FormRequest
             'jabatan_id'    => 'Jabatan',
             'periode_mulai' => 'Periode mulai',
             'urutan_tampil' => 'Urutan tampil',
+            'file_ttd'      => 'Tanda Tangan', // --- TAMBAHAN ATTRIBUTE ---
         ];
     }
 

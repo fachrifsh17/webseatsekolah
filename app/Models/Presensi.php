@@ -16,14 +16,14 @@ class Presensi extends Model
     protected $fillable = [
         'tanggal',
         'kelas_id',
-        'tahun_ajaran_id',
+        'semester_id', // --- PERUBAHAN DI SINI ---
         'guru_staf_id',
     ];
 
     protected $casts = [
         'tanggal' => 'date',
         'kelas_id' => 'string',
-        'tahun_ajaran_id' => 'string',
+        'semester_id' => 'string', // --- PERUBAHAN DI SINI ---
         'guru_staf_id' => 'string',
     ];
 
@@ -37,9 +37,11 @@ class Presensi extends Model
         return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
     }
 
-    public function tahunAjaran(): BelongsTo
+    // --- PERUBAHAN DI SINI ---
+    // Nama fungsi dan model yang dirujuk diubah ke Semester
+    public function semester(): BelongsTo
     {
-        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id', 'id');
+        return $this->belongsTo(Semester::class, 'semester_id', 'id');
     }
 
     public function guruStaf(): BelongsTo

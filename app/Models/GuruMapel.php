@@ -16,7 +16,7 @@ class GuruMapel extends Model
         'guru_staf_id',
         'mata_pelajaran_id',
         'kelas_id',
-        'tahun_ajaran_id',
+        'semester_id', // --- PERUBAHAN DI SINI ---
         'hari',
         'jam_mulai_id',
         'jam_selesai_id',
@@ -37,9 +37,11 @@ class GuruMapel extends Model
         return $this->belongsTo(Kelas::class, 'kelas_id');
     }
 
-    public function tahunAjaran(): BelongsTo
+    // --- PERUBAHAN DI SINI ---
+    // Nama fungsi dan model yang dirujuk diubah ke Semester
+    public function semester(): BelongsTo
     {
-        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id');
+        return $this->belongsTo(Semester::class, 'semester_id');
     }
 
     public function jamMulai(): BelongsTo

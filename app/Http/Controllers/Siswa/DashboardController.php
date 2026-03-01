@@ -30,6 +30,7 @@ class DashboardController extends Controller
             $activeTa = TahunAjaran::where('is_active', 1)->first();
             $activeTaId = $activeTa ? $activeTa->id : null;
 
+            // Memanggil fungsi untuk mendapatkan data siswa
             $siswa = $this->getSiswa($user->id, $activeTaId);
 
             if (!$siswa) {
@@ -39,6 +40,7 @@ class DashboardController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
+            // Relasi ke tabel pivot kelas_wali_kelas diabaikan is_active-nya di dalam Model/Query
             $riwayatAktif = $siswa->riwayatKelas->first();
             $kelasObj = $riwayatAktif ? $riwayatAktif->kelas : null;
             $kelasId = $kelasObj ? $kelasObj->id : null;
@@ -58,6 +60,7 @@ class DashboardController extends Controller
                 'user_info' => [
                     'nama'       => $siswa->nama_lengkap ?? 'Tanpa Nama',
                     'kelas'      => $kelasObj->nama_kelas ?? '-',
+                    // Mengambil nama wali kelas berdasarkan relasi baru
                     'wali_kelas' => $kelasObj->waliKelas->nama ?? '-',
                 ],
                 'statistics' => [
@@ -108,19 +111,24 @@ class DashboardController extends Controller
             ->count();
     }
 
+    /**
+     * Mendapatkan data siswa dan kelas berdasarkan tahun ajaran aktif
+     */
     private function getSiswa($userId, $activeTaId)
     {
         return Siswa::where('user_id', $userId)
             ->with(['riwayatKelas' => function($query) use ($activeTaId) {
+                // Di sini kita abaikan is_active pada riwayat kelas
                 $query->where('tahun_ajaran_id', $activeTaId)
-                     ->where('is_active', 1) 
-                     ->with(['kelas' => function($q) {
+                      ->with(['kelas' => function($q) {
+                          // Tetap cek is_active pada tabel Kelas jika perlu
                           $q->where('is_active', 1)->with('waliKelas'); 
-                     }]); 
+                      }]); 
             }])
             ->first();
     }
-
+    
+    // ... fungsi-fungsi lainnya tetap sama
     private function getPoinAkumulatif($siswaId)
     {
         $summary = PoinSiswa::where('siswa_id', $siswaId)

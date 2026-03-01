@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class TahunAjaran extends Model
 {
@@ -20,7 +19,7 @@ class TahunAjaran extends Model
     protected $fillable = [
         'id',
         'nama',
-        'semester',
+        // 'semester', // Field ini mungkin tidak diperlukan lagi jika ada tabel semesters
         'kurikulum_id',
         'is_active'
     ];
@@ -44,58 +43,18 @@ class TahunAjaran extends Model
     }
 
     /**
-     * Relasi ke riwayat wali kelas melalui tabel pivot kelas_wali_kelas
+     * Relasi ke Kurikulum
      */
-    public function waliKelas(): BelongsToMany
-    {
-        // Menambahkan relasi ke wali kelas berdasarkan tahun ajaran
-        return $this->belongsToMany(GuruStaf::class, 'kelas_wali_kelas', 'tahun_ajaran_id', 'guru_staf_id')
-                    ->withPivot('kelas_id', 'is_active')
-                    ->withTimestamps();
-    }
-
-    /**
-     * Relasi ke riwayat kelas (tabel pivot siswa_kelas)
-     */
-    public function riwayatKelas(): HasMany
-    {
-        return $this->hasMany(SiswaKelas::class, 'tahun_ajaran_id');
-    }
-
     public function kurikulum(): BelongsTo
     {
         return $this->belongsTo(Kurikulum::class, 'kurikulum_id');
     }
 
-    public function kelas(): BelongsToMany
+    /**
+     * Relasi ke Semester (Tahun Ajaran memiliki banyak Semester)
+     */
+    public function semesters(): HasMany
     {
-        return $this->belongsToMany(Kelas::class, 'siswa_kelas', 'tahun_ajaran_id', 'kelas_id')
-                    ->withPivot('is_active')
-                    ->distinct();
-    }
-
-    public function presensi(): HasMany
-    {
-        return $this->hasMany(Presensi::class, 'tahun_ajaran_id');
-    }
-
-    public function presensiGuruMapel(): HasMany
-    {
-        return $this->hasMany(PresensiGuruMapel::class, 'tahun_ajaran_id');
-    }
-
-    public function poinSiswa(): HasMany
-    {
-        return $this->hasMany(PoinSiswa::class, 'tahun_ajaran_id');
-    }
-
-    public function jamSekolah(): HasMany
-    {
-        return $this->hasMany(JamSekolah::class, 'tahun_ajaran_id');
-    }
-
-    public function kalenderAkademik(): HasMany
-    {
-        return $this->hasMany(KalenderAkademik::class, 'tahun_ajaran_id', 'id');
+        return $this->hasMany(Semester::class, 'tahun_ajaran_id');
     }
 }

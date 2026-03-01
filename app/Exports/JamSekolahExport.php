@@ -4,6 +4,7 @@ namespace App\Exports;
 
 use App\Models\JamSekolah;
 use App\Models\TahunAjaran;
+use App\Models\Semester; // --- PERUBAHAN: Import Model Semester ---
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -15,6 +16,7 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 
 class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, WithEvents, WithCustomStartCell
 {
@@ -47,18 +49,20 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
+                $pSheet = $sheet->getDelegate();
                 $lastCol = 'J';
 
+                // --- TAMPILAN HEADER (TIDAK BERUBAH) ---
                 $kepsek = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 1) 
-                    ->select('guru_staf.nama', 'guru_staf.nip')
+                    ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
                     ->first();
 
                 $wakaKur = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 2) 
-                    ->select('guru_staf.nama', 'guru_staf.nip')
+                    ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
                     ->first();
 
                 $provAsli = $this->kontak->provinsi ?? 'Jawa Barat';
@@ -85,13 +89,21 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 $sheet->mergeCells("A7:{$lastCol}7"); 
                 $sheet->setCellValue('A7', 'PENYESUAIAN JAM PELAJARAN');
                 
+                // --- PERUBAHAN TAMPILAN HEADER (MENAMPILKAN SEMESTER) ---
                 $ta = TahunAjaran::find($this->tahunAjaranId);
+                // Ambil semester yang aktif untuk tahun ajaran tersebut
+                $semesterAktif = Semester::where('tahun_ajaran_id', $this->tahunAjaranId)
+                                         ->where('is_active', true)
+                                         ->first();
+
                 $sheet->mergeCells("A8:{$lastCol}8"); 
-                $sheet->setCellValue('A8', 'TAHUN PELAJARAN ' . ($ta->nama ?? ''));
+                $textHeader = 'TAHUN PELAJARAN ' . ($ta->nama ?? '') . ' | SEMESTER ' . strtoupper($semesterAktif->nama ?? '');
+                $sheet->setCellValue('A8', $textHeader);
                 
                 $sheet->getStyle("A7:A8")->getFont()->setBold(true);
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+                // --- LOGIKA QUERY PIVOT TABLE (PERBAIKAN ERROR SQL) ---
                 $hariMap = [
                     'Senin' => ['t' => 'A', 'l' => 'B'],
                     'Selasa' => ['t' => 'C', 'l' => 'D'],
@@ -100,12 +112,17 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                     'Jumat' => ['t' => 'I', 'l' => 'J']
                 ];
 
-                $dataPerHari = JamSekolah::where('tahun_ajaran_id', $this->tahunAjaranId)
+                // --- PERBAIKAN QUERY: Menggunakan relasi 'semester' ---
+                $dataPerHari = JamSekolah::whereHas('semester', function($query) {
+                        $query->where('tahun_ajaran_id', $this->tahunAjaranId);
+                    })
                     ->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
                     ->orderBy('waktu_mulai')
                     ->get()
                     ->groupBy('hari');
+                // ----------------------------------------------------
 
+                // --- PROSES TAMPILAN DATA (LOGIKA SAMA) ---
                 $rowStart = 12;
 
                 foreach ($hariMap as $namaHari => $cols) {
@@ -150,6 +167,7 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                     $sheet->getStyle("A11:J11")->getFont()->setBold(true);
                 }
 
+                // --- TAMPILAN FOOTER (TIDAK BERUBAH) ---
                 $ttgRow = $maxRow + 3;
                 $sheet->mergeCells("G{$ttgRow}:J{$ttgRow}");
                 $lokasiTtd = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
@@ -165,6 +183,32 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 
                 $sheet->getStyle("A{$ttgRow}:J{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
                 $sheet->getStyle("A{$ttgRow}:J{$ttgRow}")->getFont()->setBold(true);
+
+                $imageRow = $ttgRow + 1;
+                
+                if ($wakaKur && $wakaKur->file_ttd && file_exists(storage_path('app/public/' . $wakaKur->file_ttd))) {
+                    $drawing = new Drawing();
+                    $drawing->setName('TTD Waka');
+                    $drawing->setDescription('TTD Waka');
+                    $drawing->setPath(storage_path('app/public/' . $wakaKur->file_ttd));
+                    $drawing->setHeight(50);
+                    $drawing->setCoordinates("B{$imageRow}");
+                    $drawing->setOffsetX(10);
+                    $drawing->setOffsetY(10);
+                    $drawing->setWorksheet($pSheet);
+                }
+
+                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
+                    $drawing = new Drawing();
+                    $drawing->setName('TTD Kepsek');
+                    $drawing->setDescription('TTD Kepsek');
+                    $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
+                    $drawing->setHeight(50);
+                    $drawing->setCoordinates("I{$imageRow}");
+                    $drawing->setOffsetX(15);
+                    $drawing->setOffsetY(10);
+                    $drawing->setWorksheet($pSheet);
+                }
 
                 $namaRow = $ttgRow + 4;
                 $sheet->mergeCells("A{$namaRow}:C{$namaRow}");

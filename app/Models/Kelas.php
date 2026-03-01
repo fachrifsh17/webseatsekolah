@@ -14,14 +14,14 @@ class Kelas extends Model
 
     protected $table = 'kelas';
     protected $primaryKey = 'id';
-    public $incrementing = false;
+    public $incrementing = false; // ID Kelas tetap String (K001, dll)
     protected $keyType = 'string';
 
     protected $fillable = [
         'id',
         'nama_kelas',
         'jurusan_id',
-        'tingkatan_id', // Ditambahkan: untuk relasi ke tabel tingkatan
+        'tingkatan_id', // Ini akan menerima nilai integer
         'is_active',
     ];
 
@@ -43,7 +43,6 @@ class Kelas extends Model
      */
     public function waliKelas(): BelongsToMany
     {
-        // Mengubah dari belongsTo menjadi belongsToMany
         return $this->belongsToMany(GuruStaf::class, 'kelas_wali_kelas', 'kelas_id', 'guru_staf_id')
                     ->withPivot('tahun_ajaran_id', 'is_active')
                     ->withTimestamps();
@@ -54,7 +53,8 @@ class Kelas extends Model
      */
     public function tingkatan(): BelongsTo
     {
-        // Menambahkan relasi ini
+        // Eloquent otomatis menangani perbedaan tipe data kunci 
+        // selama foreign key didefinisikan dengan benar di migration.
         return $this->belongsTo(Tingkatan::class, 'tingkatan_id');
     }
 

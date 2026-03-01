@@ -15,8 +15,9 @@ return new class extends Migration
             // Primary Key varchar(10)
             $table->string('id', 10)->primary();
             
-            // Foreign Key ke tahun_ajaran
-            $table->string('tahun_ajaran_id', 10)->nullable();
+            // --- PERUBAHAN DI SINI ---
+            // Foreign Key diubah ke tabel semesters (bigint)
+            $table->foreignId('semester_id')->nullable()->constrained('semesters')->onDelete('cascade');
             
             // Enum untuk hari
             $table->enum('hari', ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat']);
@@ -31,13 +32,6 @@ return new class extends Migration
             $table->string('keterangan', 100)->nullable();
             
             $table->timestamps();
-
-            // --- SETTING CONSTRAINTS ---
-            $table->foreign('tahun_ajaran_id')
-                  ->references('id')
-                  ->on('tahun_ajaran')
-                  ->onDelete('cascade')
-                  ->onUpdate('cascade');
         });
     }
 

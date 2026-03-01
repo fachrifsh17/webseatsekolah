@@ -4,7 +4,7 @@ namespace App\Exports;
 
 use App\Models\MataPelajaran;
 use App\Models\Jurusan;
-use App\Models\TahunAjaran;
+use App\Models\Semester;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
@@ -16,20 +16,21 @@ use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Color;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 
 class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
 {
-    protected $filters, $profil, $kontak;
+    protected $filters, $profil, $kontak, $semester;
 
-    public function __construct($filters, $profil, $kontak)
+    public function __construct($filters, $profil, $kontak, $semester)
     {
         $this->filters = $filters;
         $this->profil = $profil;
         $this->kontak = $kontak;
+        $this->semester = $semester;
     }
 
     public function startCell(): string 
@@ -95,21 +96,32 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
+                $pSheet = $sheet->getDelegate();
                 $lastCol = 'F'; 
                 $lastRow = $sheet->getHighestRow();
 
+                // --- 1. PENGATURAN LEBAR KOLOM (Disesuaikan) ---
+                $sheet->getColumnDimension('A')->setWidth(10);  // ID MAPEL (Lebih Kecil)
+                $sheet->getColumnDimension('B')->setWidth(40);  // NAMA MAPEL (Lebih Lebar)
+                $sheet->getColumnDimension('C')->setWidth(20);  // JURUSAN
+                $sheet->getColumnDimension('D')->setWidth(15);  // TIPE
+                $sheet->getColumnDimension('E')->setWidth(15);  // KATEGORI
+                $sheet->getColumnDimension('F')->setWidth(12);  // STATUS
+
+                // --- 2. DATA STRUKTUR ---
                 $kepsek = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 1) 
-                    ->select('guru_staf.nama', 'guru_staf.nip')
+                    ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
                     ->first();
 
                 $wakaKur = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 2) 
-                    ->select('guru_staf.nama', 'guru_staf.nip')
+                    ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
                     ->first();
 
+                // --- 3. HEADER & JUDUL ---
                 $provAsli = $this->kontak->provinsi ?? 'Jawa Barat';
                 $provKapital = strtoupper($provAsli);
                 $alamatJalan = $this->kontak->alamat_jalan ?? '-';
@@ -132,8 +144,9 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getStyle("A7")->getFont()->setBold(true)->setSize(12);
                 
                 $sheet->mergeCells("A8:{$lastCol}8"); 
-                $ta = TahunAjaran::where('is_active', 1)->first();
-                $sheet->setCellValue('A8', 'TAHUN PELAJARAN ' . ($ta->nama ?? '-'));
+                $namaTA = $this->semester->tahunAjaran->nama ?? '-';
+                $namaSemester = $this->semester->nama ?? '-';
+                $sheet->setCellValue('A8', 'TAHUN PELAJARAN ' . $namaTA . ' | SEMESTER ' . $namaSemester);
                 $sheet->getStyle("A8")->getFont()->setBold(true)->setSize(10);
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
@@ -149,12 +162,12 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->setCellValue('A9', "Jurusan : " . $jurusanName);
                 $sheet->setCellValue('A10', "Tipe : " . $tipeLabel);
                 $sheet->setCellValue('A11', "Kategori : " . $kategoriLabel . " | Status : " . $statusLabel);
-
                 $sheet->getStyle("A9:A11")->applyFromArray([
                     'font' => ['italic' => true, 'size' => 9],
                     'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT]
                 ]);
 
+                // --- 4. STYLING TABEL ---
                 $sheet->getStyle("A12:{$lastCol}12")->applyFromArray([
                     'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_BLACK]],
                     'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
@@ -173,12 +186,16 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                     ],
                 ]);
 
+                // --- 5. TATA LETAK TANDA TANGAN (Diselaraskan) ---
                 $ttgRow = $lastRow + 3;
+                
+                // Lokasi dan Tanggal (Geser ke Kanan Kolom E-F)
                 $sheet->mergeCells("E{$ttgRow}:{$lastCol}{$ttgRow}");
                 $lokasiTtd = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
                 $sheet->setCellValue("E{$ttgRow}", $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
                 $sheet->getStyle("E{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+                // Label Jabatan
                 $ttgRow++;
                 $sheet->mergeCells("A{$ttgRow}:B{$ttgRow}");
                 $sheet->setCellValue("A{$ttgRow}", "Mengetahui,\nWaka Kurikulum");
@@ -189,16 +206,44 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getStyle("A{$ttgRow}:{$lastCol}{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
                 $sheet->getStyle("A{$ttgRow}:{$lastCol}{$ttgRow}")->getFont()->setBold(true);
 
-                $namaRow = $ttgRow + 4;
+                // --- 6. GAMBAR TANDA TANGAN (Posisi Disesuaikan) ---
+                $imageRow = $ttgRow + 1;
+                $sheet->getRowDimension($imageRow)->setRowHeight(70);
+
+                if ($wakaKur && $wakaKur->file_ttd && file_exists(storage_path('app/public/' . $wakaKur->file_ttd))) {
+                    $drawing = new Drawing();
+                    $drawing->setName('TTD Waka');
+                    $drawing->setDescription('TTD Waka');
+                    $drawing->setPath(storage_path('app/public/' . $wakaKur->file_ttd));
+                    $drawing->setHeight(55); // Tinggi gambar
+                    $drawing->setCoordinates("A{$imageRow}"); // Posisi kiri
+                    $drawing->setOffsetX(30); // Offset disesuaikan
+                    $drawing->setWorksheet($pSheet);
+                }
+
+                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
+                    $drawing = new Drawing();
+                    $drawing->setName('TTD Kepsek');
+                    $drawing->setDescription('TTD Kepsek');
+                    $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
+                    $drawing->setHeight(55); // Tinggi gambar
+                    $drawing->setCoordinates("E{$imageRow}"); // Posisi kanan
+                    $drawing->setOffsetX(20); // Offset disesuaikan
+                    $drawing->setWorksheet($pSheet);
+                }
+
+                // Nama Terang
+                $namaRow = $imageRow + 2;
                 $sheet->mergeCells("A{$namaRow}:B{$namaRow}");
-                $sheet->setCellValue("A{$namaRow}", "( " . strtoupper($wakaKur->nama ?? '____________________') . " )"); 
+                $sheet->setCellValue("A{$namaRow}", "( " . strtoupper($wakaKur->nama ?? '............................') . " )"); 
                 
                 $sheet->mergeCells("E{$namaRow}:{$lastCol}{$namaRow}");
-                $sheet->setCellValue("E{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
+                $sheet->setCellValue("E{$namaRow}", "( " . strtoupper($kepsek->nama ?? '............................') . " )");
                 
                 $sheet->getStyle("A{$namaRow}:{$lastCol}{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A{$namaRow}:{$lastCol}{$namaRow}")->getFont()->setBold(true);
 
+                // NIP
                 $nipRow = $namaRow + 1;
                 $sheet->mergeCells("A{$nipRow}:B{$nipRow}");
                 $sheet->setCellValue("A{$nipRow}", "NIP. " . ($wakaKur->nip ?? '...........................'));
@@ -207,6 +252,7 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->setCellValue("E{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
                 $sheet->getStyle("A{$nipRow}:{$lastCol}{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+                // Footer
                 $footerRow = $nipRow + 2; 
                 $sheet->setCellValue("A{$footerRow}", "Dicetak pada: " . Carbon::now()->format('d/m/Y H:i'));
                 $sheet->getStyle("A{$footerRow}")->getFont()->setItalic(true)->setSize(8);

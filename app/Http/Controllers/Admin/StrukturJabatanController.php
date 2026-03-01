@@ -10,6 +10,7 @@ use App\Http\Requests\UpdateStrukturJabatanRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage; // --- TAMBAHAN ---
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
@@ -70,6 +71,14 @@ class StrukturJabatanController extends Controller
 
         DB::beginTransaction();
         try {
+            // --- LOGIKA UNGGAH TTD ---
+            if ($request->hasFile('file_ttd')) {
+                $file = $request->file('file_ttd');
+                $path = $file->store('tanda_tangan', 'public');
+                $validated['file_ttd'] = $path;
+            }
+            // -------------------------
+
             $item = StrukturJabatan::create($validated);
             DB::commit();
 
@@ -110,6 +119,19 @@ class StrukturJabatanController extends Controller
 
         DB::beginTransaction();
         try {
+            // --- LOGIKA UPDATE TTD ---
+            if ($request->hasFile('file_ttd')) {
+                // Hapus file lama jika ada
+                if ($strukturJabatan->file_ttd) {
+                    Storage::disk('public')->delete($strukturJabatan->file_ttd);
+                }
+                
+                $file = $request->file('file_ttd');
+                $path = $file->store('tanda_tangan', 'public');
+                $validated['file_ttd'] = $path;
+            }
+            // -------------------------
+
             $strukturJabatan->update($validated);
             DB::commit();
 
@@ -131,6 +153,12 @@ class StrukturJabatanController extends Controller
     public function destroy(StrukturJabatan $strukturJabatan): JsonResponse
     {
         try {
+            // --- LOGIKA HAPUS TTD ---
+            if ($strukturJabatan->file_ttd) {
+                Storage::disk('public')->delete($strukturJabatan->file_ttd);
+            }
+            // ------------------------
+
             $strukturJabatan->delete();
             return response()->json([
                 'success' => true,

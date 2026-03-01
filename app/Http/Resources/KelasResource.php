@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\DB;
 
 class KelasResource extends JsonResource
 {
@@ -24,14 +25,15 @@ class KelasResource extends JsonResource
                 ] : null;
             }),
 
-            // Data Wali Kelas (diambil dari tabel pivot)
+            // Data Wali Kelas (diambil dari tabel pivot kelas_wali_kelas)
             'wali_kelas' => $this->whenLoaded('waliKelas', function () {
-                // Asumsi: Kita hanya mengambil wali kelas yang aktif di tahun ajaran ini
+                // Logika pivot diperbarui sesuai struktur database
                 $waliAktif = $this->waliKelas->where('pivot.is_active', true)->first();
                 
                 return $waliAktif ? [
                     'id'   => $waliAktif->id,
                     'nama' => $waliAktif->nama,
+                    // Mengambil ID Tahun Ajaran dari pivot
                     'tahun_ajaran_id' => $waliAktif->pivot->tahun_ajaran_id,
                 ] : null;
             }),

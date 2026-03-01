@@ -14,7 +14,7 @@ class StoreTingkatanRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'id'             => 'required|string|max:10|unique:tingkatan,id',
+            // 'id' dihapus karena auto-increment
             'nama_tingkatan' => 'required|string|max:50|unique:tingkatan,nama_tingkatan',
         ];
     }
@@ -22,8 +22,7 @@ class StoreTingkatanRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'id.required'             => 'ID wajib diisi.',
-            'id.unique'               => 'ID tingkatan sudah digunakan.',
+            // Pesan untuk 'id' dihapus
             'nama_tingkatan.required' => 'Nama wajib diisi.',
             'nama_tingkatan.unique'   => 'Nama tingkatan sudah digunakan.',
         ];

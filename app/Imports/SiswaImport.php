@@ -37,21 +37,21 @@ class SiswaImport implements ToModel, WithHeadingRow
             return null;
         }
 
-        // 3. Ambil Tahun Ajaran Aktif (Untuk kebutuhan tabel pivot)
-        $tahunAjaranAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
+        // 3. Ambil Semester Aktif saja (Tahun Ajaran dihapus sesuai permintaan)
+        $semesterAktif = DB::table('semesters')->where('is_active', 1)->first();
         
-        if (!$tahunAjaranAktif) {
-            $this->importMessages[] = "Baris {$this->rows}: Gagal Import. Tidak ada Tahun Ajaran yang aktif.";
+        if (!$semesterAktif) {
+            $this->importMessages[] = "Baris {$this->rows}: Gagal Import. Pastikan Semester aktif sudah diatur.";
             return null;
         }
 
-        // 4. Cari Kelas Berdasarkan Nama dan Status Aktif (Tanpa filter Tahun Ajaran)
+        // 4. Cari Kelas Berdasarkan Nama dan Status Aktif
         $namaKelasInput = isset($row['kelas']) ? trim($row['kelas']) : null;
         $kelasId = null;
 
         if (!empty($namaKelasInput)) {
             $kelas = Kelas::where('nama_kelas', $namaKelasInput)
-                ->where('is_active', 1) // Cari kelas yang aktif
+                ->where('is_active', 1)
                 ->first();
 
             if ($kelas) {
@@ -66,7 +66,7 @@ class SiswaImport implements ToModel, WithHeadingRow
         }
 
         // 5. Proses Simpan Data
-        return DB::transaction(function () use ($row, $kelasId, $tahunAjaranAktif) {
+        return DB::transaction(function () use ($row, $kelasId, $semesterAktif) {
             // Generate User ID
             $lastUser = User::where('id', 'like', 'U%')
                 ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
@@ -118,12 +118,13 @@ class SiswaImport implements ToModel, WithHeadingRow
             // --- INPUT PIVOT KELAS ---
             if ($kelasId) {
                 DB::table('siswa_kelas')->insert([
-                    'siswa_id'        => $newSiswaId,
-                    'kelas_id'        => $kelasId,
-                    'tahun_ajaran_id' => $tahunAjaranAktif->id, // Mengambil ID dari Tahun Ajaran Aktif
-                    'is_active'       => 1, 
-                    'created_at'      => now(),
-                    'updated_at'      => now(),
+                    'siswa_id'    => $newSiswaId,
+                    'kelas_id'    => $kelasId,
+                    // 'tahun_ajaran_id' => ... (Dihapus)
+                    'semester_id' => $semesterAktif->id, 
+                    'is_active'   => 1, 
+                    'created_at'  => now(),
+                    'updated_at'  => now(),
                 ]);
             }
 

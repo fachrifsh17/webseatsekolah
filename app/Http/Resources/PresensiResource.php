@@ -41,10 +41,11 @@ class PresensiResource extends JsonResource
                 ],
                 // Mengambil dari relasi header ke guru
                 'guru' => $header?->guruStaf?->nama,
-                'tahun_ajaran' => [
-                    // Mengambil dari relasi header ke tahun ajaran
-                    'tahun' => $header?->tahunAjaran?->nama ?? $header?->tahunAjaran?->tahun_ajaran,
-                    'semester' => $header?->tahunAjaran?->semester,
+                // --- PERUBAHAN DI SINI ---
+                'semester' => [
+                    // Mengambil dari relasi header ke semester
+                    'nama' => $header?->semester?->nama ?? '-',
+                    'tahun_ajaran_id' => $header?->semester?->tahun_ajaran_id,
                 ],
             ]),
         ];

@@ -30,10 +30,11 @@ class PresensiGuruMapelResource extends JsonResource
         return [
             'id'      => $this->id,
             'tanggal' => $this->tanggal ? Carbon::parse($this->tanggal)->format('Y-m-d') : null,
-            'tahun_ajaran' => [
-                'id'       => $this->tahun_ajaran_id,
-                'nama'     => $this->tahunAjaran?->nama,
-                'semester' => $this->tahunAjaran?->semester,
+            // --- PERUBAHAN DI SINI ---
+            'semester' => [
+                'id'              => $this->semester_id,
+                'nama'            => $this->semester?->nama,
+                'tahun_ajaran_id' => $this->semester?->tahun_ajaran_id,
             ],
             'jadwal' => [
                 'id'    => $this->guru_mapel_id,

@@ -15,7 +15,7 @@ class StoreTahunAjaranRequest extends FormRequest
     {
         return [
             'nama'         => ['required', 'string', 'max:50'],
-            'semester'     => ['required', 'in:Ganjil,Genap'],
+            // 'semester' dihapus karena akan diatur di controller Semester
             'is_active'    => ['required', 'boolean'],
             'kurikulum_id' => ['nullable', 'integer', 'exists:kurikulum,id'],
         ];
@@ -27,8 +27,6 @@ class StoreTahunAjaranRequest extends FormRequest
             'nama.required'         => 'Nama tahun ajaran wajib diisi.',
             'nama.string'           => 'Nama tahun ajaran harus berupa teks.',
             'nama.max'              => 'Nama tahun ajaran tidak boleh lebih dari 50 karakter.',
-            'semester.required'     => 'Semester harus dipilih.',
-            'semester.in'           => 'Pilihan semester hanya boleh Ganjil atau Genap.',
             'is_active.required'    => 'Status aktif harus ditentukan.',
             'is_active.boolean'     => 'Status aktif harus berupa nilai boolean (true/false).',
             'kurikulum_id.integer'  => 'ID kurikulum harus berupa angka.',
@@ -40,7 +38,6 @@ class StoreTahunAjaranRequest extends FormRequest
     {
         return [
             'nama'         => 'Nama tahun ajaran',
-            'semester'     => 'Semester',
             'is_active'    => 'Status aktif',
             'kurikulum_id' => 'Kurikulum',
         ];

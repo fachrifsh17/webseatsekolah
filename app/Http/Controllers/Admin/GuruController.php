@@ -80,7 +80,7 @@ class GuruController extends Controller
         $this->authorize('viewAny', GuruStaf::class);
 
         try {
-            $filters = $request->only(['q', 'jabatan_fungsional', 'status_kepegawaian', 'jurusan_id', 'is_active']);
+            $filters = $request->only(['q', 'jabatan_fungsional', 'status_kepegawaian', 'jurusan_id', 'is_active', 'semester_id']);
             
             if (!isset($filters['is_active'])) {
                 $filters['is_active'] = 1;
@@ -88,11 +88,29 @@ class GuruController extends Controller
 
             $nameParts = ['DATA_GURU_STAF'];
 
-            $tahunAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
-            if ($tahunAktif) {
-                $taClean = str_replace(['/', ' '], '_', $tahunAktif->nama);
-                $semester = strtoupper($tahunAktif->semester);
-                $nameParts[] = "{$taClean}_{$semester}";
+            if (!empty($filters['semester_id'])) {
+                $semesterData = DB::table('semesters')
+                    ->join('tahun_ajaran', 'semesters.tahun_ajaran_id', '=', 'tahun_ajaran.id')
+                    ->where('semesters.id', $filters['semester_id'])
+                    ->select('semesters.nama as nama_semester', 'tahun_ajaran.nama as nama_ta')
+                    ->first();
+                if ($semesterData) {
+                    $taClean = str_replace(['/', ' '], '_', $semesterData->nama_ta);
+                    $semClean = strtoupper(str_replace(' ', '_', $semesterData->nama_semester));
+                    $nameParts[] = "{$taClean}_{$semClean}";
+                }
+            } else {
+                $semesterAktif = DB::table('semesters')
+                    ->join('tahun_ajaran', 'semesters.tahun_ajaran_id', '=', 'tahun_ajaran.id')
+                    ->where('semesters.is_active', 1)
+                    ->select('semesters.nama as nama_semester', 'tahun_ajaran.nama as nama_ta')
+                    ->first();
+                
+                if ($semesterAktif) {
+                    $taClean = str_replace(['/', ' '], '_', $semesterAktif->nama_ta);
+                    $semClean = strtoupper(str_replace(' ', '_', $semesterAktif->nama_semester));
+                    $nameParts[] = "{$taClean}_{$semClean}";
+                }
             }
 
             if (!empty($filters['q'])) {

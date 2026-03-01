@@ -10,9 +10,10 @@ class KelasWaliKelasResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id'              => $this->id,
-            'is_active'       => (bool) $this->is_active,
-            'tahun_ajaran_id' => $this->tahun_ajaran_id,
+            'id'          => $this->id,
+            'is_active'   => (bool) $this->is_active,
+            // --- PERUBAHAN DI SINI ---
+            'semester_id' => $this->semester_id,
             
             // Relasi ke tabel kelas
             'kelas' => $this->whenLoaded('kelas', function () {
@@ -31,12 +32,13 @@ class KelasWaliKelasResource extends JsonResource
                 ];
             }),
             
-            // Relasi ke tabel tahun ajaran
-            'tahun_ajaran' => $this->whenLoaded('tahunAjaran', function () {
+            // --- PERUBAHAN DI SINI ---
+            // Relasi ke tabel semester
+            'semester' => $this->whenLoaded('semester', function () {
                 return [
-                    'id'       => $this->tahunAjaran->id,
-                    'nama'     => $this->tahunAjaran->nama,
-                    'semester' => $this->tahunAjaran->semester,
+                    'id'              => $this->semester->id,
+                    'nama'            => $this->semester->nama,
+                    'tahun_ajaran_id' => $this->semester->tahun_ajaran_id,
                 ];
             }),
 

@@ -23,6 +23,10 @@ return new class extends Migration
             $table->date('periode_mulai')->nullable();
             $table->integer('urutan_tampil')->nullable();
             
+            // --- TAMBAHAN KOLOM UNTUK PATH TANDA TANGAN ---
+            $table->string('file_ttd', 255)->nullable()->after('urutan_tampil');
+            // ----------------------------------------------
+            
             $table->timestamps();
 
             // --- SETTING CONSTRAINTS ---

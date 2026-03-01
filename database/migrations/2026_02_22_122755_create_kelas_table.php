@@ -21,8 +21,9 @@ return new class extends Migration
             // jurusan_id varchar(10) DEFAULT NULL
             $table->string('jurusan_id', 10)->nullable();
             
-            // Tambahan: tingkatan_id varchar(10) DEFAULT NULL (Foreign Key)
-            $table->string('tingkatan_id', 10)->nullable();
+            // --- PERUBAHAN DI SINI ---
+            // tingkatan_id diubah menjadi integer agar sesuai dengan tipe data di tabel 'tingkatan'
+            $table->unsignedInteger('tingkatan_id')->nullable();
 
             // is_active tinyint(1) NOT NULL DEFAULT '1'
             $table->boolean('is_active')->default(true);
@@ -39,7 +40,8 @@ return new class extends Migration
                   ->onDelete('set null')
                   ->onUpdate('cascade');
             
-            // Tambahan: Foreign Key ke tabel tingkatan
+            // --- PERUBAHAN DI SINI ---
+            // Foreign Key ke tabel tingkatan (referencing to integer id)
             $table->foreign('tingkatan_id', 'fk_kelas_tingkatan')
                   ->references('id')
                   ->on('tingkatan')

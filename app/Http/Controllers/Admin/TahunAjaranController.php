@@ -72,13 +72,12 @@ class TahunAjaranController extends Controller
     {
         try {
             $exists = TahunAjaran::where('nama', $request->nama)
-                ->where('semester', $request->semester)
                 ->exists();
 
             if ($exists) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tahun ajaran ' . $request->nama . ' semester ' . $request->semester . ' sudah terdaftar.',
+                    'message' => 'Tahun ajaran ' . $request->nama . ' sudah terdaftar.',
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
@@ -132,14 +131,13 @@ class TahunAjaranController extends Controller
     {
         try {
             $exists = TahunAjaran::where('nama', $request->nama)
-                ->where('semester', $request->semester)
                 ->where('id', '!=', $tahunAjaran->id)
                 ->exists();
 
             if ($exists) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tahun ajaran ' . $request->nama . ' semester ' . $request->semester . ' sudah digunakan data lain.',
+                    'message' => 'Tahun ajaran ' . $request->nama . ' sudah digunakan data lain.',
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 

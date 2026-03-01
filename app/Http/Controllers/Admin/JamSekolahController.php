@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{JamSekolah, TahunAjaran, ProfilSekolah, DataKontak};
+use App\Models\{JamSekolah, Semester, ProfilSekolah, DataKontak};
 use App\Http\Resources\JamSekolahResource;
 use App\Http\Requests\{StoreJamSekolahRequest, UpdateJamSekolahRequest};
 use App\Exports\JamSekolahExport;
@@ -28,24 +28,24 @@ class JamSekolahController extends Controller
         $this->authorizeResource(JamSekolah::class, 'jam_sekolah');
     }
 
-    private function resolveTahunAjaranId(Request $request)
+    private function resolveSemesterId(Request $request)
     {
-        if ($request->has('tahun_ajaran_id') && !empty($request->tahun_ajaran_id)) {
-            return $request->tahun_ajaran_id;
+        if ($request->has('semester_id') && !empty($request->semester_id)) {
+            return $request->semester_id;
         }
 
-        $aktif = TahunAjaran::where('is_active', true)->first();
+        $aktif = Semester::where('is_active', true)->first();
         return $aktif ? $aktif->id : null;
     }
 
     public function index(Request $request): JsonResponse
     {
         try {
-            $tahunAjaranId = $this->resolveTahunAjaranId($request);
-            $query = JamSekolah::with('tahunAjaran');
+            $semesterId = $this->resolveSemesterId($request);
+            $query = JamSekolah::with('semester.tahunAjaran');
 
-            if ($tahunAjaranId) {
-                $query->where('tahun_ajaran_id', $tahunAjaranId);
+            if ($semesterId) {
+                $query->where('semester_id', $semesterId);
             }
 
             $data = $query->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
@@ -56,8 +56,8 @@ class JamSekolahController extends Controller
                 'success' => true,
                 'data'    => JamSekolahResource::collection($data),
                 'meta'    => [
-                    'filter_tahun_ajaran_id' => $tahunAjaranId,
-                    'is_auto_selected' => !$request->has('tahun_ajaran_id')
+                    'filter_semester_id' => $semesterId,
+                    'is_auto_selected'   => !$request->has('semester_id')
                 ]
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -73,29 +73,32 @@ class JamSekolahController extends Controller
         try {
             $this->authorize('viewAny', JamSekolah::class);
 
-            $tahunAjaranId = $this->resolveTahunAjaranId($request);
+            $semesterId = $this->resolveSemesterId($request);
             
-            if (!$tahunAjaranId) {
+            if (!$semesterId) {
                 return response()->json([
                     'success' => false, 
-                    'message' => 'Tahun ajaran tidak ditentukan.'
+                    'message' => 'Semester tidak ditentukan.'
                 ], Response::HTTP_BAD_REQUEST);
             }
 
-            $ta = TahunAjaran::find($tahunAjaranId);
+            $sm = Semester::with('tahunAjaran')->find($semesterId);
             
-            // Perubahan di sini: Menambahkan Semester ke nama file
-            if ($ta) {
-                $namaTA = str_replace(['/', '\\', ' '], '-', $ta->nama);
-                $semester = strtoupper(str_replace(' ', '-', $ta->semester));
-                $labelFile = $namaTA . '-' . $semester;
+            if ($sm) {
+                $namaTA = str_replace(['/', '\\', ' '], '-', $sm->tahunAjaran->nama);
+                $namaSem = str_replace(['/', '\\', ' '], '-', $sm->nama);
+                // --- PERUBAHAN: Penambahan nama semester dan kapitalisasi ---
+                $labelFile = strtoupper($namaTA . '-' . $namaSem);
+                $tahunAjaranId = $sm->tahun_ajaran_id;
             } else {
                 $labelFile = date('Ymd_His');
+                $tahunAjaranId = null;
             }
 
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
-            $fileName = 'jam_sekolah_' . $labelFile . '.xlsx';
+            
+            $fileName = 'JAM_SEKOLAH_' . $labelFile . '.xlsx';
 
             return Excel::download(new JamSekolahExport($profil, $kontak, $tahunAjaranId), $fileName);
         } catch (Throwable $e) {
@@ -134,15 +137,15 @@ class JamSekolahController extends Controller
     {
         $validated = $request->validated();
         
-        if (!isset($validated['tahun_ajaran_id'])) {
-            $tahunAktif = TahunAjaran::where('is_active', true)->first();
-            if (!$tahunAktif) {
+        if (!isset($validated['semester_id'])) {
+            $semesterAktif = Semester::where('is_active', true)->first();
+            if (!$semesterAktif) {
                 return response()->json([
                     'success' => false, 
-                    'message' => 'Tidak ada tahun ajaran aktif.'
+                    'message' => 'Tidak ada semester aktif.'
                 ], Response::HTTP_BAD_REQUEST);
             }
-            $validated['tahun_ajaran_id'] = $tahunAktif->id;
+            $validated['semester_id'] = $semesterAktif->id;
         }
 
         if ($validated['waktu_selesai'] <= $validated['waktu_mulai']) {
@@ -152,7 +155,7 @@ class JamSekolahController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $exists = JamSekolah::where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+        $exists = JamSekolah::where('semester_id', $validated['semester_id'])
             ->where('hari', $validated['hari'])
             ->where('jam_ke', $validated['jam_ke'])
             ->whereNotNull('jam_ke')
@@ -165,7 +168,7 @@ class JamSekolahController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
-        $overlap = JamSekolah::where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+        $overlap = JamSekolah::where('semester_id', $validated['semester_id'])
             ->where('hari', $validated['hari'])
             ->where(function ($query) use ($validated) {
                 $query->where('waktu_mulai', '<', $validated['waktu_selesai'])
@@ -183,7 +186,7 @@ class JamSekolahController extends Controller
             $jamSekolah = DB::transaction(fn() => JamSekolah::create($validated));
             return response()->json([
                 'success' => true, 
-                'data' => new JamSekolahResource($jamSekolah->load('tahunAjaran'))
+                'data' => new JamSekolahResource($jamSekolah->load('semester.tahunAjaran'))
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             return response()->json([
@@ -197,14 +200,14 @@ class JamSekolahController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data'    => new JamSekolahResource($jamSekolah->load('tahunAjaran'))
+            'data'    => new JamSekolahResource($jamSekolah->load('semester.tahunAjaran'))
         ], Response::HTTP_OK);
     }
 
     public function update(UpdateJamSekolahRequest $request, JamSekolah $jamSekolah): JsonResponse
     {
         $validated = $request->validated();
-        $tahunId = $validated['tahun_ajaran_id'] ?? $jamSekolah->tahun_ajaran_id;
+        $semesterId = $validated['semester_id'] ?? $jamSekolah->semester_id;
         $hari = $validated['hari'] ?? $jamSekolah->hari;
         $mulai = $validated['waktu_mulai'] ?? $jamSekolah->waktu_mulai;
         $selesai = $validated['waktu_selesai'] ?? $jamSekolah->waktu_selesai;
@@ -217,7 +220,7 @@ class JamSekolahController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $exists = JamSekolah::where('tahun_ajaran_id', $tahunId)
+        $exists = JamSekolah::where('semester_id', $semesterId)
             ->where('hari', $hari)
             ->where('jam_ke', $jamKe)
             ->whereNotNull('jam_ke')
@@ -231,7 +234,7 @@ class JamSekolahController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
-        $overlap = JamSekolah::where('tahun_ajaran_id', $tahunId)
+        $overlap = JamSekolah::where('semester_id', $semesterId)
             ->where('hari', $hari)
             ->where('id', '!=', $jamSekolah->id)
             ->where(function ($query) use ($mulai, $selesai) {
@@ -250,7 +253,7 @@ class JamSekolahController extends Controller
             DB::transaction(fn() => $jamSekolah->update($validated));
             return response()->json([
                 'success' => true, 
-                'data' => new JamSekolahResource($jamSekolah->load('tahunAjaran'))
+                'data' => new JamSekolahResource($jamSekolah->load('semester.tahunAjaran'))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json([

@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\GuruMapel;
 use App\Models\JamSekolah;
-use App\Models\TahunAjaran;
+use App\Models\Semester;
 use App\Models\GuruStaf;
 use App\Models\MataPelajaran;
 use App\Models\Kelas;
@@ -37,7 +37,7 @@ class GuruMapelController extends Controller
 
     private function applyFilters(Request $request)
     {
-        $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran', 'jamMulai', 'jamSelesai']);
+        $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'semester', 'jamMulai', 'jamSelesai']);
 
         if (!$request->has('show_all')) {
             $query->whereHas('mapel', function ($q) {
@@ -61,8 +61,8 @@ class GuruMapelController extends Controller
             return $q->whereHas('mapel.jurusan', fn($j) => $j->where('id', $jurusanId));
         });
 
-        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
-        $tahunAjaranId = $request->get('tahun_ajaran_id', optional($tahunAktif)->id);
+        $semesterAktif = Semester::where('is_active', 1)->first();
+        $semesterId = $request->get('semester_id', optional($semesterAktif)->id);
 
         if ($request->filled('q')) {
             $search = $request->get('q');
@@ -73,7 +73,7 @@ class GuruMapelController extends Controller
             });
         }
 
-        $query->when($tahunAjaranId, fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId))
+        $query->when($semesterId, fn($q) => $q->where('semester_id', $semesterId))
               ->when($request->guru_staf_id, fn($q, $id) => $q->where('guru_staf_id', $id))
               ->when($request->mata_pelajaran_id, fn($q, $id) => $q->where('mata_pelajaran_id', $id))
               ->when($request->kelas_id, fn($q, $id) => $q->where('kelas_id', $id))
@@ -123,7 +123,6 @@ class GuruMapelController extends Controller
             $filters = [
                 'q'            => $request->get('q'),
                 'hari'         => $request->get('hari'),
-                'tahun_ajaran' => 'Semua',
                 'semester'     => 'Semua',
                 'tipe_mapel'   => $request->get('tipe_mapel', 'Semua Tipe'),
                 'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Aktif'
@@ -132,18 +131,17 @@ class GuruMapelController extends Controller
             $kriteria = [];
             $nameParts = ['JADWAL_GURU_MAPEL'];
 
-            if ($request->filled('tahun_ajaran_id')) {
-                $tahun = TahunAjaran::find($request->tahun_ajaran_id);
+            if ($request->filled('semester_id')) {
+                $semester = Semester::with('tahunAjaran')->find($request->semester_id);
             } else {
-                $tahun = TahunAjaran::where('is_active', 1)->first();
+                $semester = Semester::with('tahunAjaran')->where('is_active', 1)->first();
             }
 
-            if ($tahun) {
-                $filters['tahun_ajaran'] = $tahun->nama;
-                $filters['semester'] = strtoupper($tahun->semester);
-                $taClean = str_replace(['/', ' '], '_', $tahun->nama);
-                $semester = strtoupper($tahun->semester);
-                $nameParts[] = "{$taClean}_{$semester}";
+            if ($semester) {
+                $filters['semester'] = $semester->nama . ' - ' . $semester->tahunAjaran->nama;
+                $taClean = str_replace(['/', ' '], '_', $semester->tahunAjaran->nama);
+                $semClean = strtoupper(str_replace(' ', '_', $semester->nama));
+                $nameParts[] = "{$taClean}_{$semClean}";
             }
 
             if ($jurusanId) {
@@ -235,7 +233,7 @@ class GuruMapelController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data'    => new GuruMapelResource($guruMapel->load(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran', 'jamMulai', 'jamSelesai']))
+            'data'    => new GuruMapelResource($guruMapel->load(['guru', 'mapel.jurusan', 'kelas', 'semester', 'jamMulai', 'jamSelesai']))
         ], Response::HTTP_OK);
     }
 
@@ -243,11 +241,11 @@ class GuruMapelController extends Controller
     {
         $this->authorize('viewAny', GuruMapel::class);
         $hari = $request->query('hari');
-        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
+        $semesterAktif = Semester::where('is_active', 1)->first();
 
         $jam = JamSekolah::where('hari', $hari)
-            ->when($tahunAktif, function ($query) use ($tahunAktif) {
-                return $query->where('tahun_ajaran_id', $tahunAktif->id);
+            ->when($semesterAktif, function ($query) use ($semesterAktif) {
+                return $query->where('semester_id', $semesterAktif->id);
             })
             ->orderBy('waktu_mulai')
             ->get();
@@ -283,8 +281,8 @@ class GuruMapelController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
-        $validated['tahun_ajaran_id'] = $validated['tahun_ajaran_id'] ?? optional($tahunAktif)->id;
+        $semesterAktif = Semester::where('is_active', 1)->first();
+        $validated['semester_id'] = $validated['semester_id'] ?? optional($semesterAktif)->id;
 
         $jamMulai = JamSekolah::find($validated['jam_mulai_id']);
         $jamSelesai = JamSekolah::find($validated['jam_selesai_id']);
@@ -308,7 +306,7 @@ class GuruMapelController extends Controller
         }
 
         $bentrok = GuruMapel::where('hari', $validated['hari'])
-            ->where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+            ->where('semester_id', $validated['semester_id'])
             ->where(function ($q) use ($jamMulai, $jamSelesai) {
                 $q->whereHas('jamMulai', function ($query) use ($jamSelesai) {
                     $query->where('waktu_mulai', '<', $jamSelesai->waktu_selesai);
@@ -333,7 +331,7 @@ class GuruMapelController extends Controller
         $exists = GuruMapel::where('guru_staf_id', $validated['guru_staf_id'])
             ->where('mata_pelajaran_id', $validated['mata_pelajaran_id'])
             ->where('kelas_id', $validated['kelas_id'])
-            ->where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+            ->where('semester_id', $validated['semester_id'])
             ->exists();
 
         if ($exists) {
@@ -348,7 +346,7 @@ class GuruMapelController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Penugasan guru berhasil ditambahkan.',
-                'data'    => new GuruMapelResource($assignment->load(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran']))
+                'data'    => new GuruMapelResource($assignment->load(['guru', 'mapel.jurusan', 'kelas', 'semester']))
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             Log::error('Store Guru Mapel Error', ['error' => $e->getMessage()]);
@@ -359,8 +357,8 @@ class GuruMapelController extends Controller
     public function update(UpdateGuruMapelRequest $request, GuruMapel $guruMapel): JsonResponse
     {
         $validated = $request->validated();
-        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
-        $validated['tahun_ajaran_id'] = $validated['tahun_ajaran_id'] ?? optional($tahunAktif)->id;
+        $semesterAktif = Semester::where('is_active', 1)->first();
+        $validated['semester_id'] = $validated['semester_id'] ?? optional($semesterAktif)->id;
 
         $jamMulai = JamSekolah::find($validated['jam_mulai_id']);
         $jamSelesai = JamSekolah::find($validated['jam_selesai_id']);
@@ -385,7 +383,7 @@ class GuruMapelController extends Controller
 
         $bentrok = GuruMapel::where('id', '<>', $guruMapel->id)
             ->where('hari', $validated['hari'])
-            ->where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+            ->where('semester_id', $validated['semester_id'])
             ->where(function ($q) use ($jamMulai, $jamSelesai) {
                 $q->whereHas('jamMulai', function ($query) use ($jamSelesai) {
                     $query->where('waktu_mulai', '<', $jamSelesai->waktu_selesai);
@@ -410,7 +408,7 @@ class GuruMapelController extends Controller
         $exists = GuruMapel::where('guru_staf_id', $validated['guru_staf_id'])
             ->where('mata_pelajaran_id', $validated['mata_pelajaran_id'])
             ->where('kelas_id', $validated['kelas_id'])
-            ->where('tahun_ajaran_id', $validated['tahun_ajaran_id'])
+            ->where('semester_id', $validated['semester_id'])
             ->where('id', '<>', $guruMapel->id)
             ->exists();
 
@@ -426,7 +424,7 @@ class GuruMapelController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Penugasan guru berhasil diperbarui.',
-                'data'    => new GuruMapelResource($guruMapel->refresh()->load(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran']))
+                'data'    => new GuruMapelResource($guruMapel->refresh()->load(['guru', 'mapel.jurusan', 'kelas', 'semester']))
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Update Guru Mapel Error', ['error' => $e->getMessage()]);

@@ -235,8 +235,6 @@ class PresensiController extends Controller
         $cleanKelasId = trim($kelas_id);
 
         try {
-            Log::info("DEBUG - listSiswaPresensi | Guru: [{$guruId}] | KelasReq: [{$cleanKelasId}]");
-
             $kelas = Kelas::where('id', $cleanKelasId)
                 ->where('wali_kelas_id', $guruId)
                 ->where('is_active', 1)

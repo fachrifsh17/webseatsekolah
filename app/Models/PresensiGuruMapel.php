@@ -14,7 +14,7 @@ class PresensiGuruMapel extends Model
         'guru_mapel_id',
         'kelas_id',
         'mata_pelajaran_id',
-        'tahun_ajaran_id',
+        'semester_id', // --- PERUBAHAN DI SINI ---
         'tanggal',
         'jam_masuk',
         'jam_keluar',
@@ -22,7 +22,7 @@ class PresensiGuruMapel extends Model
     ];
 
     protected $casts = [
-        'tahun_ajaran_id' => 'string',
+        'semester_id' => 'string', // --- PERUBAHAN DI SINI ---
         'tanggal' => 'date',
     ];
 
@@ -36,15 +36,16 @@ class PresensiGuruMapel extends Model
         return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
     }
 
-    // DIUBAH: Dari mataPelajaran menjadi mapel
     public function mapel(): BelongsTo
     {
         return $this->belongsTo(MataPelajaran::class, 'mata_pelajaran_id', 'id');
     }
 
-    public function tahunAjaran(): BelongsTo
+    // --- PERUBAHAN DI SINI ---
+    // Nama fungsi dan model yang dirujuk diubah ke Semester
+    public function semester(): BelongsTo
     {
-        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id', 'id');
+        return $this->belongsTo(Semester::class, 'semester_id', 'id');
     }
 
     public function jamMasukDetail(): BelongsTo
@@ -57,7 +58,6 @@ class PresensiGuruMapel extends Model
         return $this->belongsTo(JamSekolah::class, 'jam_keluar', 'id');
     }
 
-    // DIUBAH: Dari presensiSiswaDetail menjadi getBySiswaDetil
     public function getBySiswaDetil(): HasMany
     {
         return $this->hasMany(PresensiSiswaDetail::class, 'presensi_guru_mapel_id', 'id');

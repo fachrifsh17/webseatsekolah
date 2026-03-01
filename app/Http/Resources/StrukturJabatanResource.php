@@ -40,6 +40,13 @@ class StrukturJabatanResource extends JsonResource
                 ];
             }),
 
+            // --- TAMBAHAN LOGIKA TTD HANYA UNTUK ADMIN ---
+            'url_ttd' => $this->when($isAdmin && $this->file_ttd, function () {
+                // Mengambil URL lengkap gambar tanda tangan
+                return $this->file_ttd ? url(Storage::url($this->file_ttd)) : null;
+            }),
+            // ---------------------------------------------
+
             'periode' => $this->periode_mulai instanceof \DateTimeInterface 
                 ? $this->periode_mulai->format('Y-m-d') 
                 : $this->periode_mulai,

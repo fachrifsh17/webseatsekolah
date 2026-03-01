@@ -3,7 +3,7 @@
 namespace App\Imports;
 
 use App\Models\JamSekolah;
-use App\Models\TahunAjaran;
+use App\Models\Semester; // --- PERUBAHAN: Gunakan Semester
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithValidation;
@@ -20,10 +20,11 @@ class JamSekolahImport implements ToModel, WithHeadingRow, WithValidation, Skips
     public function model(array $row)
     {
         $this->rows++;
-        $tahunAktif = TahunAjaran::where('is_active', true)->first();
+        // --- PERUBAHAN: Ambil semester yang aktif ---
+        $semesterAktif = Semester::where('is_active', true)->first();
 
-        if (!$tahunAktif) {
-            $this->importMessages[] = "Baris {$this->rows}: Tidak ada Tahun Ajaran yang aktif.";
+        if (!$semesterAktif) {
+            $this->importMessages[] = "Baris {$this->rows}: Tidak ada Semester yang aktif.";
             return null;
         }
 
@@ -40,20 +41,20 @@ class JamSekolahImport implements ToModel, WithHeadingRow, WithValidation, Skips
         // 2. VALIDASI: Cek duplikasi Jam Ke (jika tidak null)
         if (!empty($row['jam_ke'])) {
             $existsJamKe = JamSekolah::where([
-                'tahun_ajaran_id' => $tahunAktif->id,
-                'hari'            => $row['hari'],
-                'jam_ke'          => $row['jam_ke'],
+                'semester_id' => $semesterAktif->id, // --- PERUBAHAN: filter semester_id
+                'hari'        => $row['hari'],
+                'jam_ke'      => $row['jam_ke'],
             ])->exists();
 
             if ($existsJamKe) {
-                $this->importMessages[] = "Baris {$this->rows}: Jam ke-{$row['jam_ke']} pada hari {$row['hari']} sudah terdaftar.";
+                $this->importMessages[] = "Baris {$this->rows}: Jam ke-{$row['jam_ke']} pada hari {$row['hari']} sudah terdaftar di semester ini.";
                 return null;
             }
         }
 
         // 3. VALIDASI: Cek Tabrakan Waktu (Overlap)
         // Logika: (Mulai_Baru < Selesai_DB) DAN (Selesai_Baru > Mulai_DB)
-        $overlap = JamSekolah::where('tahun_ajaran_id', $tahunAktif->id)
+        $overlap = JamSekolah::where('semester_id', $semesterAktif->id) // --- PERUBAHAN: filter semester_id
             ->where('hari', $row['hari'])
             ->where(function ($query) use ($mulai, $selesai) {
                 $query->where('waktu_mulai', '<', $selesai)
@@ -61,11 +62,11 @@ class JamSekolahImport implements ToModel, WithHeadingRow, WithValidation, Skips
             })->exists();
 
         if ($overlap) {
-            $this->importMessages[] = "Baris {$this->rows}: Waktu ({$row['waktu_mulai']} - {$row['waktu_selesai']}) bertabrakan dengan jadwal lain di hari {$row['hari']}.";
+            $this->importMessages[] = "Baris {$this->rows}: Waktu ({$row['waktu_mulai']} - {$row['waktu_selesai']}) bertabrakan dengan jadwal lain di hari {$row['hari']} pada semester ini.";
             return null;
         }
 
-        return DB::transaction(function () use ($row, $tahunAktif, $mulai, $selesai) {
+        return DB::transaction(function () use ($row, $semesterAktif, $mulai, $selesai) {
             // Logika Custom ID JM001
             $lastJam = JamSekolah::where('id', 'like', 'JM%')
                 ->orderByRaw('CAST(SUBSTRING(id, 3) AS UNSIGNED) DESC')
@@ -77,7 +78,7 @@ class JamSekolahImport implements ToModel, WithHeadingRow, WithValidation, Skips
 
             return new JamSekolah([
                 'id'              => $newId,
-                'tahun_ajaran_id' => $tahunAktif->id,
+                'semester_id'     => $semesterAktif->id, // --- PERUBAHAN: simpan semester_id
                 'hari'            => $row['hari'],
                 'jam_ke'          => $row['jam_ke'] ?? null,
                 'waktu_mulai'     => $mulai,

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\KetuaJurusan;
 
 use App\Http\Controllers\Controller;
-use App\Models\{MataPelajaran, GuruStaf, ProfilSekolah, DataKontak, TahunAjaran};
+use App\Models\{MataPelajaran, GuruStaf, ProfilSekolah, DataKontak, Semester}; // Ganti TahunAjaran ke Semester
 use App\Http\Resources\MapelResource;
 use App\Exports\MapelExport;
 use Illuminate\Support\Facades\{Log, Auth, DB};
@@ -134,7 +134,9 @@ class MapelController extends Controller
             $this->authorize('viewAny', MataPelajaran::class);
             $jurusanId = $this->getJurusanId();
             $namaJurusan = $this->getNamaJurusan();
-            $taAktif = TahunAjaran::where('is_active', 1)->first();
+            
+            // Ambil semester aktif beserta tahun ajarannya
+            $activeSemester = Semester::with('tahunAjaran')->where('is_active', 1)->first();
 
             if (!$jurusanId) {
                 return response()->json(['success' => false, 'message' => 'Akses ditolak.'], Response::HTTP_FORBIDDEN);
@@ -154,13 +156,13 @@ class MapelController extends Controller
                 $nameParts[] = strtoupper(str_replace([' ', '-'], '_', $namaJurusan));
             }
 
-            if ($taAktif) {
-                $namaTa = strtoupper(str_replace([' ', '-', '/'], '_', $taAktif->nama));
-                $semester = strtoupper($taAktif->semester ?? '');
+            if ($activeSemester) {
+                // Gunakan nama tahun ajaran dari relasi
+                $namaTa = strtoupper(str_replace([' ', '-', '/'], '_', $activeSemester->tahunAjaran->nama));
+                $namaSemester = strtoupper(str_replace(' ', '_', $activeSemester->nama));
+                
                 $nameParts[] = $namaTa;
-                if ($semester) {
-                    $nameParts[] = $semester;
-                }
+                $nameParts[] = $namaSemester;
             }
 
             $nameParts[] = $request->boolean('include_inactive') ? 'SEMUA' : 'AKTIF';
@@ -172,7 +174,8 @@ class MapelController extends Controller
             
             if (ob_get_contents()) ob_end_clean();
 
-            return Excel::download(new MapelExport($filters, $profil, $kontak), $fileName);
+            // Kirim $activeSemester ke Export Class
+            return Excel::download(new MapelExport($filters, $profil, $kontak, $activeSemester), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Mapel Jurusan Error', ['error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Gagal mengekspor data'], Response::HTTP_INTERNAL_SERVER_ERROR);

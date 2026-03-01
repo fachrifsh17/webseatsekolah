@@ -3,18 +3,20 @@
 namespace App\Exports;
 
 use App\Models\PoinSiswa;
-use Maatwebsite\Excel\Concerns\{FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings};
+use Maatwebsite\Excel\Concerns\{FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings, WithDrawings};
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\{Alignment, Border, Fill};
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
-class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings
+class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings, WithDrawings
 {
     protected $query, $namaKelas, $labelWaktu, $profil, $kontak, $namaTA;
     private $rowNumber = 0;
     private $totalsPeriode = [];
+    private $ttdRowOffset = 0;
 
     public function __construct($query, $namaKelas, $labelWaktu, $profil, $kontak, $namaTA = null)
     {
@@ -99,13 +101,13 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $kepsek = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 1) 
-                    ->select('guru_staf.nama', 'guru_staf.nip')
+                    ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
                     ->first();
 
                 $wakaKes = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 3) 
-                    ->select('guru_staf.nama', 'guru_staf.nip')
+                    ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
                     ->first();
 
                 $provAsli = $this->kontak->provinsi ?? 'Jawa Barat';
@@ -207,23 +209,27 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                     $sheet->getStyle("E" . ($h + 1) . ":{$lastSumCol}" . ($curr - 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 }
 
-                $ttgRow = $curr + 2;
+                $ttgRowLabels = $curr + 3;
+                $this->ttdRowOffset = $ttgRowLabels;
+
                 $lokasiTtd = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
-                $sheet->mergeCells("F{$ttgRow}:{$lastCol}{$ttgRow}");
-                $sheet->setCellValue("F{$ttgRow}", strtoupper($lokasiTtd) . ", " . Carbon::now()->translatedFormat('d F Y'));
-                $sheet->getStyle("F{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->mergeCells("F{$ttgRowLabels}:{$lastCol}{$ttgRowLabels}");
+                $sheet->setCellValue("F{$ttgRowLabels}", strtoupper($lokasiTtd) . ", " . Carbon::now()->translatedFormat('d F Y'));
+                $sheet->getStyle("F{$ttgRowLabels}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $ttgRow++;
-                $sheet->mergeCells("A{$ttgRow}:C{$ttgRow}");
-                $sheet->setCellValue("A{$ttgRow}", "MENGETAHUI,\nWAKA KESISWAAN");
+                $labelRow = $ttgRowLabels + 1;
+                $sheet->mergeCells("A{$labelRow}:C{$labelRow}");
+                $sheet->setCellValue("A{$labelRow}", "MENGETAHUI,\nWAKA KESISWAAN");
                 
-                $sheet->mergeCells("F{$ttgRow}:{$lastCol}{$ttgRow}");
-                $sheet->setCellValue("F{$ttgRow}", "MENYETUJUI,\nKEPALA SEKOLAH");
+                $sheet->mergeCells("F{$labelRow}:{$lastCol}{$labelRow}");
+                $sheet->setCellValue("F{$labelRow}", "MENYETUJUI,\nKEPALA SEKOLAH");
                 
-                $sheet->getStyle("A{$ttgRow}:{$lastCol}{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
-                $sheet->getStyle("A{$ttgRow}:{$lastCol}{$ttgRow}")->getFont()->setBold(true);
+                $sheet->getStyle("A{$labelRow}:{$lastCol}{$labelRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
+                $sheet->getStyle("A{$labelRow}:{$lastCol}{$labelRow}")->getFont()->setBold(true);
 
-                $namaRow = $ttgRow + 4;
+                $sheet->getRowDimension($labelRow + 3)->setRowHeight(60);
+
+                $namaRow = $labelRow + 4;
                 $sheet->mergeCells("A{$namaRow}:C{$namaRow}");
                 $sheet->setCellValue("A{$namaRow}", "( " . strtoupper($wakaKes->nama ?? '____________________') . " )"); 
                 
@@ -242,5 +248,43 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $sheet->getStyle("A{$nipRow}:{$lastCol}{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
+    }
+
+    public function drawings()
+    {
+        $drawings = [];
+        $imageRow = $this->ttdRowOffset + 3;
+
+        $wakaKes = DB::table('struktur_jabatan')
+            ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
+            ->where('struktur_jabatan.jabatan_id', 3)
+            ->select('struktur_jabatan.file_ttd')
+            ->first();
+            
+        $kepsek = DB::table('struktur_jabatan')
+            ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
+            ->where('struktur_jabatan.jabatan_id', 1)
+            ->select('struktur_jabatan.file_ttd')
+            ->first();
+
+        if ($wakaKes && $wakaKes->file_ttd && file_exists(storage_path('app/public/' . $wakaKes->file_ttd))) {
+            $drawing = new Drawing();
+            $drawing->setName('TTD Waka');
+            $drawing->setPath(storage_path('app/public/' . $wakaKes->file_ttd));
+            $drawing->setHeight(50);
+            $drawing->setCoordinates('B' . $imageRow);
+            $drawings[] = $drawing;
+        }
+        
+        if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
+            $drawing = new Drawing();
+            $drawing->setName('TTD Kepsek');
+            $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
+            $drawing->setHeight(50);
+            $drawing->setCoordinates('G' . $imageRow);
+            $drawings[] = $drawing;
+        }
+
+        return $drawings;
     }
 }

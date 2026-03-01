@@ -42,7 +42,7 @@ use App\Http\Controllers\Admin\{
     PoinSiswaController as AdminPoin,
     DashboardController as AdminDashboard,
     KelasWaliKelasController,
-    TingkatanController,
+    TingkatanController,SemesterController,
 };
 
 // --- Humas ---
@@ -198,7 +198,9 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::put('ppdb-link', [PpdbLinkController::class, 'update']);
     Route::get('kenaikan-kelas', [KenaikanKelasController::class, 'index']);
     Route::post('kenaikan-kelas/proses', [KenaikanKelasController::class, 'prosesMassal']);
-    Route::post('/kelas-wali-kelas/clone', [KelasWaliKelasController::class, 'cloneToNewYear']);
+    Route::post('walikelas/kelas-copy', [KelasWaliKelasController::class, 'cloneToNewYear']);
+    Route::post('walikelas/naik-tingkat-kelas', [KelasWaliKelasController::class, 'bulkUpdateTingkat']);
+    Route::post('walikelas/kelas-create', [KelasWaliKelasController::class, 'prepareNewYear']);
     Route::apiResource('kelaswalikelas', KelasWaliKelasController::class,);
     Route::apiResource('tingkatan', TingkatanController::class,);
     
@@ -253,6 +255,7 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::apiResource('poin_siswa', AdminPoin::class); 
     
     Route::apiResource('tahun_ajaran', TahunAjaranController::class);
+    Route::apiResource('semester', SemesterController::class);
     Route::apiResource('portal', PortalController::class);
     Route::apiResource('berita', BeritaController::class);
     Route::apiResource('pengumuman', PengumumanController::class);

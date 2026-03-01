@@ -21,8 +21,9 @@ return new class extends Migration
             // kelas_id varchar(10) NOT NULL
             $table->string('kelas_id', 10);
             
-            // tahun_ajaran_id varchar(10) NOT NULL
-            $table->string('tahun_ajaran_id', 10);
+            // --- PERUBAHAN DI SINI ---
+            // Foreign Key diubah ke tabel semesters (bigint)
+            $table->foreignId('semester_id')->constrained('semesters')->onDelete('restrict');
             
             // is_active tinyint(1) DEFAULT '1'
             $table->boolean('is_active')->default(true);
@@ -43,13 +44,6 @@ return new class extends Migration
                   ->references('id')
                   ->on('kelas')
                   ->onDelete('cascade');
-
-            // CONSTRAINT `fk_siswa_kelas_tahun_ajaran` FOREIGN KEY (`tahun_ajaran_id`) REFERENCES `tahun_ajaran` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
-            $table->foreign('tahun_ajaran_id', 'fk_siswa_kelas_tahun_ajaran')
-                  ->references('id')
-                  ->on('tahun_ajaran')
-                  ->onDelete('restrict')
-                  ->onUpdate('cascade');
             
             // --- Indexes ---
             $table->index('is_active', 'idx_sk_status');

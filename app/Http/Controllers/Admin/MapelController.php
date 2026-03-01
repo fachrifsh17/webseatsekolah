@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{MataPelajaran, Jurusan, ProfilSekolah, DataKontak, TahunAjaran};
+use App\Models\{MataPelajaran, Jurusan, ProfilSekolah, DataKontak, Semester}; // Tambahkan Semester
 use App\Http\Resources\MapelResource;
 use App\Http\Requests\{StoreMapelRequest, UpdateMapelRequest};
 use App\Exports\MapelExport;
@@ -89,7 +89,9 @@ class MapelController extends Controller
             
             $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 
             $kontak = DataKontak::first() ?? new DataKontak(); 
-            $taAktif = TahunAjaran::where('is_active', 1)->first();
+            
+            // Ambil semester aktif beserta tahun ajarannya
+            $activeSemester = Semester::with('tahunAjaran')->where('is_active', 1)->first();
 
             $filenameParts = ['DATA_MAPEL'];
 
@@ -102,13 +104,13 @@ class MapelController extends Controller
                 $filenameParts[] = 'SEMUA_JURUSAN';
             }
 
-            if ($taAktif) {
-                $namaTa = strtoupper(str_replace([' ', '-', '/'], '_', $taAktif->nama));
-                $semester = strtoupper($taAktif->semester ?? '');
+            if ($activeSemester) {
+                // Gunakan nama tahun ajaran dari relasi
+                $namaTa = strtoupper(str_replace([' ', '-', '/'], '_', $activeSemester->tahunAjaran->nama));
+                $namaSemester = strtoupper(str_replace(' ', '_', $activeSemester->nama));
+                
                 $filenameParts[] = $namaTa;
-                if ($semester) {
-                    $filenameParts[] = $semester;
-                }
+                $filenameParts[] = $namaSemester;
             }
 
             $filenameParts[] = ($filters['is_active'] == 1) ? 'AKTIF' : 'NON_AKTIF';
@@ -117,7 +119,8 @@ class MapelController extends Controller
 
             if (ob_get_contents()) ob_end_clean();
 
-            return Excel::download(new MapelExport($filters, $profil, $kontak), $fileName);
+            // Kirim $activeSemester ke Export Class
+            return Excel::download(new MapelExport($filters, $profil, $kontak, $activeSemester), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Mapel Error', ['error' => $e->getMessage()]);
             return response()->json([

@@ -13,7 +13,7 @@ class KalenderAkademik extends Model
     protected $table = 'kalender_akademik';
 
     protected $fillable = [
-        'tahun_ajaran_id', 
+        'semester_id', // --- PERUBAHAN DI SINI ---
         'kegiatan',
         'tanggal_mulai',
         'tanggal_selesai',
@@ -25,9 +25,10 @@ class KalenderAkademik extends Model
         'tanggal_selesai' => 'datetime:Y-m-d',
     ];
 
-   
-    public function tahunAjaran(): BelongsTo
+    // --- PERUBAHAN DI SINI ---
+    // Nama fungsi dan model yang dirujuk diubah ke Semester
+    public function semester(): BelongsTo
     {
-        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id', 'id');
+        return $this->belongsTo(Semester::class, 'semester_id', 'id');
     }
 }

@@ -15,8 +15,9 @@ return new class extends Migration
             // id int NOT NULL AUTO_INCREMENT PRIMARY KEY
             $table->id(); 
             
-            // Foreign Key ke tahun_ajaran (varchar 10)
-            $table->string('tahun_ajaran_id', 10)->nullable();
+            // --- PERUBAHAN DI SINI ---
+            // Foreign Key diubah ke tabel semesters (bigint)
+            $table->foreignId('semester_id')->nullable()->constrained('semesters')->onDelete('cascade');
             
             $table->string('kegiatan', 255)->nullable();
             $table->date('tanggal_mulai')->nullable();
@@ -26,13 +27,6 @@ return new class extends Migration
             $table->enum('kategori', ['Ujian', 'Libur', 'Hari Efektif', 'Akademik'])->nullable();
             
             $table->timestamps();
-
-            // --- SETTING CONSTRAINTS ---
-            $table->foreign('tahun_ajaran_id')
-                  ->references('id')
-                  ->on('tahun_ajaran')
-                  ->onDelete('cascade')
-                  ->onUpdate('cascade');
         });
     }
 

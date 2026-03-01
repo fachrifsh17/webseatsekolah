@@ -37,7 +37,10 @@
             font-size: 9pt; 
         }
         .signature-table td { border: none !important; padding: 5px; text-align: center; vertical-align: top; }
-        .spacer { height: 45px; }
+        /* Mengurangi tinggi spacer karena foto akan mengambil ruang */
+        .spacer { height: 10px; }
+        /* Style untuk foto tanda tangan */
+        .ttd-img { height: 70px; display: block; margin: 0 auto; }
     </style>
 </head>
 <body>
@@ -130,7 +133,16 @@
                 <td width="50%">
                     Mengetahui,<br>
                     Wakasek Kurikulum
-                    <div class="spacer"></div>
+                    
+                    {{-- Tambahkan Kondisi Foto TTD Waka --}}
+                    @if(!empty($ttdWakaKur))
+                        <br>
+                        <img src="{{ public_path('storage/' . $ttdWakaKur) }}" class="ttd-img">
+                    @else
+                        <div class="spacer"></div>
+                        <div class="spacer"></div>
+                    @endif
+
                     <span class="text-bold underline">{{ strtoupper($wakaKur) }}</span><br>
                     NIP. {{ $nipWakaKur }}
                 </td>
@@ -138,7 +150,16 @@
                 <td width="50%">
                     {{ strtoupper($kontak->kabupaten_kota ?? 'TASIKMALAYA') }}, {{ \Carbon\Carbon::now()->translatedFormat('d F Y') }}<br>
                     Kepala Sekolah
-                    <div class="spacer"></div>
+                    
+                    {{-- Tambahkan Kondisi Foto TTD Kepsek --}}
+                    @if(!empty($ttdKepsek))
+                        <br>
+                        <img src="{{ public_path('storage/' . $ttdKepsek) }}" class="ttd-img">
+                    @else
+                        <div class="spacer"></div>
+                        <div class="spacer"></div>
+                    @endif
+
                     <span class="text-bold underline">{{ strtoupper($kepsek) }}</span><br>
                     NIP. {{ $nipKepsek }}
                 </td>

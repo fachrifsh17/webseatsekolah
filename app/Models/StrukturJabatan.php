@@ -17,6 +17,7 @@ class StrukturJabatan extends Model
         'jabatan_id',
         'periode_mulai',
         'urutan_tampil',
+        'file_ttd', // --- TAMBAHAN DI SINI ---
     ];
 
     protected $casts = [

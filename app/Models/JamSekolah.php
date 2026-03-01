@@ -17,7 +17,7 @@ class JamSekolah extends Model
 
     protected $fillable = [
         'id',
-        'tahun_ajaran_id',
+        'semester_id', // --- PERUBAHAN DI SINI ---
         'hari',
         'jam_ke',
         'waktu_mulai',
@@ -41,14 +41,17 @@ class JamSekolah extends Model
         static::creating(function ($model) {
             if (empty($model->id)) {
                 $lastId = static::orderBy('id', 'desc')->value('id');
+                // Asumsi format ID adalah JM001
                 $num = $lastId ? (int) substr($lastId, 2) + 1 : 1;
                 $model->id = 'JM' . str_pad($num, 3, '0', STR_PAD_LEFT);
             }
         });
     }
 
-    public function tahunAjaran(): BelongsTo
+    // --- PERUBAHAN DI SINI ---
+    // Nama fungsi dan model yang dirujuk diubah ke Semester
+    public function semester(): BelongsTo
     {
-        return $this->belongsTo(TahunAjaran::class, 'tahun_ajaran_id', 'id');
+        return $this->belongsTo(Semester::class, 'semester_id', 'id');
     }
 }

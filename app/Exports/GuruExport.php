@@ -16,6 +16,7 @@ use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use Carbon\Carbon;
 
 class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
@@ -136,18 +137,21 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                 $lastCol = 'M';
                 $lastRow = $sheet->getHighestRow();
 
+                // 1. Ambil Data Kepsek
                 $kepsek = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 1) 
-                    ->select('guru_staf.nama', 'guru_staf.nip')
+                    ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
                     ->first();
 
+                // 2. Data Profil Sekolah
                 $provAsli = $this->kontak->provinsi ?? 'Jawa Barat';
                 $provKapital = strtoupper($provAsli);
                 $alamatJalan = $this->kontak->alamat_jalan ?? '-';
                 $desaKec = "Desa " . ($this->kontak->desa_kelurahan ?? '-') . " Kec. " . ($this->kontak->kecamatan ?? '-');
                 $kotaKab = ($this->kontak->kabupaten_kota ?? 'Tasikmalaya');
 
+                // 3. Header Excel
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
@@ -163,9 +167,30 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                 $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true);
                 $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
-                $tahunAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
-                $taText = $tahunAktif ? "TAHUN PELAJARAN {$tahunAktif->nama}" : "TAHUN PELAJARAN -";
-                $semesterText = $tahunAktif ? " - SEMESTER " . strtoupper($tahunAktif->semester) : "";
+                // --- LOGIKA TAHUN AJARAN & SEMESTER (DIPERBAIKI) ---
+                $semesterId = $this->filters['semester_id'] ?? null;
+                $taText = "TAHUN PELAJARAN -";
+                $semesterText = "";
+
+                // Jika filter semester kosong, ambil semester yang aktif
+                if (!$semesterId) {
+                    $activeSemester = DB::table('semesters')->where('is_active', 1)->first();
+                    $semesterId = $activeSemester->id ?? null;
+                }
+
+                if ($semesterId) {
+                    $semesterData = DB::table('semesters')
+                        ->join('tahun_ajaran', 'semesters.tahun_ajaran_id', '=', 'tahun_ajaran.id')
+                        ->where('semesters.id', $semesterId)
+                        ->select('semesters.nama as nama_semester', 'tahun_ajaran.nama as nama_ta')
+                        ->first();
+                    
+                    if ($semesterData) {
+                        $taText = "TAHUN PELAJARAN {$semesterData->nama_ta}";
+                        $semesterText = " - SEMESTER " . strtoupper($semesterData->nama_semester);
+                    }
+                }
+                // ----------------------------------------------------
 
                 $sheet->mergeCells("A7:{$lastCol}7"); 
                 $sheet->setCellValue('A7', 'DAFTAR DATA GURU DAN STAF');
@@ -176,6 +201,7 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                 $sheet->getStyle("A7:A8")->getFont()->setBold(true)->setSize(11);
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
+                // 4. Tanda Tangan
                 $ttgRow = $lastRow + 3;
                 $ttgColStart = 'J';
                 $ttgColEnd = 'M';
@@ -191,7 +217,21 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                 $sheet->getStyle("{$ttgColStart}{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
                 $sheet->getStyle("{$ttgColStart}{$ttgRow}")->getFont()->setBold(true);
 
-                $namaRow = $ttgRow + 4;
+                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
+                    $drawing = new Drawing();
+                    $drawing->setName('Tanda Tangan');
+                    $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
+                    $drawing->setHeight(60); 
+                    $drawing->setCoordinates($ttgColStart . ($ttgRow + 1));
+                    
+                    $drawing->setOffsetX(10); 
+                    $drawing->setOffsetY(5);  
+                    
+                    $drawing->setWorksheet($sheet->getDelegate());
+                }
+
+                $namaRow = $ttgRow + 5; 
+                
                 $sheet->mergeCells("A{$namaRow}:C{$namaRow}");
                 $sheet->setCellValue("A{$namaRow}", "( ____________________ )"); 
                 
