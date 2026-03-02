@@ -6,7 +6,7 @@ use App\Models\GuruMapel;
 use App\Models\GuruStaf;
 use App\Models\MataPelajaran;
 use App\Models\Kelas;
-use App\Models\TahunAjaran;
+use App\Models\Semester; // Pastikan model Semester ada
 use App\Models\JamSekolah;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -16,14 +16,17 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
 {
     public array $importMessages = [];
     private int $rows = 0;
+    // Hapus properti $semesterId karena akan dicari langsung
 
     public function model(array $row)
     {
         $this->rows++;
 
-        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
-        if (!$tahunAktif) {
-            $this->importMessages[] = "Baris {$this->rows}: Tidak ada Tahun Ajaran yang aktif.";
+        // PERBAIKAN: Langsung cari semester yang aktif
+        $semesterAktif = Semester::where('is_active', 1)->first();
+        
+        if (!$semesterAktif) {
+            $this->importMessages[] = "Baris {$this->rows}: Tidak ada semester yang diatur sebagai 'aktif'.";
             return null;
         }
 
@@ -43,7 +46,6 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
             ->where('is_active', 1)
             ->first();
 
-        // PENYESUAIAN: Mencari kelas hanya berdasarkan nama dan status aktif (tanpa tahun_ajaran_id)
         $kelas = Kelas::where('nama_kelas', 'LIKE', '%' . $inputKelas . '%')
             ->where('is_active', 1)
             ->first();
@@ -78,8 +80,9 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
             return null;
         }
 
+        // PERBAIKAN: Pengecekan bentrok menggunakan semesterAktif->id
         $bentrok = GuruMapel::where('hari', $hariInput)
-            ->where('tahun_ajaran_id', $tahunAktif->id)
+            ->where('semester_id', $semesterAktif->id) // Cek berdasarkan semester aktif
             ->where(function ($q) use ($jamMulai, $jamSelesai) {
                 $q->where(function($query) use ($jamMulai, $jamSelesai) {
                     $query->whereHas('jamMulai', function ($sub) use ($jamSelesai) {
@@ -97,7 +100,7 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
 
         if ($bentrok) {
             $subjek = $bentrok->guru_staf_id == $guru->id ? "Guru '{$guru->nama}'" : "Kelas '{$kelas->nama_kelas}'";
-            $this->importMessages[] = "Baris {$this->rows}: Conflict! {$subjek} sudah ada jadwal lain di jam ini.";
+            $this->importMessages[] = "Baris {$this->rows}: Conflict! {$subjek} sudah ada jadwal lain di jam ini pada semester aktif.";
             return null;
         }
 
@@ -105,7 +108,7 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
             'guru_staf_id'      => $guru->id,
             'mata_pelajaran_id' => $mapel->id,
             'kelas_id'          => $kelas->id,
-            'tahun_ajaran_id'   => $tahunAktif->id,
+            'semester_id'       => $semesterAktif->id, // Gunakan id semester aktif
             'hari'              => $hariInput,
             'jam_mulai_id'      => $jamMulai->id,
             'jam_selesai_id'    => $jamSelesai->id,

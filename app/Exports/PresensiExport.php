@@ -20,14 +20,16 @@ use App\Models\Siswa;
 
 class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings, WithDrawings
 {
-    protected $namaKelas, $labelWaktu, $profil, $kontak, $dataKelas, $daysInMonth, $year, $month, $role, $tahunAjaranId, $tahunAjaranDisplay, $hariLiburNasional, $waliKelas;
+    // Mengubah variabel untuk menampung semesterId
+    protected $namaKelas, $labelWaktu, $profil, $kontak, $dataKelas, $daysInMonth, $year, $month, $role, $semesterId, $semesterDisplay, $hariLiburNasional, $waliKelas;
     private $rowNumber = 0;
     private $processedSiswa = [];
     private $totalL = 0, $totalP = 0;
     private $grandTotal = ['H' => 0, 'S' => 0, 'I' => 0, 'A' => 0];
     private $ttdRowOffset = 0;
 
-    public function __construct($tahunAjaranId, $namaKelas, $labelWaktu, $profil, $kontak, $dataKelas, $role = 'walikelas', $tahunAjaranDisplay = null)
+    // Konstruktor diubah menerima $semesterId dan objek $semesterDisplay
+    public function __construct($semesterId, $namaKelas, $labelWaktu, $profil, $kontak, $dataKelas, $role = 'walikelas', $semesterDisplay = null)
     {
         $this->namaKelas = $namaKelas;
         $this->labelWaktu = $labelWaktu;
@@ -35,8 +37,9 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
         $this->kontak = is_array($kontak) ? (object)$kontak : $kontak;
         $this->dataKelas = $dataKelas;
         $this->role = $role;
-        $this->tahunAjaranId = $tahunAjaranId;
-        $this->tahunAjaranDisplay = $tahunAjaranDisplay;
+        $this->semesterId = $semesterId;
+        // Pastikan semesterDisplay memuat relasi tahunAjaran
+        $this->semesterDisplay = $semesterDisplay;
 
         $this->waliKelas = DB::table('kelas_wali_kelas')
             ->join('guru_staf', 'kelas_wali_kelas.guru_staf_id', '=', 'guru_staf.id')
@@ -56,8 +59,9 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
 
         $this->daysInMonth = Carbon::create($this->year, $this->month, 1)->daysInMonth;
 
+        // Query hari libur berdasarkan semester_id
         $this->hariLiburNasional = DB::table('kalender_akademik')
-            ->where('tahun_ajaran_id', $this->tahunAjaranId)
+            ->where('semester_id', $this->semesterId)
             ->where('kategori', 'Libur')
             ->get();
     }
@@ -69,10 +73,11 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
 
     public function query()
     {
+        // Query siswa berdasarkan semester_id melalui relasi riwayatKelas
         return Siswa::query()
             ->whereHas('riwayatKelas', function ($q) {
                 $q->where('kelas_id', $this->dataKelas->id)
-                    ->where('tahun_ajaran_id', $this->tahunAjaranId);
+                    ->where('semester_id', $this->semesterId);
             })
             ->orderBy('nama_lengkap', 'asc');
     }
@@ -107,7 +112,7 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
         $presensiBulanIni = DB::table('presensi_detail')
             ->join('presensi', 'presensi_detail.presensi_id', '=', 'presensi.id')
             ->where('presensi_detail.siswa_id', $siswa->id)
-            ->where('presensi.tahun_ajaran_id', $this->tahunAjaranId)
+            ->where('presensi.semester_id', $this->semesterId) // Filter by semester_id
             ->whereMonth('presensi.tanggal', $this->month)
             ->whereYear('presensi.tanggal', $this->year)
             ->select('presensi.tanggal', 'presensi_detail.status', 'presensi_detail.keterangan')
@@ -222,9 +227,14 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 $sheet->getStyle('A8')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $sheet->mergeCells("A9:{$lastCol}9");
-                $namaTahun = $this->tahunAjaranDisplay->nama ?? ($this->tahunAjaranDisplay->tahun_ajaran ?? '-');
-                $semester = strtoupper($this->tahunAjaranDisplay->semester ?? '-');
-                $sheet->setCellValue('A9', "TAHUN PELAJARAN " . $namaTahun . " - " . $semester);
+                
+                // --- PERUBAHAN DI SINI ---
+                // Mengambil nama tahun ajaran dan nama semester dari objek semesterDisplay
+                $tahunAjaranNama = $this->semesterDisplay->tahunAjaran->nama ?? '-';
+                $semesterNama = strtoupper($this->semesterDisplay->nama ?? '-');
+                $sheet->setCellValue('A9', "TAHUN PELAJARAN " . $tahunAjaranNama . " - SEMESTER " . $semesterNama);
+                // -------------------------
+                
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A9")->getFont()->setBold(true);
 

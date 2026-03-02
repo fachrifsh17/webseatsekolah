@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{PoinSiswa, TahunAjaran, Siswa, Kelas};
+use App\Models\{PoinSiswa, Semester, Siswa, Kelas};
 use App\Http\Requests\{StorePoinSiswaRequest, UpdatePoinSiswaRequest};
 use App\Http\Resources\PoinSiswaResource;
 use App\Exports\PoinSiswaExport;
@@ -29,7 +29,7 @@ class PoinSiswaController extends Controller
         return PoinSiswa::with([
                 'siswa.riwayatKelas' => fn($q) => $q->with('kelas'),
                 'guruStaf', 
-                'tahunAjaran'
+                'semester'
             ])
             ->select('poin_siswa.*')
             ->addSelect([
@@ -46,12 +46,12 @@ class PoinSiswaController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $taActive = TahunAjaran::where('is_active', true)->first();
+            $semesterActive = Semester::where('is_active', true)->first();
             
             $query = PoinSiswa::with([
                     'siswa.riwayatKelas' => fn($q) => $q->with('kelas'),
                     'guruStaf', 
-                    'tahunAjaran'
+                    'semester'
                 ])
                 ->select('poin_siswa.*')
                 ->addSelect([
@@ -67,11 +67,11 @@ class PoinSiswaController extends Controller
                 $query->where('kelas_id', $request->kelas_id);
             }
 
-            if ($request->filled('tahun_ajaran_id')) {
-                $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
+            if ($request->filled('semester_id')) {
+                $query->where('semester_id', $request->semester_id);
             } else {
-                if ($taActive) {
-                    $query->where('tahun_ajaran_id', $taActive->id);
+                if ($semesterActive) {
+                    $query->where('semester_id', $semesterActive->id);
                 }
             }
 
@@ -83,6 +83,17 @@ class PoinSiswaController extends Controller
                 $time = strtotime($request->bulan);
                 $query->whereMonth('tanggal', date('m', $time))
                       ->whereYear('tanggal', date('Y', $time));
+            } elseif ($semesterActive && !$request->filled('semester_id')) {
+                $isGanjil = stripos($semesterActive->nama, 'Ganjil') !== false;
+                if ($isGanjil) {
+                    $query->whereMonth('tanggal', '>=', 7)
+                          ->whereMonth('tanggal', '<=', 12);
+                } else {
+                    $query->where(function($q) {
+                        $q->whereMonth('tanggal', '>=', 1)
+                          ->whereMonth('tanggal', '<=', 6);
+                    });
+                }
             }
 
             if ($request->filled('search')) {
@@ -129,13 +140,13 @@ class PoinSiswaController extends Controller
     public function store(StorePoinSiswaRequest $request): JsonResponse
     {
         try {
-            $ta = TahunAjaran::where('is_active', true)->firstOrFail();
+            $semester = Semester::where('is_active', true)->firstOrFail();
             $user = Auth::user()->load('guruStaf');
 
             $siswa = Siswa::where('id', $request->siswa_id)
                 ->where('is_active', true)
-                ->whereHas('riwayatKelas', function($q) use ($ta) {
-                    $q->where('tahun_ajaran_id', $ta->id)
+                ->whereHas('riwayatKelas', function($q) use ($semester) {
+                    $q->where('semester_id', $semester->id)
                       ->where('is_active', true);
                 })
                 ->first();
@@ -143,18 +154,18 @@ class PoinSiswaController extends Controller
             if (!$siswa) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Siswa tidak ditemukan atau tidak terdaftar di kelas aktif tahun ajaran ini.'
+                    'message' => 'Siswa tidak ditemukan atau tidak aktif di semester berjalan.'
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
-            $poin = DB::transaction(function () use ($request, $ta, $user, $siswa) {
+            $poin = DB::transaction(function () use ($request, $semester, $user, $siswa) {
                 $guruStafId = $request->guru_staf_id ?? ($user->guruStaf ? $user->guruStaf->id : null);
-                $riwayatAktif = $siswa->riwayatKelas()->where('is_active', true)->first();
+                $riwayatAktif = $siswa->riwayatKelas()->where('semester_id', $semester->id)->where('is_active', true)->first();
                 $kelasId = $riwayatAktif ? $riwayatAktif->kelas_id : null;
 
                 return PoinSiswa::create(array_merge($request->validated(), [
                     'tanggal' => now()->toDateString(),
-                    'tahun_ajaran_id' => $ta->id,
+                    'semester_id' => $semester->id,
                     'guru_staf_id' => $guruStafId,
                     'kelas_id' => $kelasId
                 ]));
@@ -185,9 +196,7 @@ class PoinSiswaController extends Controller
     public function update(UpdatePoinSiswaRequest $request, PoinSiswa $poinSiswa): JsonResponse
     {
         try {
-            DB::transaction(fn() => $poinSiswa->update(array_merge($request->validated(), [
-                'tanggal' => now()->toDateString()
-            ])));
+            DB::transaction(fn() => $poinSiswa->update($request->validated()));
             
             return response()->json([
                 'success' => true,
@@ -225,14 +234,16 @@ class PoinSiswaController extends Controller
         try {
             $this->authorize('viewAny', PoinSiswa::class);
 
+            if (!$request->filled('semester_id')) {
+                return response()->json(['success' => false, 'message' => 'Semester wajib dipilih.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             $profil = DB::table('profil_sekolah')->first();
             $kontak = DB::table('data_kontak')->first();
-
-            $taActive = $request->filled('tahun_ajaran_id') 
-                ? TahunAjaran::find($request->tahun_ajaran_id) 
-                : TahunAjaran::where('is_active', true)->first();
+            $semesterObj = Semester::with('tahunAjaran')->findOrFail($request->semester_id);
             
-            $namaTA = $taActive ? $taActive->nama . " " . $taActive->semester : "-";
+            $namaSemester = $semesterObj->nama;
+            $namaTA = $semesterObj->tahunAjaran->nama ?? "-";
 
             $namaKelasLaporan = 'SELURUH SISWA';
             if ($request->filled('kelas_id')) {
@@ -240,32 +251,70 @@ class PoinSiswaController extends Controller
                 $namaKelasLaporan = $kelasObj ? $kelasObj->nama_kelas : $request->kelas_id;
             }
 
+            $labelWaktu = "KUMULATIF";
+            $bulanStr = "";
+            $inputMonth = null;
+            $inputYear = null;
+            
+            if ($request->filled('bulan')) {
+                $time = strtotime($request->bulan);
+                $inputMonth = date('m', $time);
+                $inputYear = date('Y', $time);
+                $labelWaktu = date('F Y', $time);
+                $bulanStr = "_BULAN_" . $inputMonth;
+            }
+
+            $isGanjil = stripos($namaSemester, 'Ganjil') !== false;
+            
+            // Validasi bulan masuk semester
+            if ($inputMonth) {
+                if ($isGanjil && !in_array((int)$inputMonth, [7, 8, 9, 10, 11, 12])) {
+                    return response()->json(['success' => false, 'message' => 'Bulan yang dipilih tidak masuk dalam periode Semester Ganjil (Juli - Desember).'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                }
+                if (!$isGanjil && !in_array((int)$inputMonth, [1, 2, 3, 4, 5, 6])) {
+                    return response()->json(['success' => false, 'message' => 'Bulan yang dipilih tidak masuk dalam periode Semester Genap (Januari - Juni).'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                }
+            }
+
+            $semSlug = strtoupper(str_replace([' ', '/', '\\'], '_', $namaSemester));
             $taSlug = strtoupper(str_replace([' ', '/', '\\'], '_', $namaTA));
             $kelasSlug = strtoupper(str_replace([' ', '/', '\\'], '_', $namaKelasLaporan));
-            $fileName = "REKAP_POIN_SISWA_{$kelasSlug}_{$taSlug}.XLSX";
-
-            $labelWaktu = $request->filled('bulan') ? date('F Y', strtotime($request->bulan)) : "KUMULATIF";
+            $fileName = "REKAP_POIN{$bulanStr}_{$kelasSlug}_{$taSlug}_{$semSlug}.XLSX";
 
             $query = PoinSiswa::with([
                 'siswa.riwayatKelas' => fn($q) => $q->with('kelas'),
                 'guruStaf', 
-                'tahunAjaran'
+                'semester'
             ]);
 
             if ($request->filled('kelas_id')) {
                 $query->where('kelas_id', $request->kelas_id);
             }
 
-            if ($request->filled('tahun_ajaran_id')) {
-                $query->where('tahun_ajaran_id', $request->tahun_ajaran_id);
-            } elseif ($taActive) {
-                $query->where('tahun_ajaran_id', $taActive->id);
+            $query->where('semester_id', $semesterObj->id);
+
+            if ($inputMonth && $inputYear) {
+                $query->whereMonth('tanggal', $inputMonth)
+                      ->whereYear('tanggal', $inputYear);
+            } else {
+                if ($isGanjil) {
+                    $query->whereMonth('tanggal', '>=', 7)
+                          ->whereMonth('tanggal', '<=', 12);
+                } else {
+                    $query->where(function($q) {
+                        $q->whereMonth('tanggal', '>=', 1)
+                          ->whereMonth('tanggal', '<=', 6);
+                    });
+                }
             }
 
-            if ($request->filled('bulan')) {
-                $time = strtotime($request->bulan);
-                $query->whereMonth('tanggal', date('m', $time))
-                      ->whereYear('tanggal', date('Y', $time));
+            if ($request->filled('search')) {
+                $search = $request->search;
+                $query->whereHas('siswa', function($q) use ($search) {
+                    $q->where('nama_lengkap', 'like', "%{$search}%")
+                      ->orWhere('nisn', 'like', "%{$search}%")
+                      ->orWhere('nis', 'like', "%{$search}%");
+                });
             }
 
             return Excel::download(
@@ -275,7 +324,7 @@ class PoinSiswaController extends Controller
                     $labelWaktu, 
                     $profil, 
                     $kontak, 
-                    $namaTA 
+                    $namaSemester . " " . $namaTA
                 ),
                 $fileName
             );

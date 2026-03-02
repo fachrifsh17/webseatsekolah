@@ -22,7 +22,7 @@ class PresensiGuruMapel extends Model
     ];
 
     protected $casts = [
-        'semester_id' => 'string', // --- PERUBAHAN DI SINI ---
+        'semester_id' => 'integer', // --- PERUBAHAN DI SINI ---
         'tanggal' => 'date',
     ];
 

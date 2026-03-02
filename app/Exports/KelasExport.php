@@ -43,7 +43,13 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         $query->where('is_active', 1);
 
         if (!empty($this->filters['search'])) {
-            $query->where('nama_kelas', 'like', '%' . $this->filters['search'] . '%');
+            $search = $this->filters['search'];
+            $query->where(function($q) use ($search) {
+                $q->where('nama_kelas', 'like', '%' . $search . '%')
+                  ->orWhereHas('jurusan', function($subQ) use ($search) {
+                      $subQ->where('nama_jurusan', 'like', '%' . $search . '%');
+                  });
+            });
         }
 
         if (!empty($this->filters['jurusan_id'])) {
@@ -151,7 +157,7 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->setCellValue('A11', "PENCARIAN : " . $searchStr);
                 $sheet->setCellValue('A12', "STATUS : AKTIF");
 
-                $sheet->getStyle("A10:A12")->getFont()->setItalic(true)->setBold(false); // Font miring tapi tidak tebal
+                $sheet->getStyle("A10:A12")->getFont()->setItalic(true)->setBold(false); 
                 $sheet->getStyle("A10:A12")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
 
                 $sheet->getStyle("A14:{$lastCol}14")->getFont()->setBold(true);

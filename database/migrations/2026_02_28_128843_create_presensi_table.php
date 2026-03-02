@@ -12,44 +12,38 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('presensi', function (Blueprint $table) {
-            // id int NOT NULL AUTO_INCREMENT
-            $table->integer('id', true); // true = autoIncrement
+            $table->integer('id', true);
 
-            // guru_staf_id varchar(10) DEFAULT NULL
             $table->string('guru_staf_id', 10)->nullable();
             
-            // kelas_id varchar(10) DEFAULT NULL
             $table->string('kelas_id', 10)->nullable();
             
-            // tanggal date NOT NULL
             $table->date('tanggal');
             
-            // tahun_ajaran_id varchar(10) DEFAULT NULL
-            $table->string('tahun_ajaran_id', 10)->nullable();
+            // Mengubah menjadi unsignedBigInteger agar sesuai dengan tipe data id() di tabel semesters
+            $table->unsignedBigInteger('semester_id')->nullable();
 
-            // created_at, updated_at
             $table->timestamps();
 
             // --- Foreign Keys ---
             
-            // CONSTRAINT `fk_presensi_guru` FOREIGN KEY (`guru_staf_id`) REFERENCES `guru_staf` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
             $table->foreign('guru_staf_id', 'fk_presensi_guru')
                   ->references('id')
                   ->on('guru_staf')
                   ->onDelete('set null')
                   ->onUpdate('cascade');
 
-            // CONSTRAINT `fk_presensi_kelas` FOREIGN KEY (`kelas_id`) REFERENCES `kelas` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
             $table->foreign('kelas_id', 'fk_presensi_kelas')
                   ->references('id')
                   ->on('kelas')
                   ->onDelete('set null')
                   ->onUpdate('cascade');
 
-            // CONSTRAINT `fk_presensi_tahun_ajaran` FOREIGN KEY (`tahun_ajaran_id`) REFERENCES `tahun_ajaran` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-            $table->foreign('tahun_ajaran_id', 'fk_presensi_tahun_ajaran')
+            // --- PERUBAHAN DI SINI ---
+            // CONSTRAINT `fk_presensi_semester` FOREIGN KEY (`semester_id`) REFERENCES `semesters` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+            $table->foreign('semester_id', 'fk_presensi_semester')
                   ->references('id')
-                  ->on('tahun_ajaran')
+                  ->on('semesters')
                   ->onDelete('set null')
                   ->onUpdate('cascade');
             

@@ -89,9 +89,10 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
         $lastRow = $sheet->getHighestRow();
         $lastCol = 'K';
 
+        // Styling untuk Header (Baris 13) - Background abu-abu dihapus
         $sheet->getStyle("A13:{$lastCol}13")->applyFromArray([
             'font' => ['bold' => true, 'size' => 10],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ]);
 
         $sheet->getStyle("A13:{$lastCol}{$lastRow}")->applyFromArray([
@@ -108,7 +109,8 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
             ]
         ]);
 
-        $sheet->getStyle("A14:B{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("A14:A{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("B14:B{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->getStyle("D14:E{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->getStyle("G14:K{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         
@@ -177,24 +179,24 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
                 $worksheet->getStyle("A10:A11")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
 
                 $ttgRow = $lastRow + 3;
-                $worksheet->mergeCells("H{$ttgRow}:{$lastCol}{$ttgRow}");
+                
+                $worksheet->mergeCells("I{$ttgRow}:{$lastCol}{$ttgRow}");
                 $lokasiTtd = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
-                $worksheet->setCellValue("H{$ttgRow}", $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
-                $worksheet->getStyle("H{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $worksheet->setCellValue("I{$ttgRow}", $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
+                $worksheet->getStyle("I{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $ttgRow++;
-                $worksheet->mergeCells("B{$ttgRow}:C{$ttgRow}");
+                $worksheet->mergeCells("B{$ttgRow}:D{$ttgRow}");
                 $worksheet->setCellValue("B{$ttgRow}", "Mengetahui,\nWaka Kurikulum");
                 
-                $worksheet->mergeCells("H{$ttgRow}:{$lastCol}{$ttgRow}");
-                $worksheet->setCellValue("H{$ttgRow}", "Menyetujui,\nKepala Sekolah");
+                $worksheet->mergeCells("I{$ttgRow}:{$lastCol}{$ttgRow}");
+                $worksheet->setCellValue("I{$ttgRow}", "Menyetujui,\nKepala Sekolah");
                 
                 $worksheet->getStyle("B{$ttgRow}:{$lastCol}{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
-                $worksheet->getStyle("H{$ttgRow}:{$lastCol}{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
                 $worksheet->getStyle("B{$ttgRow}:{$lastCol}{$ttgRow}")->getFont()->setBold(true);
-                $worksheet->getStyle("H{$ttgRow}:{$lastCol}{$ttgRow}")->getFont()->setBold(true);
 
                 $imageRow = $ttgRow + 1;
+                $worksheet->getRowDimension($imageRow)->setRowHeight(60);
                 
                 if ($wakaKur && $wakaKur->file_ttd && file_exists(storage_path('app/public/' . $wakaKur->file_ttd))) {
                     $drawing = new Drawing();
@@ -203,8 +205,8 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
                     $drawing->setPath(storage_path('app/public/' . $wakaKur->file_ttd));
                     $drawing->setHeight(50);
                     $drawing->setCoordinates("C{$imageRow}");
-                    $drawing->setOffsetX(15);
-                    $drawing->setOffsetY(10);
+                    $drawing->setOffsetX(20); 
+                    $drawing->setOffsetY(5);
                     $drawing->setWorksheet($worksheet);
                 }
 
@@ -214,28 +216,28 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
                     $drawing->setDescription('TTD Kepsek');
                     $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
                     $drawing->setHeight(50);
-                    $drawing->setCoordinates("I{$imageRow}");
-                    $drawing->setOffsetX(15);
-                    $drawing->setOffsetY(10);
+                    $drawing->setCoordinates("J{$imageRow}");
+                    $drawing->setOffsetX(20);
+                    $drawing->setOffsetY(5);
                     $drawing->setWorksheet($worksheet);
                 }
 
-                $namaRow = $ttgRow + 4;
-                $worksheet->mergeCells("B{$namaRow}:C{$namaRow}");
-                $worksheet->setCellValue("B{$namaRow}", "( " . strtoupper($wakaKur->nama ?? '____________________') . " )"); 
+                $namaRow = $imageRow + 3;
+                $worksheet->mergeCells("B{$namaRow}:D{$namaRow}");
+                $worksheet->setCellValue("B{$namaRow}", "( " . strtoupper($wakaKur->nama ?? '............................') . " )"); 
                 
-                $worksheet->mergeCells("H{$namaRow}:{$lastCol}{$namaRow}");
-                $worksheet->setCellValue("H{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
+                $worksheet->mergeCells("I{$namaRow}:{$lastCol}{$namaRow}");
+                $worksheet->setCellValue("I{$namaRow}", "( " . strtoupper($kepsek->nama ?? '............................') . " )");
                 
                 $worksheet->getStyle("B{$namaRow}:{$lastCol}{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $worksheet->getStyle("B{$namaRow}:{$lastCol}{$namaRow}")->getFont()->setBold(true);
 
                 $nipRow = $namaRow + 1;
-                $worksheet->mergeCells("B{$nipRow}:C{$nipRow}");
+                $worksheet->mergeCells("B{$nipRow}:D{$nipRow}");
                 $worksheet->setCellValue("B{$nipRow}", "NIP. " . ($wakaKur->nip ?? '...........................'));
                 
-                $worksheet->mergeCells("H{$nipRow}:{$lastCol}{$nipRow}");
-                $worksheet->setCellValue("H{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
+                $worksheet->mergeCells("I{$nipRow}:{$lastCol}{$nipRow}");
+                $worksheet->setCellValue("I{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
                 
                 $worksheet->getStyle("B{$nipRow}:{$lastCol}{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 

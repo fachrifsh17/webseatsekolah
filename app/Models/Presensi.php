@@ -23,7 +23,7 @@ class Presensi extends Model
     protected $casts = [
         'tanggal' => 'date',
         'kelas_id' => 'string',
-        'semester_id' => 'string', // --- PERUBAHAN DI SINI ---
+        'semester_id' => 'integer', // --- PERUBAHAN DI SINI ---
         'guru_staf_id' => 'string',
     ];
 

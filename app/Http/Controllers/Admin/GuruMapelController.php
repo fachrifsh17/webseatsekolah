@@ -120,29 +120,34 @@ class GuruMapelController extends Controller
             $guruId = $request->get('guru_staf_id') ?? $request->get('guru_id');
             $jurusanId = $request->get('jurusan_id');
 
-            $filters = [
-                'q'            => $request->get('q'),
-                'hari'         => $request->get('hari'),
-                'semester'     => 'Semua',
-                'tipe_mapel'   => $request->get('tipe_mapel', 'Semua Tipe'),
-                'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Aktif'
-            ];
-
-            $kriteria = [];
-            $nameParts = ['JADWAL_GURU_MAPEL'];
-
             if ($request->filled('semester_id')) {
                 $semester = Semester::with('tahunAjaran')->find($request->semester_id);
             } else {
                 $semester = Semester::with('tahunAjaran')->where('is_active', 1)->first();
             }
 
+            $filters = [
+                'q'            => $request->get('q'),
+                'hari'         => $request->get('hari'),
+                'tipe_mapel'   => $request->get('tipe_mapel', 'Semua Tipe'),
+                'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Aktif'
+            ];
+
             if ($semester) {
-                $filters['semester'] = $semester->nama . ' - ' . $semester->tahunAjaran->nama;
+                $filters['semester'] = $semester->nama;
+                $filters['tahun_ajaran'] = $semester->tahunAjaran->nama;
+                
                 $taClean = str_replace(['/', ' '], '_', $semester->tahunAjaran->nama);
                 $semClean = strtoupper(str_replace(' ', '_', $semester->nama));
                 $nameParts[] = "{$taClean}_{$semClean}";
+            } else {
+                $filters['semester'] = 'Semua';
+                $filters['tahun_ajaran'] = '-';
+                $nameParts[] = 'SEMUA_SEMESTER';
             }
+
+            $kriteria = [];
+            array_unshift($nameParts, 'JADWAL_GURU_MAPEL');
 
             if ($jurusanId) {
                 $jurusan = Jurusan::find($jurusanId);
