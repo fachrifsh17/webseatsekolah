@@ -3,7 +3,7 @@
 namespace App\Exports;
 
 use App\Models\JamSekolah;
-use App\Models\TahunAjaran;
+use App\Models\Semester;
 use Illuminate\Contracts\View\View;
 use Maatwebsite\Excel\Concerns\FromView;
 use Maatwebsite\Excel\Concerns\Exportable;
@@ -14,31 +14,35 @@ class JamSekolahPdfExport implements FromView
 {
     use Exportable;
 
-    protected $profil, $kontak, $tahunAjaranId;
+    protected $profil, $kontak, $semesterId; // Ubah tahunAjaranId menjadi semesterId
 
-    public function __construct($profil, $kontak, $tahunAjaranId)
+    public function __construct($profil, $kontak, $semesterId)
     {
         $this->profil = $profil;
         $this->kontak = $kontak;
-        $this->tahunAjaranId = $tahunAjaranId;
+        $this->semesterId = $semesterId;
     }
 
     public function view(): View
     {
-        $dataPerHari = JamSekolah::where('tahun_ajaran_id', $this->tahunAjaranId)
+        // Filter berdasarkan semester_id
+        $dataPerHari = JamSekolah::where('semester_id', $this->semesterId)
             ->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat')")
             ->orderBy('waktu_mulai')
             ->get()
             ->groupBy('hari');
 
-        // PERBAIKAN: Tambahkan 'struktur_jabatan.file_ttd'
+        // Ambil data semester dan tahun ajaran
+        $semester = Semester::with('tahunAjaran')->find($this->semesterId);
+
+        // Ambil data KS
         $ks = DB::table('struktur_jabatan')
             ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
             ->where('struktur_jabatan.jabatan_id', 1) 
             ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
             ->first();
 
-        // PERBAIKAN: Tambahkan 'struktur_jabatan.file_ttd'
+        // Ambil data Waka
         $waka = DB::table('struktur_jabatan')
             ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
             ->where('struktur_jabatan.jabatan_id', 2) 
@@ -55,7 +59,8 @@ class JamSekolahPdfExport implements FromView
             'profil'         => $this->profil,
             'kontak'         => $this->kontak,
             'alamat_lengkap' => $alamatLengkap,
-            'ta'             => TahunAjaran::find($this->tahunAjaranId),
+            'semester'       => $semester,
+            'ta'             => $semester?->tahunAjaran, // Otomatis ditarik dari relasi semester
             'dataPerHari'    => $dataPerHari,
             'hariList'       => ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'],
             'waka'           => $waka,

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Orangtua;
 
 use App\Http\Controllers\Controller;
-use App\Models\{PoinSiswa, TahunAjaran, Siswa};
+use App\Models\{PoinSiswa, Semester, Siswa};
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\{Auth, DB, Log};
@@ -26,32 +26,36 @@ class PoinSiswaController extends Controller
     {
         try {
             $user = Auth::user();
-            $tahunAktif = TahunAjaran::where('is_active', true)->first();
-            $tahunAjaranId = $request->get('tahun_ajaran_id', $tahunAktif?->id);
+            // Menggunakan Semester sesuai konteks sebelumnya
+            $semesterAktif = Semester::where('is_active', true)->first();
+            $semesterId = $request->get('semester_id', $semesterAktif?->id);
 
-            $children = $this->getChildren($user, $tahunAjaranId);
+            // 1. Ambil data anak-anak yang aktif
+            $children = $this->getChildren($user, $semesterId);
             $childrenIds = $children->pluck('id')->toArray();
 
             if (empty($childrenIds)) {
-                return $this->emptyResponse($tahunAktif);
+                return $this->emptyResponse($semesterAktif);
             }
 
-            $query = $this->buildQuery($childrenIds, $tahunAjaranId, $request);
+            // 2. Bangun Query
+            $query = $this->buildQuery($childrenIds, $semesterId, $request);
             if ($query instanceof JsonResponse) {
                 return $query;
             }
 
-            $summaryData = $this->getSummaryKeseluruhan($childrenIds, $request, $tahunAjaranId);
-            
-            $tahunTampil = $tahunAjaranId ? TahunAjaran::find($tahunAjaranId) : $tahunAktif;
+            // 3. Summary & Paginator
+            $summaryData = $this->getSummaryKeseluruhan($childrenIds, $request, $semesterId);
+            $semesterTampil = $semesterId ? Semester::with('tahunAjaran')->find($semesterId) : $semesterAktif;
             $perPage = min((int) $request->get('per_page', 10), 100);
             
             $data = $query->with([
-                'siswa.riwayatKelas' => fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId)->with('kelas'),
-                'guruStaf'
+                'siswa.riwayatKelas' => fn($q) => $q->where('semester_id', $semesterId)->with('kelas'),
+                'guruStaf',
+                'semester.tahunAjaran'
             ])->latest()->paginate($perPage);
 
-            return $this->formatResponse($data, $summaryData, $children, $tahunTampil, $tahunAjaranId);
+            return $this->formatResponse($data, $summaryData, $children, $semesterTampil, $semesterId);
         } catch (Throwable $e) {
             Log::error('Gagal mengambil poin orangtua: ' . $e->getMessage());
             return response()->json([
@@ -61,29 +65,30 @@ class PoinSiswaController extends Controller
         }
     }
 
-    private function getChildren($user, $tahunAjaranId)
+    private function getChildren($user, $semesterId)
     {
-        return Siswa::whereHas('orangtua', fn($q) => $q->where('user_id', $user->id))
-            ->whereHas('riwayatKelas', function($q) use ($tahunAjaranId) {
-                $q->where('tahun_ajaran_id', $tahunAjaranId);
+        return Siswa::where('is_active', true) // Filter hanya siswa aktif
+            ->whereHas('orangtua', fn($q) => $q->where('user_id', $user->id))
+            ->whereHas('riwayatKelas', function($q) use ($semesterId) {
+                $q->where('semester_id', $semesterId);
             })
-            ->with(['riwayatKelas' => fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId)->with('kelas')])
+            ->with(['riwayatKelas' => fn($q) => $q->where('semester_id', $semesterId)->with('kelas')])
             ->get(['id', 'nama_lengkap', 'nis']);
     }
 
-    private function buildQuery(array $childrenIds, $tahunAjaranId, Request $request)
+    private function buildQuery(array $childrenIds, $semesterId, Request $request)
     {
         $query = PoinSiswa::query()->whereIn('siswa_id', $childrenIds);
 
-        if ($tahunAjaranId) {
-            $query->where('tahun_ajaran_id', $tahunAjaranId);
+        if ($semesterId) {
+            $query->where('semester_id', $semesterId);
         }
 
         if ($request->filled('siswa_id')) {
             if (!in_array($request->siswa_id, $childrenIds)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Akses ditolak atau siswa tidak aktif di periode ini.'
+                    'message' => 'Akses ditolak atau siswa tidak terdaftar di periode ini.'
                 ], Response::HTTP_FORBIDDEN);
             }
             $query->where('siswa_id', $request->siswa_id);
@@ -108,11 +113,13 @@ class PoinSiswaController extends Controller
         return $query;
     }
 
-    private function getSummaryKeseluruhan(array $childrenIds, Request $request, $tahunAjaranId)
+    private function getSummaryKeseluruhan(array $childrenIds, Request $request, $semesterId)
     {
         $query = PoinSiswa::whereIn('siswa_id', $childrenIds);
 
-
+        if ($semesterId) {
+            $query->where('semester_id', $semesterId);
+        }
 
         if ($request->filled('siswa_id')) {
             $query->where('siswa_id', $request->siswa_id);
@@ -125,7 +132,7 @@ class PoinSiswaController extends Controller
         )->first();
     }
 
-    private function formatResponse($data, $summaryData, $children, $tahunTampil, $tahunAjaranId)
+    private function formatResponse($data, $summaryData, $children, $semesterTampil, $semesterId)
     {
         $paginationData = $data->toArray();
 
@@ -133,8 +140,8 @@ class PoinSiswaController extends Controller
             'success' => true,
             'message' => 'Data poin berhasil diambil.',
             'header' => [
-                'tahun_ajaran' => $tahunTampil?->nama,
-                'semester'     => $tahunTampil?->semester,
+                'tahun_ajaran' => $semesterTampil?->tahunAjaran?->nama ?? '-',
+                'semester'     => $semesterTampil?->nama ?? '-',
             ],
             'summary' => [
                 'total_positif' => (int)($summaryData->total_plus ?? 0),
@@ -145,13 +152,13 @@ class PoinSiswaController extends Controller
             'list_anak' => $children->map(fn($item) => [
                 'id'    => $item->id,
                 'nama'  => $item->nama_lengkap,
-                'kelas' => $item->riwayatKelas->where('tahun_ajaran_id', $tahunAjaranId)->first()?->kelas?->nama_kelas ?? '-',
+                'kelas' => $item->riwayatKelas->first()?->kelas?->nama_kelas ?? '-',
                 'nis'   => $item->nis
             ]),
             'data' => collect($data->items())->map(fn($item) => [
                 'id'         => $item->id,
                 'nama_siswa' => $item->siswa?->nama_lengkap,
-                'kelas'      => $item->siswa?->riwayatKelas->where('tahun_ajaran_id', $tahunAjaranId)->first()?->kelas?->nama_kelas ?? '-',
+                'kelas'      => $item->siswa?->riwayatKelas->first()?->kelas?->nama_kelas ?? '-',
                 'tanggal'    => Carbon::parse($item->tanggal)->format('d-m-Y'),
                 'positif'    => (int)$item->poin_positif,
                 'negatif'    => (int)$item->poin_negatif,
@@ -162,6 +169,7 @@ class PoinSiswaController extends Controller
                 'current_page' => $paginationData['current_page'],
                 'last_page'    => $paginationData['last_page'],
                 'total'        => $paginationData['total'],
+                'per_page'     => $paginationData['per_page'],
             ],
         ], Response::HTTP_OK);
     }
@@ -170,8 +178,9 @@ class PoinSiswaController extends Controller
     {
         try {
             $user = Auth::user();
-            $poinSiswa = PoinSiswa::with(['siswa', 'guruStaf', 'tahunAjaran'])->findOrFail($id);
+            $poinSiswa = PoinSiswa::with(['siswa', 'guruStaf', 'semester.tahunAjaran'])->findOrFail($id);
 
+            // Validasi: Apakah poin ini milik salah satu anak dari orang tua yang login
             $isValid = Siswa::where('id', $poinSiswa->siswa_id)
                 ->whereHas('orangtua', fn($q) => $q->where('user_id', $user->id))
                 ->exists();
@@ -191,10 +200,10 @@ class PoinSiswaController extends Controller
                     'tanggal'      => Carbon::parse($poinSiswa->tanggal)->format('d-m-Y'),
                     'poin_positif' => (int)$poinSiswa->poin_positif,
                     'poin_negatif' => (int)$poinSiswa->poin_negatif,
-                    'keterangan'   => $poinSiswa->keterangan,
-                    'pelapor'      => $poinSiswa->guruStaf?->nama,
-                    'tahun_ajaran' => $poinSiswa->tahunAjaran?->nama,
-                    'semester'     => $poinSiswa->tahunAjaran?->semester,
+                    'keterangan'   => $poinSiswa->keterangan ?? $poinSiswa->indikator,
+                    'pelapor'      => $poinSiswa->guruStaf?->nama ?? 'Sistem',
+                    'tahun_ajaran' => $poinSiswa->semester?->tahunAjaran?->nama ?? '-',
+                    'semester'     => $poinSiswa->semester?->nama ?? '-',
                     'created_at'   => $poinSiswa->created_at->format('d-m-Y H:i'),
                 ],
             ], Response::HTTP_OK);
@@ -207,13 +216,16 @@ class PoinSiswaController extends Controller
         }
     }
 
-    private function emptyResponse($tahunAktif)
+    private function emptyResponse($semesterAktif)
     {
         return response()->json([
             'success' => true,
             'message' => 'Data tidak ditemukan.',
-            'header'  => ['tahun_ajaran' => $tahunAktif?->nama, 'semester' => $tahunAktif?->semester],
-            'summary' => ['total_positif' => 0, 'total_negatif' => 0, 'total_catatan' => 0, 'saldo_poin' => 0],
+            'header'  => [
+                'tahun_ajaran' => $semesterAktif?->tahunAjaran?->nama, 
+                'semester'     => $semesterAktif?->nama
+            ],
+            'summary'   => ['total_positif' => 0, 'total_negatif' => 0, 'total_catatan' => 0, 'saldo_poin' => 0],
             'list_anak' => [],
             'data'      => [],
             'meta'      => ['total' => 0]

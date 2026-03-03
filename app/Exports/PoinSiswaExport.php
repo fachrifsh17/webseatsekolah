@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Exports;
 
 use App\Models\PoinSiswa;
@@ -121,7 +122,10 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
 
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN') . " WILAYAH XII");
+                
+                $sheet->mergeCells("A3:{$lastCol}3"); 
+                $sheet->setCellValue('A3', strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN') . " WILAYAH XII");
+                
                 $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
                 
                 $sheet->mergeCells("A5:{$lastCol}5"); 

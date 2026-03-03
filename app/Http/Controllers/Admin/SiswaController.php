@@ -9,7 +9,8 @@ use App\Http\Resources\SiswaResource;
 use App\Exports\SiswaExport;
 use App\Imports\SiswaImport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Storage, Log, Hash};
 use Illuminate\Support\Arr;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -157,12 +158,12 @@ class SiswaController extends Controller
         $filename .= '.xlsx';
 
         $profil = ProfilSekolah::first() ?? new ProfilSekolah();
-        $kontak = DataKontak::first() ?? new DataKontak();
+        $contak = DataKontak::first() ?? new DataKontak();
 
         if (ob_get_contents()) ob_end_clean();
 
         return Excel::download(
-            new SiswaExport($query, $profil, $kontak, $kelasData, $request->all()), 
+            new SiswaExport($query, $profil, $contak, $kelasData, $request->all()), 
             $filename
         );
     }
@@ -320,27 +321,66 @@ class SiswaController extends Controller
                     }
                 }
 
+                $oldIsActive = $siswa->is_active;
+                $isReactivating = isset($data['is_active']) && $oldIsActive == 0 && $data['is_active'] == 1;
+
                 $siswa->update($data);
 
-                if (isset($data['is_active']) && $data['is_active'] == 0) {
-                    SiswaKelas::where('siswa_id', $siswa->id)
-                        ->where('is_active', 1)
-                        ->update(['is_active' => 0]);
+                if (isset($data['is_active'])) {
+                    $status = $data['is_active'];
+
+                    if ($status == 0) {
+                        SiswaKelas::where('siswa_id', $siswa->id)
+                            ->where('is_active', 1)
+                            ->update(['is_active' => 0]);
+                    } elseif ($isReactivating) {
+                        $lastHistory = SiswaKelas::where('siswa_id', $siswa->id)
+                            ->orderBy('created_at', 'desc')
+                            ->first();
+
+                        if ($lastHistory && $semesterAktif && $lastHistory->semester_id == $semesterAktif->id) {
+                            $lastHistory->update(['is_active' => 1]);
+                        } elseif ($semesterAktif && isset($validated['kelas_id'])) {
+                            SiswaKelas::create([
+                                'siswa_id'    => $siswa->id,
+                                'kelas_id'    => $validated['kelas_id'],
+                                'semester_id' => $semesterAktif->id,
+                                'is_active'   => 1
+                            ]);
+                        }
+                    }
+
+                    $siswa->load('orangtua');
+                    if ($siswa->orangtua) {
+                        $siswa->orangtua->update(['is_active' => $status]);
+                        if ($siswa->orangtua->user_id) {
+                            $otUser = User::find($siswa->orangtua->user_id);
+                            if ($otUser) {
+                                $otUser->is_active = $status;
+                                if ($isReactivating) {
+                                    $otUser->password = Hash::make($siswa->orangtua->telepon);
+                                }
+                                $otUser->save();
+                            }
+                        }
+                    }
                 }
 
-                if (isset($validated['kelas_id']) && $semesterAktif) {
-                    SiswaKelas::where('siswa_id', $siswa->id)
+                if (isset($validated['kelas_id']) && $semesterAktif && $siswa->is_active == 1) {
+                    $currentKelas = SiswaKelas::where('siswa_id', $siswa->id)
                         ->where('is_active', 1)
-                        ->update(['is_active' => 0]);
+                        ->first();
 
-                    SiswaKelas::updateOrCreate(
-                        [
-                            'siswa_id'    => $siswa->id,
-                            'kelas_id'    => $validated['kelas_id'],
-                            'semester_id' => $semesterAktif->id
-                        ],
-                        ['is_active' => 1]
-                    );
+                    if (!$currentKelas || $currentKelas->kelas_id != $validated['kelas_id']) {
+                        SiswaKelas::where('siswa_id', $siswa->id)
+                            ->where('is_active', 1)
+                            ->update(['is_active' => 0]);
+
+                        SiswaKelas::updateOrCreate(
+                            ['siswa_id' => $siswa->id, 'kelas_id' => $validated['kelas_id'], 'semester_id' => $semesterAktif->id],
+                            ['is_active' => 1]
+                        );
+                    }
                 }
 
                 if ($siswa->user_id) {
@@ -352,6 +392,9 @@ class SiswaController extends Controller
                         }
                         if (isset($data['is_active'])) {
                             $user->is_active = $data['is_active'];
+                            if ($isReactivating && !isset($data['nis'])) {
+                                $user->password = Hash::make($siswa->nis);
+                            }
                         }
                         $user->save();
                     }
@@ -393,13 +436,18 @@ class SiswaController extends Controller
 
             DB::transaction(function() use ($siswa, $userId) {
                 SiswaKelas::where('siswa_id', $siswa->id)->update(['is_active' => 0]);
+                
+                $siswa->load('orangtua');
+                if ($siswa->orangtua) {
+                    $siswa->orangtua->update(['is_active' => 0]);
+                    if ($siswa->orangtua->user_id) {
+                        User::where('id', $siswa->orangtua->user_id)->update(['is_active' => 0]);
+                    }
+                }
+
                 $siswa->update(['is_active' => 0]);
                 if ($userId) {
-                    $user = User::find($userId);
-                    if ($user) {
-                        $user->is_active = 0;
-                        $user->save();
-                    }
+                    User::where('id', $userId)->update(['is_active' => 0]);
                 }
             });
 

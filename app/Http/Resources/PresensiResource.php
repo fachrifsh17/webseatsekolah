@@ -12,40 +12,43 @@ class PresensiResource extends JsonResource
     {
         $isWali = $request->is('*siswa-wali*');
 
-        // Pastikan relasi ke header ('presensi') dimuat (eager load) di controller
-        $header = $this->presensi; 
+        /**
+         * Penjelasan Relasi:
+         * $this = Model PresensiDetail
+         * $this->header = Model Presensi
+         * $this->header->kelasWali = Model KelasWaliKelas (Pusat datanya di sini)
+         */
+        $header = $this->header; // Pastikan di model PresensiDetail relasinya bernama 'header'
+        $waliRelasi = $header?->kelasWali; 
 
         return [
             'id' => $this->id, // ID dari presensi_detail
             
-            // Mengambil tanggal dari tabel header (presensi)
             'tanggal' => $header && $header->tanggal ? Carbon::parse($header->tanggal)->format('Y-m-d') : null,
-            
-            // Status dan Keterangan dari tabel detail (presensi_detail)
             'status' => $this->status,
             'keterangan' => $this->keterangan,
             
             $this->mergeWhen($isWali, [
                 'siswa_id' => (string) $this->siswa_id,
                 'nama_lengkap' => $this->siswa?->nama_lengkap,
-                // Mengambil dari relasi header ke kelas
-                'kelas' => $header?->kelas?->nama_kelas,
+                // Ambil kelas via kelasWali
+                'kelas' => $waliRelasi?->kelas?->nama_kelas,
             ]),
 
             $this->mergeWhen(!$isWali, [
                 'siswa' => [
                     'id' => (string) $this->siswa_id,
                     'nama' => $this->siswa?->nama_lengkap,
-                    // Mengambil dari relasi header ke kelas
-                    'kelas' => $header?->kelas?->nama_kelas,
+                    // Ambil kelas via kelasWali
+                    'kelas' => $waliRelasi?->kelas?->nama_kelas,
                 ],
-                // Mengambil dari relasi header ke guru
-                'guru' => $header?->guruStaf?->nama,
-                // --- PERUBAHAN DI SINI ---
+                // Ambil guru via kelasWali
+                'guru' => $waliRelasi?->guruStaf?->nama,
+                
                 'semester' => [
-                    // Mengambil dari relasi header ke semester
-                    'nama' => $header?->semester?->nama ?? '-',
-                    'tahun_ajaran_id' => $header?->semester?->tahun_ajaran_id,
+                    // Ambil semester via kelasWali
+                    'nama' => $waliRelasi?->semester?->nama ?? '-',
+                    'tahun_ajaran_id' => $waliRelasi?->semester?->tahun_ajaran_id,
                 ],
             ]),
         ];

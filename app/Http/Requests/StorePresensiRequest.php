@@ -7,7 +7,6 @@ use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use App\Models\Semester;
 use App\Models\KelasWaliKelas;
 
@@ -21,60 +20,57 @@ class StorePresensiRequest extends FormRequest
     protected function prepareForValidation()
     {
         $user = Auth::user();
-        $guru = $user->guruStaf;
         $semesterActive = Semester::where('is_active', true)->first();
 
-        // Logika untuk menentukan kelas_id jika admin/wali kelas tidak mengirimkannya
-        if ($guru && !$this->has('kelas_id') && $semesterActive) {
-            $waliKelasRecord = KelasWaliKelas::where('guru_staf_id', $guru->id)
-                ->where('semester_id', $semesterActive->id)
-                ->where('is_active', 1)
-                ->first();
-
-            if ($waliKelasRecord) {
-                $this->merge([
-                    'kelas_id' => $waliKelasRecord->kelas_id,
-                ]);
-            }
+        if (!$this->has('tanggal')) {
+            $this->merge(['tanggal' => date('Y-m-d')]);
         }
 
-        if (!$this->has('tanggal')) {
-            $this->merge([
-                'tanggal' => date('Y-m-d'),
-            ]);
+        if ($user->hasRole('Admin')) {
+            $requestKelasId = $this->input('kelas_id');
+            
+            if ($requestKelasId && $semesterActive) {
+                $waliKelasRecord = KelasWaliKelas::where('kelas_id', $requestKelasId)
+                    ->where('semester_id', $semesterActive->id)
+                    ->where('is_active', 1)
+                    ->first();
+
+                if ($waliKelasRecord) {
+                    $this->merge(['kelas_wali_id' => $waliKelasRecord->id]);
+                }
+            }
+        } else {
+            $guru = $user->guruStaf;
+            if ($guru && $semesterActive) {
+                $waliKelasRecord = KelasWaliKelas::where('guru_staf_id', $guru->id)
+                    ->where('semester_id', $semesterActive->id)
+                    ->where('is_active', 1)
+                    ->first();
+
+                if ($waliKelasRecord) {
+                    $this->merge(['kelas_wali_id' => $waliKelasRecord->id]);
+                }
+            }
         }
     }
 
     public function rules(): array
     {
         return [
-            // Validasi keberadaan kelas_id yang dikirim atau di-merge
-            'kelas_id' => [
-                'required', 
-                'string',
+            'kelas_wali_id' => [
+                'required',
+                'integer',
+                'exists:kelas_wali_kelas,id',
                 function ($attribute, $value, $fail) {
-                    // Validasi tambahan: Pastikan wali kelas tersebut benar-benar aktif untuk kelas ini di semester berjalan
-                    $semesterActive = Semester::where('is_active', true)->first();
-                    if (!$semesterActive) {
-                        return $fail('Tidak ada semester yang sedang aktif.');
-                    }
-
-                    $exists = KelasWaliKelas::where('kelas_id', $value)
-                        ->where('semester_id', $semesterActive->id)
-                        ->where('is_active', 1)
-                        ->whereHas('guruStaf', function ($query) {
-                            $query->where('is_active', 1);
-                        })
-                        ->exists();
-
-                    if (!$exists) {
-                        $fail('Wali kelas tidak ditemukan atau tidak aktif untuk kelas ini pada semester berjalan.');
+                    $record = KelasWaliKelas::find($value);
+                    if ($record && $record->is_active == 0) {
+                        $fail('Data wali kelas tersebut sudah tidak aktif.');
                     }
                 },
             ],
             'tanggal' => ['required', 'date'],
             'data_presensi' => ['required', 'array', 'min:1'],
-            'data_presensi.*.siswa_id' => ['required', 'string'],
+            'data_presensi.*.siswa_id' => ['required', 'string', 'exists:siswa,id'],
             'data_presensi.*.status' => ['required', 'in:Hadir,Izin,Sakit,Alpa'],
             'data_presensi.*.keterangan' => ['nullable', 'string', 'max:255'],
         ];
@@ -83,26 +79,12 @@ class StorePresensiRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'kelas_id.required' => 'ID Kelas tidak ditemukan atau Anda bukan Wali Kelas aktif.',
+            'kelas_wali_id.required' => 'Data Wali Kelas tidak ditemukan untuk kelas ini pada semester aktif.',
+            'kelas_wali_id.exists' => 'Data Wali Kelas tidak valid.',
             'tanggal.required' => 'Tanggal absensi wajib diisi.',
-            'tanggal.date' => 'Format tanggal tidak valid.',
-            'data_presensi.required' => 'Data presensi tidak boleh kosong.',
-            'data_presensi.array' => 'Format data harus berupa array.',
-            'data_presensi.*.siswa_id.required' => 'Siswa harus dipilih.',
-            'data_presensi.*.status.required' => 'Status kehadiran harus diisi.',
+            'data_presensi.required' => 'Data detail presensi tidak boleh kosong.',
+            'data_presensi.*.siswa_id.exists' => 'Salah satu siswa tidak terdaftar di database.',
             'data_presensi.*.status.in' => 'Status harus berupa Hadir, Izin, Sakit, atau Alpa.',
-        ];
-    }
-
-    public function attributes(): array
-    {
-        return [
-            'kelas_id' => 'ID Kelas',
-            'tanggal' => 'Tanggal absensi',
-            'data_presensi' => 'Daftar Presensi',
-            'data_presensi.*.siswa_id' => 'Siswa',
-            'data_presensi.*.status' => 'Status kehadiran',
-            'data_presensi.*.keterangan' => 'Keterangan',
         ];
     }
 

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Guru;
 
 use App\Http\Controllers\Controller;
-use App\Models\{JamSekolah, TahunAjaran, ProfilSekolah, DataKontak};
+use App\Models\{JamSekolah, Semester, ProfilSekolah, DataKontak}; // Ubah TahunAjaran ke Semester
 use App\Http\Resources\JamSekolahResource;
 use Illuminate\Support\Facades\{Log, DB};
 use Illuminate\Http\JsonResponse;
@@ -21,21 +21,24 @@ class JamSekolahController extends Controller
         $this->middleware('role:Guru');
     }
 
-    private function resolveTahunAjaranId(Request $request)
+    // Fungsi pembantu untuk mendapatkan Semester ID
+    private function resolveSemesterId(Request $request)
     {
-        if ($request->filled('tahun_ajaran_id')) {
-            return $request->tahun_ajaran_id;
+        if ($request->filled('semester_id')) {
+            return $request->semester_id;
         }
-        return TahunAjaran::where('is_active', true)->value('id');
+        // Ambil ID dari semester yang sedang aktif
+        return Semester::where('is_active', true)->value('id');
     }
 
     public function index(Request $request): JsonResponse
     {
         try {
-            $tahunAjaranId = $this->resolveTahunAjaranId($request);
+            $semesterId = $this->resolveSemesterId($request);
             
-            $data = JamSekolah::with('tahunAjaran')
-                ->when($tahunAjaranId, fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId))
+            // Memanggil relasi nested 'semester.tahunAjaran' karena JamSekolah tidak punya kolom tahun_ajaran_id
+            $data = JamSekolah::with(['semester.tahunAjaran'])
+                ->when($semesterId, fn($q) => $q->where('semester_id', $semesterId))
                 ->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat')")
                 ->orderBy('waktu_mulai')
                 ->get();
@@ -44,11 +47,12 @@ class JamSekolahController extends Controller
                 'success' => true,
                 'data'    => JamSekolahResource::collection($data),
                 'meta'    => [
-                    'filter_tahun_ajaran_id' => $tahunAjaranId,
-                    'is_auto_selected' => !$request->has('tahun_ajaran_id')
+                    'filter_semester_id' => $semesterId,
+                    'is_auto_selected'   => !$request->has('semester_id')
                 ]
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
+            Log::error('JamSekolah Index Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil data jam sekolah.',
@@ -59,27 +63,27 @@ class JamSekolahController extends Controller
     public function export(Request $request)
     {
         try {
-            $tahunAjaranId = $this->resolveTahunAjaranId($request);
-            $ta = TahunAjaran::find($tahunAjaranId);
+            $semesterId = $this->resolveSemesterId($request);
+            // Ambil data semester beserta tahun ajarannya untuk keperluan header PDF
+            $semester = Semester::with('tahunAjaran')->find($semesterId);
             
-            if (!$ta) {
+            if (!$semester) {
                 return response()->json([
                     'success' => false, 
-                    'message' => 'Data Tahun Ajaran tidak ditemukan.'
+                    'message' => 'Data Semester tidak ditemukan.'
                 ], Response::HTTP_BAD_REQUEST);
             }
 
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
 
-            // PERBAIKAN: Mengambil file_ttd langsung dari struktur_jabatan
+            // Tetap sama: Mengambil KS & Waka
             $ks = DB::table('struktur_jabatan')
                 ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                 ->where('struktur_jabatan.jabatan_id', 1) 
                 ->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')
                 ->first();
 
-            // PERBAIKAN: Mengambil file_ttd langsung dari struktur_jabatan
             $waka = DB::table('struktur_jabatan')
                 ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                 ->where('struktur_jabatan.jabatan_id', 2) 
@@ -93,21 +97,26 @@ class JamSekolahController extends Controller
                               " - " . ($kontak->provinsi ?? '');
 
             $hariList = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'];
-            $dataPerHari = JamSekolah::where('tahun_ajaran_id', $ta->id)
+            
+            // Filter berdasarkan semester_id
+            $dataPerHari = JamSekolah::where('semester_id', $semester->id)
                 ->whereIn('hari', $hariList)
                 ->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat')")
                 ->orderBy('waktu_mulai')
                 ->get()
                 ->groupBy('hari');
 
-            $namaTA = str_replace(['/', '\\', ' '], '-', $ta->nama);
-            $fileName = strtoupper("JAM_PELAJARAN_{$namaTA}.PDF");
+            // Penamaan file menggunakan nama Semester dan Tahun Ajaran
+            $namaTA = str_replace(['/', '\\', ' '], '-', $semester->tahunAjaran->nama ?? 'TA');
+            $namaSem = str_replace(' ', '-', $semester->nama ?? 'Semester');
+            $fileName = strtoupper("JAM_PELAJARAN_{$namaSem}_{$namaTA}.PDF");
 
             $pdf = Pdf::loadView('exports.jam_sekolah_pdf', [
                 'profil'         => $profil,
                 'kontak'         => $kontak,
                 'alamat_lengkap' => $alamat_lengkap,
-                'ta'             => $ta,
+                'ta'             => $semester->tahunAjaran, // Kirim objek Tahun Ajaran ke view
+                'semester'       => $semester,             // Kirim objek Semester ke view
                 'dataPerHari'    => $dataPerHari,
                 'hariList'       => $hariList,
                 'ks'             => $ks,

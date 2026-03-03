@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Presensi, TahunAjaran};
+use App\Models\{Presensi, Semester};
 use Illuminate\Http\{JsonResponse, Request};
 use Illuminate\Support\Facades\{Auth, DB, Log};
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -35,20 +35,18 @@ class PresensiController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            $tahunAktif = TahunAjaran::where('is_active', 1)->first();
-            $tahunAjaranId = $request->get('tahun_ajaran_id', $tahunAktif?->id);
+            $semesterAktif = Semester::where('is_active', 1)->first();
+            $semesterId = $request->get('semester_id', $semesterAktif?->id);
 
-            $query = $this->buildQuery($siswaId, $tahunAjaranId, $request);
+            $query = $this->buildQuery($siswaId, $semesterId, $request);
             $summary = $this->getSummary($query);
             
-            // PENYESUAIAN: Menghapus is_active agar bisa melihat riwayat kelas lama
             $riwayat = $siswa->riwayatKelas()
-                ->where('siswa_kelas.tahun_ajaran_id', $tahunAjaranId)
-                // ->where('siswa_kelas.is_active', 1) // Baris ini dihapus
+                ->where('siswa_kelas.semester_id', $semesterId)
                 ->with('kelas')
                 ->first();
 
-            $tahunTampil = $tahunAjaranId ? TahunAjaran::find($tahunAjaranId) : $tahunAktif;
+            $semesterTampil = $semesterId ? Semester::find($semesterId) : $semesterAktif;
             $perPage = $request->integer('per_page', 10);
             $paginator = $query->orderBy('tanggal', 'desc')->orderBy('id', 'desc')->paginate($perPage);
 
@@ -58,8 +56,8 @@ class PresensiController extends Controller
                 'header' => [
                     'nama' => $siswa?->nama_lengkap,
                     'kelas' => $riwayat?->kelas?->nama_kelas ?? 'Tanpa Kelas',
-                    'tahun_ajaran' => $tahunTampil?->nama ?? 'Tidak Diketahui',
-                    'semester' => $tahunTampil?->semester ?? '-',
+                    'tahun_ajaran' => $semesterTampil?->tahunAjaran?->nama ?? 'Tidak Diketahui',
+                    'semester' => $semesterTampil?->nama ?? '-',
                 ],
                 'summary' => [
                     'hadir' => (int)($summary->hadir ?? 0),
@@ -82,16 +80,15 @@ class PresensiController extends Controller
         }
     }
 
-    private function buildQuery($siswaId, $tahunAjaranId, Request $request)
+    private function buildQuery($siswaId, $semesterId, Request $request)
     {
-        // Query disesuaikan untuk mengambil dari detail presensi berdasarkan siswa_id
         $query = DB::table('presensi_detail')
             ->join('presensi', 'presensi_detail.presensi_id', '=', 'presensi.id')
             ->where('presensi_detail.siswa_id', $siswaId)
-            ->select('presensi_detail.*', 'presensi.tanggal', 'presensi.tahun_ajaran_id', 'presensi.kelas_id');
+            ->select('presensi_detail.*', 'presensi.tanggal', 'presensi.semester_id', 'presensi.kelas_id');
 
-        if ($tahunAjaranId) {
-            $query->where('presensi.tahun_ajaran_id', $tahunAjaranId);
+        if ($semesterId) {
+            $query->where('presensi.semester_id', $semesterId);
         }
 
         if ($request->filled('kelas_id')) {
@@ -116,7 +113,6 @@ class PresensiController extends Controller
 
     private function getSummary($query)
     {
-        // Menghitung ringkasan berdasarkan query yang sudah disesuaikan
         return (clone $query)->select(
             DB::raw("CAST(SUM(CASE WHEN presensi_detail.status = 'Hadir' THEN 1 ELSE 0 END) AS SIGNED) as hadir"),
             DB::raw("CAST(SUM(CASE WHEN presensi_detail.status = 'Izin' THEN 1 ELSE 0 END) AS SIGNED) as izin"),
@@ -128,7 +124,6 @@ class PresensiController extends Controller
 
     private function mapData($paginator)
     {
-        // Mapping data dari hasil join
         return collect($paginator->items())->map(fn($item) => [
             'id' => $item->id,
             'tanggal' => Carbon::parse($item->tanggal)->format('Y-m-d'),

@@ -23,6 +23,8 @@ class UpdateGuruMapelRequest extends FormRequest
             'hari'              => ['nullable', 'in:Senin,Selasa,Rabu,Kamis,Jumat'],
             'jam_mulai_id'      => ['nullable', 'string', 'exists:jam_sekolah,id'],
             'jam_selesai_id'    => ['nullable', 'string', 'exists:jam_sekolah,id'],
+            // --- PERUBAHAN DI SINI ---
+            'is_active'         => ['nullable', 'boolean'],
         ];
     }
 
@@ -48,6 +50,9 @@ class UpdateGuruMapelRequest extends FormRequest
 
             'jam_selesai_id.string'      => 'Jam selesai harus berupa ID string.',
             'jam_selesai_id.exists'      => 'Jam selesai tidak ditemukan dalam sistem.',
+            
+            // --- PERUBAHAN DI SINI ---
+            'is_active.boolean'          => 'Status aktif harus berupa boolean.',
         ];
     }
 
@@ -60,6 +65,8 @@ class UpdateGuruMapelRequest extends FormRequest
             'hari'              => 'Hari',
             'jam_mulai_id'      => 'Jam Mulai',
             'jam_selesai_id'    => 'Jam Selesai',
+            // --- PERUBAHAN DI SINI ---
+            'is_active'         => 'Status Aktif',
         ];
     }
 

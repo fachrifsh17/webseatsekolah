@@ -16,10 +16,15 @@ class GuruMapel extends Model
         'guru_staf_id',
         'mata_pelajaran_id',
         'kelas_id',
-        'semester_id', // --- PERUBAHAN DI SINI ---
+        'semester_id',
         'hari',
         'jam_mulai_id',
         'jam_selesai_id',
+        'is_active',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
     ];
 
     public function guru(): BelongsTo
@@ -37,8 +42,6 @@ class GuruMapel extends Model
         return $this->belongsTo(Kelas::class, 'kelas_id');
     }
 
-    // --- PERUBAHAN DI SINI ---
-    // Nama fungsi dan model yang dirujuk diubah ke Semester
     public function semester(): BelongsTo
     {
         return $this->belongsTo(Semester::class, 'semester_id');

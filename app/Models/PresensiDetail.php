@@ -24,6 +24,11 @@ class PresensiDetail extends Model
         'siswa_id' => 'string',
     ];
 
+    public function header(): BelongsTo
+    {
+        return $this->belongsTo(Presensi::class, 'presensi_id');
+    }
+
     public function presensi(): BelongsTo
     {
         return $this->belongsTo(Presensi::class, 'presensi_id');

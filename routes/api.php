@@ -197,6 +197,7 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::put('data-kontak', [DataKontakController::class, 'update']);
     Route::put('ppdb-link', [PpdbLinkController::class, 'update']);
     Route::get('kenaikan-kelas', [KenaikanKelasController::class, 'index']);
+    Route::post('kelas/generate', [KenaikanKelasController::class, 'generateFromPreviousYear']);
     Route::post('kenaikan-kelas/proses', [KenaikanKelasController::class, 'prosesMassal']);
     Route::post('walikelas/kelas-copy', [KelasWaliKelasController::class, 'cloneToNewYear']);
     Route::post('walikelas/naik-tingkat-kelas', [KelasWaliKelasController::class, 'bulkUpdateTingkat']);
@@ -234,7 +235,6 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     
     Route::post('kelas/import', [KelasController::class, 'import']);
     Route::get('kelas/export', [KelasController::class, 'export']);
-    Route::post('kelas/generate', [KelasController::class, 'generateFromPreviousYear']);
     Route::apiResource('kelas', KelasController::class);
     
     Route::get('mapel/export', [MapelController::class, 'export']);

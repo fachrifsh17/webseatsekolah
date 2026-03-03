@@ -328,16 +328,19 @@ class GuruController extends Controller
 
         try {
             DB::transaction(function () use ($guru, $validated) {
+                $isReactivating = isset($validated['is_active']) && $guru->is_active == 0 && $validated['is_active'] == 1;
+
                 $guru->update($validated);
 
                 if ($guru->user) {
                     $userData = [];
                     
-                    if (isset($validated['is_active']) && $validated['is_active'] == 0) {
-                        $userData['is_active'] = 0;
-                    } 
-                    elseif (isset($validated['is_active']) && $validated['is_active'] == 1) {
-                        $userData['is_active'] = 1;
+                    if (isset($validated['is_active'])) {
+                        $userData['is_active'] = $validated['is_active'];
+                        
+                        if ($isReactivating) {
+                            $userData['password'] = Hash::make($guru->user->username);
+                        }
                     }
 
                     if (!empty($validated['nip'])) {

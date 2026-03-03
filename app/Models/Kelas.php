@@ -14,14 +14,14 @@ class Kelas extends Model
 
     protected $table = 'kelas';
     protected $primaryKey = 'id';
-    public $incrementing = false; // ID Kelas tetap String (K001, dll)
+    public $incrementing = false;
     protected $keyType = 'string';
 
     protected $fillable = [
         'id',
         'nama_kelas',
         'jurusan_id',
-        'tingkatan_id', // Ini akan menerima nilai integer
+        'tingkatan_id', 
         'is_active',
     ];
 
@@ -39,22 +39,29 @@ class Kelas extends Model
     }
 
     /**
+     * Relasi langsung ke tabel pivot (KelasWaliKelas)
+     * Digunakan untuk akses relasi berantai (nested relationship)
+     */
+    public function kelasWali(): HasMany
+    {
+        return $this->hasMany(KelasWaliKelas::class, 'kelas_id');
+    }
+
+    /**
      * Relasi ke GuruStaf melalui tabel pivot kelas_wali_kelas
      */
     public function waliKelas(): BelongsToMany
     {
         return $this->belongsToMany(GuruStaf::class, 'kelas_wali_kelas', 'kelas_id', 'guru_staf_id')
-                    ->withPivot('tahun_ajaran_id', 'is_active')
+                    ->withPivot('semester_id', 'is_active')
                     ->withTimestamps();
     }
 
     /**
-     * Relasi ke tabel Tingkatan (lookup table)
+     * Relasi ke tabel Tingkatan
      */
     public function tingkatan(): BelongsTo
     {
-        // Eloquent otomatis menangani perbedaan tipe data kunci 
-        // selama foreign key didefinisikan dengan benar di migration.
         return $this->belongsTo(Tingkatan::class, 'tingkatan_id');
     }
 
@@ -68,10 +75,13 @@ class Kelas extends Model
         return $this->hasMany(SiswaKelas::class, 'kelas_id');
     }
 
+    /**
+     * Relasi ke Siswa melalui tabel pivot siswa_kelas
+     */
     public function siswa(): BelongsToMany
     {
         return $this->belongsToMany(Siswa::class, 'siswa_kelas', 'kelas_id', 'siswa_id')
-                    ->withPivot('is_active', 'tahun_ajaran_id')
+                    ->withPivot('is_active', 'semester_id')
                     ->withTimestamps();
     }
 

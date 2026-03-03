@@ -27,20 +27,16 @@ class StorePresensiGuruMapelRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Hanya perlu guru_mapel_id untuk referensi penugasan
             'guru_mapel_id'     => ['required', 'integer', 'exists:guru_mapel,id'],
+            'tanggal'           => ['required', 'date'],
             'materi'            => ['required', 'string', 'min:5'],
 
-            'kelas_id'          => ['nullable', 'string', 'exists:kelas,id'],
-            'mata_pelajaran_id' => ['nullable', 'string', 'exists:mata_pelajaran,id'],
-            'tahun_ajaran_id'   => ['nullable', 'string', 'exists:tahun_ajaran,id'],
-            'tanggal'           => ['nullable', 'date'],
-            'jam_masuk'         => ['nullable', 'string'],
-            'jam_keluar'        => ['nullable', 'string'],
-
-            'presensi'              => ['required', 'array', 'min:1'],
-            'presensi.*.siswa_id'   => ['required', 'string', 'exists:siswa,id'],
-            'presensi.*.status'     => ['required', 'in:hadir,sakit,izin,alpa,Hadir,Sakit,Izin,Alpa'],
-            'presensi.*.catatan'    => ['nullable', 'string'],
+            // Validasi detail presensi siswa
+            'presensi'                => ['required', 'array', 'min:1'],
+            'presensi.*.siswa_id'     => ['required', 'string', 'exists:siswa,id'],
+            'presensi.*.status'       => ['required', 'in:hadir,sakit,izin,alpa,Hadir,Sakit,Izin,Alpa'],
+            'presensi.*.catatan'      => ['nullable', 'string'],
         ];
     }
 
@@ -50,6 +46,8 @@ class StorePresensiGuruMapelRequest extends FormRequest
             // Validasi Header
             'guru_mapel_id.required' => 'ID penugasan guru wajib diisi.',
             'guru_mapel_id.exists'   => 'Data penugasan guru tidak ditemukan di sistem.',
+            'tanggal.required'       => 'Tanggal presensi wajib diisi.',
+            'tanggal.date'           => 'Format tanggal tidak valid.',
             'materi.required'        => 'Materi pembelajaran tidak boleh kosong.',
             'materi.min'             => 'Isi materi minimal 5 karakter.',
             

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\KelasWaliKelas;
 use App\Models\Semester; 
 use App\Models\Kelas;
+use App\Models\GuruStaf;
 use App\Http\Requests\StoreKelasWaliKelasRequest;
 use App\Http\Requests\UpdateKelasWaliKelasRequest;
 use App\Http\Resources\KelasWaliKelasResource;
@@ -43,6 +44,15 @@ class KelasWaliKelasController extends Controller
         return DB::transaction(function () use ($request) {
             $validated = $request->validated();
             
+            if (isset($validated['guru_staf_id'])) {
+                $guruAktif = GuruStaf::where('id', $validated['guru_staf_id'])
+                    ->where('is_active', true)
+                    ->exists();
+                if (!$guruAktif) {
+                    return response()->json(['message' => 'Guru yang dipilih tidak aktif'], 400);
+                }
+            }
+
             $semesterAktif = Semester::where('is_active', true)->first();
             if (!$semesterAktif) {
                 return response()->json(['message' => 'Tidak ada semester yang aktif'], 400);
@@ -56,7 +66,6 @@ class KelasWaliKelasController extends Controller
             }
             
             $riwayat = KelasWaliKelas::create($validated);
-            
             $riwayat->load(['kelas', 'guruStaf', 'semester']);
             
             return new KelasWaliKelasResource($riwayat);
@@ -77,6 +86,15 @@ class KelasWaliKelasController extends Controller
         return DB::transaction(function () use ($request, $kelasWaliKelas) {
             $validated = $request->validated();
             
+            if (isset($validated['guru_staf_id'])) {
+                $guruAktif = GuruStaf::where('id', $validated['guru_staf_id'])
+                    ->where('is_active', true)
+                    ->exists();
+                if (!$guruAktif) {
+                    return response()->json(['message' => 'Guru yang dipilih tidak aktif'], 400);
+                }
+            }
+
             $semesterAktif = Semester::where('is_active', true)->first();
             if (!$semesterAktif) {
                 return response()->json(['message' => 'Tidak ada semester yang aktif'], 400);
@@ -91,7 +109,6 @@ class KelasWaliKelasController extends Controller
             }
             
             $kelasWaliKelas->update($validated);
-            
             $kelasWaliKelas->load(['kelas', 'guruStaf', 'semester']);
             
             return new KelasWaliKelasResource($kelasWaliKelas);
@@ -127,15 +144,22 @@ class KelasWaliKelasController extends Controller
             return response()->json(['message' => 'Data semester sebelumnya tidak ditemukan'], Response::HTTP_NOT_FOUND);
         }
 
-        $oldData = KelasWaliKelas::where('semester_id', $semesterLalu->id)
+        $oldData = KelasWaliKelas::with('guruStaf')
+            ->where('semester_id', $semesterLalu->id)
             ->where('is_active', true)
+            ->whereHas('guruStaf', function($q) {
+                $q->where('is_active', true);
+            })
             ->get();
             
         if ($oldData->isEmpty()) {
-            return response()->json(['message' => 'Data wali kelas aktif semester lalu tidak ditemukan'], Response::HTTP_NOT_FOUND);
+            return response()->json(['message' => 'Data wali kelas aktif (dan guru aktif) semester lalu tidak ditemukan'], Response::HTTP_NOT_FOUND);
         }
 
         DB::transaction(function () use ($oldData, $semesterAktif, $semesterLalu) {
+            KelasWaliKelas::where('semester_id', $semesterLalu->id)
+                ->update(['is_active' => false]);
+
             foreach ($oldData as $data) {
                 KelasWaliKelas::create([
                     'kelas_id'     => $data->kelas_id,
@@ -146,7 +170,7 @@ class KelasWaliKelasController extends Controller
             }
         });
         
-        return response()->json(['message' => 'Data berhasil disalin, data semester lalu tetap aktif'], Response::HTTP_CREATED);
+        return response()->json(['message' => 'Data berhasil disalin, data semester lalu telah dinonaktifkan'], Response::HTTP_CREATED);
     }
 
     public function bulkUpdateTingkat(Request $request)
@@ -166,12 +190,17 @@ class KelasWaliKelasController extends Controller
             DB::transaction(function () use ($request, $semesterAktif) {
                 foreach ($request->mapping as $idWaliLama => $idKelasBaru) {
                     
-                    $waliKelasLama = KelasWaliKelas::where('id', $idWaliLama)
+                    $waliKelasLama = KelasWaliKelas::with('guruStaf')
+                        ->where('id', $idWaliLama)
                         ->where('semester_id', $semesterAktif->id)
                         ->first();
                         
                     if (!$waliKelasLama) {
-                        throw new \Exception("ID Wali Kelas {$idWaliLama} tidak ditemukan atau bukan data semester aktif.");
+                        throw new \Exception("ID Wali Kelas {$idWaliLama} tidak ditemukan.");
+                    }
+
+                    if ($waliKelasLama->guruStaf && !$waliKelasLama->guruStaf->is_active) {
+                        throw new \Exception("Guru pada ID Wali {$idWaliLama} sudah tidak aktif.");
                     }
                     
                     $dataKelasTujuan = KelasWaliKelas::where('kelas_id', $idKelasBaru)

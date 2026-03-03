@@ -20,7 +20,6 @@ use App\Models\Siswa;
 
 class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings, WithDrawings
 {
-    // Mengubah variabel untuk menampung semesterId
     protected $namaKelas, $labelWaktu, $profil, $kontak, $dataKelas, $daysInMonth, $year, $month, $role, $semesterId, $semesterDisplay, $hariLiburNasional, $waliKelas;
     private $rowNumber = 0;
     private $processedSiswa = [];
@@ -28,7 +27,6 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
     private $grandTotal = ['H' => 0, 'S' => 0, 'I' => 0, 'A' => 0];
     private $ttdRowOffset = 0;
 
-    // Konstruktor diubah menerima $semesterId dan objek $semesterDisplay
     public function __construct($semesterId, $namaKelas, $labelWaktu, $profil, $kontak, $dataKelas, $role = 'walikelas', $semesterDisplay = null)
     {
         $this->namaKelas = $namaKelas;
@@ -38,13 +36,12 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
         $this->dataKelas = $dataKelas;
         $this->role = $role;
         $this->semesterId = $semesterId;
-        // Pastikan semesterDisplay memuat relasi tahunAjaran
         $this->semesterDisplay = $semesterDisplay;
 
         $this->waliKelas = DB::table('kelas_wali_kelas')
             ->join('guru_staf', 'kelas_wali_kelas.guru_staf_id', '=', 'guru_staf.id')
             ->where('kelas_wali_kelas.kelas_id', $this->dataKelas->id)
-            ->where('kelas_wali_kelas.is_active', 1)
+            ->where('kelas_wali_kelas.semester_id', $this->semesterId)
             ->select('guru_staf.nama', 'guru_staf.nip')
             ->first();
 
@@ -59,7 +56,6 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
 
         $this->daysInMonth = Carbon::create($this->year, $this->month, 1)->daysInMonth;
 
-        // Query hari libur berdasarkan semester_id
         $this->hariLiburNasional = DB::table('kalender_akademik')
             ->where('semester_id', $this->semesterId)
             ->where('kategori', 'Libur')
@@ -73,13 +69,18 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
 
     public function query()
     {
-        // Query siswa berdasarkan semester_id melalui relasi riwayatKelas
-        return Siswa::query()
-            ->whereHas('riwayatKelas', function ($q) {
-                $q->where('kelas_id', $this->dataKelas->id)
-                    ->where('semester_id', $this->semesterId);
-            })
-            ->orderBy('nama_lengkap', 'asc');
+        $query = Siswa::query()
+            ->select('siswa.*')
+            ->join('siswa_kelas', 'siswa.id', '=', 'siswa_kelas.siswa_id')
+            ->where('siswa_kelas.kelas_id', $this->dataKelas->id)
+            ->where('siswa_kelas.semester_id', $this->semesterId);
+
+        if ($this->semesterDisplay && $this->semesterDisplay->is_active == 1) {
+            $query->where('siswa_kelas.is_active', 1)
+                  ->where('siswa.is_active', 1);
+        }
+
+        return $query->orderBy('siswa.nama_lengkap', 'asc');
     }
 
     public function headings(): array
@@ -111,8 +112,9 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
 
         $presensiBulanIni = DB::table('presensi_detail')
             ->join('presensi', 'presensi_detail.presensi_id', '=', 'presensi.id')
+            ->join('kelas_wali_kelas', 'presensi.kelas_wali_id', '=', 'kelas_wali_kelas.id') 
             ->where('presensi_detail.siswa_id', $siswa->id)
-            ->where('presensi.semester_id', $this->semesterId) // Filter by semester_id
+            ->where('kelas_wali_kelas.semester_id', $this->semesterId)
             ->whereMonth('presensi.tanggal', $this->month)
             ->whereYear('presensi.tanggal', $this->year)
             ->select('presensi.tanggal', 'presensi_detail.status', 'presensi_detail.keterangan')
@@ -198,7 +200,7 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 $sheet->mergeCells("{$lastCol}14:{$lastCol}15");
 
                 $prov = strtoupper($this->kontak->provinsi ?? 'JAWA BARAT');
-                $cabdin = strtoupper($this->profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN');
+                $cabdin = strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN');
                 $namaSekolah = strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH');
                 $alamat = $this->kontak->alamat_jalan ?? '-';
                 $desaKec = "Desa " . ($this->kontak->desa_kelurahan ?? '-') . " Kec. " . ($this->kontak->kecamatan ?? '-');
@@ -219,7 +221,7 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
 
                 $sheet->getStyle("A1:{$lastCol}6")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true)->setSize(11);
-                $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
+                $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
 
                 $sheet->mergeCells("A8:{$lastCol}8");
                 $sheet->setCellValue('A8', 'LAPORAN PRESENSI SISWA (WALI KELAS)');
@@ -227,13 +229,9 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 $sheet->getStyle('A8')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $sheet->mergeCells("A9:{$lastCol}9");
-                
-                // --- PERUBAHAN DI SINI ---
-                // Mengambil nama tahun ajaran dan nama semester dari objek semesterDisplay
                 $tahunAjaranNama = $this->semesterDisplay->tahunAjaran->nama ?? '-';
                 $semesterNama = strtoupper($this->semesterDisplay->nama ?? '-');
                 $sheet->setCellValue('A9', "TAHUN PELAJARAN " . $tahunAjaranNama . " - SEMESTER " . $semesterNama);
-                // -------------------------
                 
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A9")->getFont()->setBold(true);
@@ -300,7 +298,6 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 }
 
                 $sheet->getRowDimension($ttdRow + 3)->setRowHeight(60);
-                $sheet->getRowDimension($ttdRow + 3)->setRowHeight(60);
 
                 $sheet->mergeCells("A" . ($ttdRow + 5) . ":D" . ($ttdRow + 5));
                 $sheet->setCellValue("A" . ($ttdRow + 5), "( " . strtoupper($namaKiri) . " )");
@@ -347,7 +344,7 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
             $wK = DB::table('kelas_wali_kelas')
                 ->join('guru_staf', 'kelas_wali_kelas.guru_staf_id', '=', 'guru_staf.id')
                 ->where('kelas_wali_kelas.kelas_id', $this->dataKelas->id)
-                ->where('kelas_wali_kelas.is_active', 1)
+                ->where('kelas_wali_kelas.semester_id', $this->semesterId)
                 ->select('guru_staf.path_ttd')
                 ->first();
             $ttdKiriPath = $wK->path_ttd ?? null;

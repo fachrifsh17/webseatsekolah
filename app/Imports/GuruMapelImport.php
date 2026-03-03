@@ -6,7 +6,7 @@ use App\Models\GuruMapel;
 use App\Models\GuruStaf;
 use App\Models\MataPelajaran;
 use App\Models\Kelas;
-use App\Models\Semester; // Pastikan model Semester ada
+use App\Models\Semester;
 use App\Models\JamSekolah;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -16,13 +16,11 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
 {
     public array $importMessages = [];
     private int $rows = 0;
-    // Hapus properti $semesterId karena akan dicari langsung
 
     public function model(array $row)
     {
         $this->rows++;
 
-        // PERBAIKAN: Langsung cari semester yang aktif
         $semesterAktif = Semester::where('is_active', 1)->first();
         
         if (!$semesterAktif) {
@@ -80,9 +78,8 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
             return null;
         }
 
-        // PERBAIKAN: Pengecekan bentrok menggunakan semesterAktif->id
         $bentrok = GuruMapel::where('hari', $hariInput)
-            ->where('semester_id', $semesterAktif->id) // Cek berdasarkan semester aktif
+            ->where('semester_id', $semesterAktif->id)
             ->where(function ($q) use ($jamMulai, $jamSelesai) {
                 $q->where(function($query) use ($jamMulai, $jamSelesai) {
                     $query->whereHas('jamMulai', function ($sub) use ($jamSelesai) {
@@ -108,10 +105,11 @@ class GuruMapelImport implements ToModel, WithHeadingRow, SkipsEmptyRows
             'guru_staf_id'      => $guru->id,
             'mata_pelajaran_id' => $mapel->id,
             'kelas_id'          => $kelas->id,
-            'semester_id'       => $semesterAktif->id, // Gunakan id semester aktif
+            'semester_id'       => $semesterAktif->id,
             'hari'              => $hariInput,
             'jam_mulai_id'      => $jamMulai->id,
             'jam_selesai_id'    => $jamSelesai->id,
+            'is_active'         => 1, // --- PERUBAHAN DI SINI ---
         ]);
     }
 

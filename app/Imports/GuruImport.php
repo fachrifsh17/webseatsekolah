@@ -9,7 +9,7 @@ use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon; // Tambahkan ini untuk memproses tanggal
+use Carbon\Carbon;
 
 class GuruImport implements ToModel, WithHeadingRow
 {
@@ -31,24 +31,46 @@ class GuruImport implements ToModel, WithHeadingRow
             return null;
         }
 
-        // 2. Cek Duplikat NIP
+        // 2. Cek apakah Guru sudah pernah terdaftar (berdasarkan NIP atau NUPTK)
+        $existingGuru = null;
         if (!empty($nip)) {
-            if (GuruStaf::where('nip', $nip)->exists()) {
-                $this->importMessages[] = "Baris {$this->rows}: Guru dengan NIP '{$nip}' sudah terdaftar.";
-                return null;
-            }
+            $existingGuru = GuruStaf::where('nip', $nip)->first();
+        }
+        
+        if (!$existingGuru && !empty($nuptk)) {
+            $existingGuru = GuruStaf::where('nuptk', $nuptk)->first();
         }
 
-        // 3. Cek Duplikat NUPTK
-        if (!empty($nuptk)) {
-            if (GuruStaf::where('nuptk', $nuptk)->exists()) {
-                $this->importMessages[] = "Baris {$this->rows}: Guru dengan NUPTK '{$nuptk}' sudah terdaftar.";
-                return null;
-            }
-        }
+        return DB::transaction(function () use ($row, $nip, $nuptk, $nama, $namaJurusan, $existingGuru) {
+            
+            // --- LOGIKA JIKA GURU SUDAH ADA ---
+            if ($existingGuru) {
+                // Update data guru dan aktifkan
+                $existingGuru->update([
+                    'nama'               => $nama,
+                    'no_hp'              => $row['no_hp'] ?? $row['telepon'] ?? $existingGuru->no_hp,
+                    'email'              => $row['email'] ?? $existingGuru->email,
+                    'is_active'          => 1,
+                ]);
 
-        return DB::transaction(function () use ($row, $nip, $nuptk, $nama, $namaJurusan) {
-            // --- GENERATE USER ID ---
+                // Aktifkan User dan Reset Password
+                if ($existingGuru->user_id) {
+                    $user = User::find($existingGuru->user_id);
+                    if ($user) {
+                        $user->update([
+                            'is_active' => 1,
+                            'password'  => Hash::make($user->username) // Reset ke username-nya
+                        ]);
+                    }
+                }
+
+                $this->importMessages[] = "Baris {$this->rows}: Guru '{$nama}' ditemukan dan telah diaktifkan kembali.";
+                return null; // Return null karena kita hanya update, bukan create model baru
+            }
+
+            // --- LOGIKA JIKA GURU BARU ---
+            
+            // Generate User ID
             $lastUser = User::where('id', 'like', 'U%')
                 ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                 ->lockForUpdate()
@@ -59,7 +81,6 @@ class GuruImport implements ToModel, WithHeadingRow
 
             $username = !empty($nip) ? $nip : strtolower(str_replace(' ', '', $nama));
             
-            // Cek jika username sudah dipakai user lain
             $finalUsername = $username;
             $count = 1;
             while (User::where('username', $finalUsername)->exists()) {
@@ -67,7 +88,6 @@ class GuruImport implements ToModel, WithHeadingRow
                 $count++;
             }
 
-            // --- BUAT USER ---
             User::create([
                 'id'           => $newUserId,
                 'username'     => $finalUsername, 
@@ -76,7 +96,6 @@ class GuruImport implements ToModel, WithHeadingRow
                 'is_active'    => 1,
             ]);
 
-            // Assign Role R002 (Guru)
             DB::table('user_roles')->insert([
                 'user_id'    => $newUserId,
                 'role_id'    => 'R002', 
@@ -84,51 +103,39 @@ class GuruImport implements ToModel, WithHeadingRow
                 'updated_at' => now(),
             ]);
 
-            // Cari Jurusan ID
+            // Cari Jurusan
             $jurusanId = null;
             if ($namaJurusan) {
                 $jurusan = Jurusan::where('nama_jurusan', 'LIKE', '%' . $namaJurusan . '%')
                     ->where('is_active', 1)
                     ->first();
-                if ($jurusan) {
-                    $jurusanId = $jurusan->id;
-                } else {
-                    $this->importMessages[] = "Baris {$this->rows}: Jurusan '{$namaJurusan}' tidak ditemukan.";
-                }
+                $jurusanId = $jurusan ? $jurusan->id : null;
             }
 
-            // --- FUNGSI HELPER TANGGAL ---
             $formattedTanggalLahir = null;
             if(isset($row['tanggal_lahir'])) {
                 try {
-                    // Coba format YYYY-MM-DD
                     $formattedTanggalLahir = Carbon::parse($row['tanggal_lahir'])->format('Y-m-d');
-                } catch (\Exception $e) {
-                    $formattedTanggalLahir = null;
-                }
+                } catch (\Exception $e) { $formattedTanggalLahir = null; }
             }
 
-            // --- SIMPAN DATA GURU (TAMBAHKAN KOLOM BARU) ---
-            return new GuruStaf([
-                'user_id'            => $newUserId,
-                'nip'                => $nip,
-                'nuptk'              => $nuptk,
-                'nama'               => $nama,
-                // Kolom Baru dari Excel
-                'no_hp'              => $row['no_hp'] ?? $row['telepon'] ?? null,
-                'email'              => $row['email'] ?? null,
-                'alamat_lengkap'     => $row['alamat_lengkap'] ?? $row['alamat'] ?? null,
-                'jenis_kelamin'      => $row['jenis_kelamin'] ?? $row['jk'] ?? null,
-                'tempat_lahir'       => $row['tempat_lahir'] ?? null,
-                'tanggal_lahir'      => $formattedTanggalLahir,
-                'agama'              => $row['agama'] ?? null,
-                'pendidikan_terakhir'=> $row['pendidikan_terakhir'] ?? $row['pendidikan'] ?? null,
-                // Kolom Lama
-                'jabatan_fungsional' => $row['jabatan_fungsional'] ?? $row['jabatan'] ?? null,
-                'status_kepegawaian' => $row['status_kepegawaian'] ?? $row['status'] ?? null,
-                'jurusan_id'         => $jurusanId,
-                'is_active'          => 1,
-                'foto'               => null,
+            return GuruStaf::create([
+                'user_id'             => $newUserId,
+                'nip'                 => $nip,
+                'nuptk'               => $nuptk,
+                'nama'                => $nama,
+                'no_hp'               => $row['no_hp'] ?? $row['telepon'] ?? null,
+                'email'               => $row['email'] ?? null,
+                'alamat_lengkap'      => $row['alamat_lengkap'] ?? $row['alamat'] ?? null,
+                'jenis_kelamin'       => $row['jenis_kelamin'] ?? $row['jk'] ?? null,
+                'tempat_lahir'        => $row['tempat_lahir'] ?? null,
+                'tanggal_lahir'       => $formattedTanggalLahir,
+                'agama'               => $row['agama'] ?? null,
+                'pendidikan_terakhir' => $row['pendidikan_terakhir'] ?? $row['pendidikan'] ?? null,
+                'jabatan_fungsional'  => $row['jabatan_fungsional'] ?? $row['jabatan'] ?? null,
+                'status_kepegawaian'  => $row['status_kepegawaian'] ?? $row['status'] ?? null,
+                'jurusan_id'          => $jurusanId,
+                'is_active'           => 1,
             ]);
         });
     }

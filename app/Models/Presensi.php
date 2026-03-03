@@ -13,39 +13,41 @@ class Presensi extends Model
 
     protected $table = 'presensi';
 
+    // Sesuaikan fillable dengan kolom di tabel terbaru
     protected $fillable = [
         'tanggal',
-        'kelas_id',
-        'semester_id', // --- PERUBAHAN DI SINI ---
-        'guru_staf_id',
+        'kelas_wali_id', // Ini merujuk ke tabel kelas_wali_kelas
     ];
 
     protected $casts = [
         'tanggal' => 'date',
-        'kelas_id' => 'string',
-        'semester_id' => 'integer', // --- PERUBAHAN DI SINI ---
-        'guru_staf_id' => 'string',
+        'kelas_wali_id' => 'integer',
     ];
 
+    /**
+     * Relasi ke tabel detail (Siswa yang diabsen)
+     */
     public function details(): HasMany
     {
+        // Tetap menggunakan presensi_id sebagai foreign key di tabel presensi_detail
         return $this->hasMany(PresensiDetail::class, 'presensi_id');
     }
 
-    public function kelas(): BelongsTo
+    /**
+     * Relasi ke Kelas Wali Kelas
+     * Dari sini kamu bisa tarik data Kelas, Guru, dan Semester sekaligus
+     */
+    public function kelasWali(): BelongsTo
     {
-        return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
+        return $this->belongsTo(KelasWaliKelas::class, 'kelas_wali_id');
     }
 
-    // --- PERUBAHAN DI SINI ---
-    // Nama fungsi dan model yang dirujuk diubah ke Semester
-    public function semester(): BelongsTo
+    /**
+     * Shortcut: Jika ingin langsung ambil nama kelas dari Presensi
+     * Contoh: $presensi->nama_kelas
+     */
+    public function getNamaKelasAttribute()
     {
-        return $this->belongsTo(Semester::class, 'semester_id', 'id');
-    }
-
-    public function guruStaf(): BelongsTo
-    {
-        return $this->belongsTo(GuruStaf::class, 'guru_staf_id', 'id');
+        return $this->kelasWali->kelas->nama_kelas ?? '-';
     }
 }

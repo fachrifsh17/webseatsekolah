@@ -10,9 +10,12 @@ use App\Http\Resources\SemesterResource;
 use App\Http\Requests\StoreSemesterRequest;
 use App\Http\Requests\UpdateSemesterRequest;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Http\JsonResponse;
+use Throwable;
 
 class SemesterController extends Controller
 {
@@ -20,110 +23,194 @@ class SemesterController extends Controller
 
     public function __construct()
     {
-        // Parameter route harus bernama 'semester'
+        $this->middleware('auth.token');
+        $this->middleware('role:Admin');
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        
         $this->authorizeResource(Semester::class, 'semester');
     }
 
-    public function index()
+    public function index(): JsonResponse
     {
-        $semesters = Semester::with('tahunAjaran')->orderBy('created_at', 'desc')->get();
-        return SemesterResource::collection($semesters);
+        try {
+            $perPage = min((int) request()->get('per_page', 10), 100);
+            $items = Semester::with('tahunAjaran')
+                ->orderBy('created_at', 'desc')
+                ->paginate($perPage);
+            
+            $paginationData = $items->toArray();
+
+            return response()->json([
+                'success' => true,
+                'data'    => SemesterResource::collection($items),
+                'meta'    => [
+                    'current_page'  => $paginationData['current_page'],
+                    'last_page'     => $paginationData['last_page'],
+                    'per_page'      => $paginationData['per_page'],
+                    'total'         => $paginationData['total'],
+                    'from'          => $paginationData['from'],
+                    'to'            => $paginationData['to'],
+                    'path'          => $paginationData['path'],
+                    'next_page_url' => $paginationData['next_page_url'],
+                    'prev_page_url' => $paginationData['prev_page_url'],
+                    'links'         => array_map(function ($link) {
+                        return [
+                            'url'    => $link['url'],
+                            'label'  => $link['label'],
+                            'page'   => is_numeric($link['label']) ? (int) $link['label'] : null,
+                            'active' => $link['active'],
+                        ];
+                    }, $paginationData['links']),
+                ],
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Failed to fetch semesters', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil daftar semester',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
-    public function store(StoreSemesterRequest $request)
+    public function store(StoreSemesterRequest $request): JsonResponse
     {
-        $this->authorize('create', Semester::class);
-
         $activeTahunAjaran = TahunAjaran::where('is_active', true)->first();
 
         if (!$activeTahunAjaran) {
-            throw ValidationException::withMessages([
-                'tahun_ajaran_id' => ['Tidak ada tahun ajaran yang aktif.'],
-            ]);
-        }
-
-        $validated = $request->validated();
-        $validated['tahun_ajaran_id'] = $activeTahunAjaran->id;
-        $validated['is_active'] = true; 
-
-        return DB::transaction(function () use ($validated, $activeTahunAjaran) {
-            
-            $existingSemester = Semester::where('tahun_ajaran_id', $activeTahunAjaran->id)
-                ->where('nama', $validated['nama'])
-                ->first();
-
-            if ($existingSemester) {
-                throw ValidationException::withMessages([
-                    'nama' => ['Nama semester sudah ada dalam tahun ajaran ini.'],
-                ]);
-            }
-
-            $currentSemesterCount = Semester::where('tahun_ajaran_id', $activeTahunAjaran->id)->count();
-
-            if ($currentSemesterCount >= 2) {
-                throw ValidationException::withMessages([
-                    'nama' => ['Tahun ajaran ini sudah memiliki 2 semester.'],
-                ]);
-            }
-
-            Semester::query()->update(['is_active' => false]);
-
-            $semester = Semester::create($validated);
-            
-            return new SemesterResource($semester->load('tahunAjaran'));
-        });
-    }
-
-    // Perubahan: Menggunakan Semester $semester agar authorizeResource bekerja
-    public function show(Semester $semester)
-    {
-        return new SemesterResource($semester->load('tahunAjaran'));
-    }
-
-    // Perubahan: Menggunakan Semester $semester agar authorizeResource bekerja
-    public function update(UpdateSemesterRequest $request, Semester $semester)
-    {
-        $validated = $request->validated();
-
-        return DB::transaction(function () use ($validated, $semester) {
-            
-            $existingSemester = Semester::where('tahun_ajaran_id', $semester->tahun_ajaran_id)
-                ->where('nama', $validated['nama'])
-                ->where('id', '!=', $semester->id)
-                ->first();
-
-            if ($existingSemester) {
-                throw ValidationException::withMessages([
-                    'nama' => ['Nama semester sudah ada dalam tahun ajaran ini.'],
-                ]);
-            }
-
-            if (isset($validated['is_active']) && $validated['is_active']) {
-                Semester::where('id', '!=', $semester->id)->update(['is_active' => false]);
-            }
-
-            $semester->update($validated);
-            
-            return new SemesterResource($semester->load('tahunAjaran'));
-        });
-    }
-
-    // Perubahan: Menggunakan Semester $semester agar authorizeResource bekerja
-    public function destroy(Semester $semester)
-    {
-        if (
-            $semester->jamSekolah()->exists() ||
-            $semester->presensi()->exists()
-        ) {
             return response()->json([
-                'message' => 'Semester tidak dapat dihapus karena masih digunakan di data Jam Sekolah atau Presensi.'
-            ], Response::HTTP_CONFLICT);
+                'success' => false,
+                'message' => 'Tidak ada tahun ajaran yang aktif.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $semester->delete();
+        try {
+            $semester = DB::transaction(function () use ($request, $activeTahunAjaran) {
+                $validated = $request->validated();
+                
+                $existingSemester = Semester::where('tahun_ajaran_id', $activeTahunAjaran->id)
+                    ->where('nama', $validated['nama'])
+                    ->first();
 
+                if ($existingSemester) {
+                    throw ValidationException::withMessages([
+                        'nama' => ['Nama semester sudah ada dalam tahun ajaran ini.'],
+                    ]);
+                }
+
+                $currentSemesterCount = Semester::where('tahun_ajaran_id', $activeTahunAjaran->id)->count();
+
+                if ($currentSemesterCount >= 2) {
+                    throw ValidationException::withMessages([
+                        'nama' => ['Tahun ajaran ini sudah memiliki 2 semester.'],
+                    ]);
+                }
+
+                Semester::query()->update(['is_active' => false]);
+
+                $validated['tahun_ajaran_id'] = $activeTahunAjaran->id;
+                $validated['is_active'] = true;
+
+                return Semester::create($validated);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Semester berhasil ditambahkan.',
+                'data'    => new SemesterResource($semester->load('tahunAjaran'))
+            ], Response::HTTP_CREATED);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data tidak valid',
+                'errors'  => $e->errors()
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (Throwable $e) {
+            Log::error('Failed to create semester', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menambahkan semester'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function show(Semester $semester): JsonResponse
+    {
         return response()->json([
-            'message' => 'Semester berhasil dihapus'
+            'success' => true,
+            'data'    => new SemesterResource($semester->load('tahunAjaran')),
         ], Response::HTTP_OK);
+    }
+
+    public function update(UpdateSemesterRequest $request, Semester $semester): JsonResponse
+    {
+        try {
+            DB::transaction(function () use ($request, $semester) {
+                $validated = $request->validated();
+                
+                $existingSemester = Semester::where('tahun_ajaran_id', $semester->tahun_ajaran_id)
+                    ->where('nama', $validated['nama'])
+                    ->where('id', '!=', $semester->id)
+                    ->first();
+
+                if ($existingSemester) {
+                    throw ValidationException::withMessages([
+                        'nama' => ['Nama semester sudah ada dalam tahun ajaran ini.'],
+                    ]);
+                }
+
+                if (isset($validated['is_active']) && $validated['is_active']) {
+                    Semester::where('id', '!=', $semester->id)->update(['is_active' => false]);
+                }
+
+                $semester->update($validated);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Semester berhasil diperbarui.',
+                'data'    => new SemesterResource($semester->fresh()->load('tahunAjaran'))
+            ], Response::HTTP_OK);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data tidak valid',
+                'errors'  => $e->errors()
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (Throwable $e) {
+            Log::error('Failed to update semester', ['id' => $semester->id, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui semester'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function destroy(Semester $semester): JsonResponse
+    {
+        try {
+            if ($semester->jamSekolah()->exists() || $semester->presensi()->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Semester tidak dapat dihapus karena masih digunakan di data Jam Sekolah atau Presensi.'
+                ], Response::HTTP_CONFLICT);
+            }
+
+            $semester->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Semester berhasil dihapus'
+            ], Response::HTTP_OK);
+            
+        } catch (Throwable $e) {
+            Log::error('Failed to delete semester', ['id' => $semester->id, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus semester'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 }

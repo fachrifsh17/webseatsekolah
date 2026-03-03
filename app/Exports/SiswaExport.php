@@ -64,8 +64,8 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         return [
             $this->rowNumber,
             $siswa->id, 
-            "'" . $siswa->nis,
-            "'" . $siswa->nisn,
+            $siswa->nis ? "'" . $siswa->nis : '-',
+            $siswa->nisn ? "'" . $siswa->nisn : '-',
             strtoupper($siswa->nama_lengkap),
             strtoupper($siswa->tempat_lahir),
             $siswa->tanggal_lahir ? date('d-m-Y', strtotime($siswa->tanggal_lahir)) : '-',
@@ -108,7 +108,6 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             if (file_exists($path)) {
                 $drawing = new Drawing();
                 $drawing->setName('TTD Kepala Sekolah');
-                $drawing->setDescription('Tanda Tangan');
                 $drawing->setPath($path);
                 $drawing->setHeight(50);
                 $drawing->setCoordinates('K' . $imageRow);
@@ -121,7 +120,6 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             if (file_exists($pathWaka)) {
                 $drawingWaka = new Drawing();
                 $drawingWaka->setName('TTD Waka Kesiswaan');
-                $drawingWaka->setDescription('Tanda Tangan');
                 $drawingWaka->setPath($pathWaka);
                 $drawingWaka->setHeight(50);
                 $drawingWaka->setCoordinates('B' . $imageRow);
@@ -144,8 +142,8 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getColumnDimension('B')->setWidth(18);
 
                 $prov = strtoupper($this->kontak->provinsi ?? 'JAWA BARAT');
-                $cabdin = strtoupper($this->profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN WILAYAH XII');
-                $namaSekolah = strtoupper($this->profil->nama_sekolah ?? 'SMKN 1 BANTARKALONG');
+                $cabdin = strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN');
+                $namaSekolah = strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH');
                 $alamatLengkap = trim(($this->kontak->alamat_jalan ?? '') . " Des. " . ($this->kontak->desa_kelurahan ?? '') . " Kec. " . ($this->kontak->kecamatan ?? '') . " " . ($this->kontak->kabupaten_kota ?? ''));
 
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$prov}");
@@ -196,8 +194,13 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                     'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F2F2F2']]
                 ]);
 
+                // --- PERBAIKAN DI SINI ---
                 $sheet->getStyle("A15:{$lastCol}{$actualLastRow}")->applyFromArray([
-                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+                    'borders' => [
+                        'allBorders' => [
+                            'borderStyle' => Border::BORDER_THIN
+                        ]
+                    ],
                     'alignment' => ['vertical' => Alignment::VERTICAL_CENTER]
                 ]);
 
@@ -205,7 +208,7 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                     $sheet->getStyle("A{$row}:D{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                     $sheet->getStyle("H{$row}:I{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                     $sheet->getStyle("L{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    if ($sheet->getCell("L{$row}")->getValue() !== 'Aktif') {
+                    if ($sheet->getCell("L{$row}")->getValue() === 'Tidak Aktif') {
                         $sheet->getStyle("L{$row}")->getFont()->getColor()->setARGB('FFFF0000');
                     }
                 }

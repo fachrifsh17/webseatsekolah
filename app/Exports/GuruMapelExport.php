@@ -89,7 +89,6 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
         $lastRow = $sheet->getHighestRow();
         $lastCol = 'K';
 
-        // Styling untuk Header (Baris 13) - Background abu-abu dihapus
         $sheet->getStyle("A13:{$lastCol}13")->applyFromArray([
             'font' => ['bold' => true, 'size' => 10],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
@@ -147,7 +146,10 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
 
                 $worksheet->mergeCells("A1:{$lastCol}1"); $worksheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
                 $worksheet->mergeCells("A2:{$lastCol}2"); $worksheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                $worksheet->mergeCells("A3:{$lastCol}3"); $worksheet->setCellValue('A3', strtoupper($this->profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
+                
+                $worksheet->mergeCells("A3:{$lastCol}3"); 
+                $worksheet->setCellValue('A3', strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
+                
                 $worksheet->mergeCells("A4:{$lastCol}4"); $worksheet->setCellValue('A4', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
                 $worksheet->mergeCells("A5:{$lastCol}5"); $worksheet->setCellValue('A5', "{$alamatJalan}, {$desaKec}, {$kotaKab} - {$provAsli}");
                 $worksheet->mergeCells("A6:{$lastCol}6"); $worksheet->setCellValue('A6', "Telp: " . ($this->kontak->telepon ?? '-') . " | Email: " . ($this->kontak->email_resmi ?? '-') . " | NPSN: " . ($this->profil->npsn ?? '-'));

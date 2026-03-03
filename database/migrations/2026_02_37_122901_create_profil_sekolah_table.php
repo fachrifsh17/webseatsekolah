@@ -12,10 +12,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('profil_sekolah', function (Blueprint $table) {
-            // id int NOT NULL AUTO_INCREMENT PRIMARY KEY
             $table->id(); 
             
             $table->string('nama_sekolah', 150)->nullable();
+            
+            // --- Penambahan Kolom Baru ---
+            $table->string('cadis', 100)->nullable()->after('nama_sekolah')->comment('Cabang Dinas Wilayah');
+            $table->string('logo', 255)->nullable()->after('cadis')->comment('Path/Nama file logo sekolah');
+            // -----------------------------
+
             $table->text('sejarah')->nullable();
             $table->text('visi')->nullable();
             $table->text('misi')->nullable();
@@ -25,7 +30,7 @@ return new class extends Migration
             // Relasi ke Kepala Sekolah (guru_staf)
             $table->string('guru_staf_id', 10)->nullable();
             
-            $table->text('sambutan_kepsek')->comment('Teks sambutan Kepala Sekolah');
+            $table->text('sambutan_kepsek')->nullable()->comment('Teks sambutan Kepala Sekolah');
             
             $table->timestamps();
 

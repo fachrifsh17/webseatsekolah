@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
-use App\Models\{PoinSiswa, TahunAjaran};
+use App\Models\{PoinSiswa, Semester};
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB, Log};
@@ -26,18 +26,29 @@ class PoinSiswaController extends Controller
         try {
             $this->authorize('viewAny', PoinSiswa::class);
 
+            // 1. Ambil data siswa dan pastikan dia aktif
             $siswa = Auth::user()->siswa;
             if ($error = $this->validateSiswa($siswa)) return $error;
 
-            $tahunAktif = TahunAjaran::where('is_active', true)->first();
-            $tahunAjaranId = $request->get('tahun_ajaran_id', $tahunAktif?->id);
+            // 2. Tentukan Semester ID
+            $semesterAktif = Semester::where('is_active', true)->first();
+            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+
+            // 3. Ambil data pendukung (Header & Summary)
+            $semesterTampil = $semesterId ? Semester::with('tahunAjaran')->find($semesterId) : $semesterAktif;
+            
+            // Jika semester tidak ditemukan sama sekali
+            if (!$semesterTampil && !$semesterId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Data semester aktif tidak ditemukan.',
+                ], Response::HTTP_NOT_FOUND);
+            }
 
             $summaryData = $this->getSummaryAkumulatif($siswa->id);
-            $query = $this->buildQuery($siswa->id, $tahunAjaranId, $request);
-            
-            $tahunTampil = $tahunAjaranId ? TahunAjaran::find($tahunAjaranId) : $tahunAktif;
-            $paginator = $this->getPaginator($query, $tahunAjaranId, $request);
-            $kelasPeriode = $this->getKelasPeriode($siswa, $tahunAjaranId);
+            $query = $this->buildQuery($siswa->id, $semesterId, $request);
+            $paginator = $this->getPaginator($query, $semesterId, $request);
+            $kelasPeriode = $this->getKelasPeriode($siswa, $semesterId);
 
             return response()->json([
                 'success' => true,
@@ -46,8 +57,8 @@ class PoinSiswaController extends Controller
                     'nama'         => $siswa->nama_lengkap,
                     'nis'          => $siswa->nis,
                     'kelas'        => $kelasPeriode?->kelas?->nama_kelas ?? '-',
-                    'tahun_ajaran' => $tahunTampil?->nama,
-                    'semester'     => $tahunTampil?->semester,
+                    'tahun_ajaran' => $semesterTampil?->tahunAjaran?->nama ?? '-',
+                    'semester'     => $semesterTampil?->nama ?? '-',
                 ],
                 'summary' => [
                     'total_positif' => (int)($summaryData->total_plus ?? 0),
@@ -78,32 +89,38 @@ class PoinSiswaController extends Controller
             )->first();
     }
 
-    private function buildQuery($siswaId, $tahunAjaranId, Request $request)
+    private function buildQuery($siswaId, $semesterId, Request $request)
     {
+        // Pastikan hanya mengambil poin milik siswa tersebut
         $query = PoinSiswa::query()->where('siswa_id', $siswaId);
         
-        if ($tahunAjaranId) {
-            $query->where('tahun_ajaran_id', $tahunAjaranId);
+        // Filter berdasarkan semester_id jika tersedia
+        if ($semesterId) {
+            $query->where('semester_id', $semesterId);
         }
 
         $this->applyFilters($query, $request);
         return $query;
     }
 
-    private function getPaginator($query, $tahunAjaranId, Request $request)
+    private function getPaginator($query, $semesterId, Request $request)
     {
         $perPage = min((int) $request->get('per_page', 10), 100);
         return $query->with([
             'guruStaf', 
-            'tahunAjaran', 
-            'siswa.riwayatKelas' => fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId)->with('kelas')
+            'semester.tahunAjaran', 
+            'siswa.riwayatKelas' => function($q) use ($semesterId) {
+                $q->where('semester_id', $semesterId)->with('kelas');
+            }
         ])->latest()->paginate($perPage);
     }
 
-    private function getKelasPeriode($siswa, $tahunAjaranId)
+    private function getKelasPeriode($siswa, $semesterId)
     {
+        if (!$siswa) return null;
+
         return $siswa->riwayatKelas()
-            ->where('tahun_ajaran_id', $tahunAjaranId)
+            ->where('semester_id', $semesterId)
             ->with('kelas')
             ->first();
     }
@@ -116,13 +133,14 @@ class PoinSiswaController extends Controller
             'positif'    => (int)$item->poin_positif,
             'negatif'    => (int)$item->poin_negatif,
             'keterangan' => $item->indikator ?? $item->keterangan,
-            'pelapor'    => $item->guruStaf?->nama,
+            'pelapor'    => $item->guruStaf?->nama ?? 'Sistem',
         ]);
     }
 
     private function validateSiswa($siswa)
     {
-        if (!$siswa || !$siswa->is_active) {
+        // Tambahkan pengecekan explicit is_active
+        if (!$siswa || $siswa->is_active !== true) {
             return response()->json([
                 'success' => false,
                 'message' => 'Data siswa tidak ditemukan atau akun sudah tidak aktif.'
@@ -155,12 +173,12 @@ class PoinSiswaController extends Controller
     {
         $data = $paginator->toArray();
         return [
-            'current_page'  => $data['current_page'],
-            'last_page'     => $data['last_page'],
-            'per_page'      => $data['per_page'],
-            'total'         => $data['total'],
-            'next_page_url' => $data['next_page_url'],
-            'prev_page_url' => $data['prev_page_url'],
+            'current_page'  => $data['current_page'] ?? 1,
+            'last_page'     => $data['last_page'] ?? 1,
+            'per_page'      => $data['per_page'] ?? 10,
+            'total'         => $data['total'] ?? 0,
+            'next_page_url' => $data['next_page_url'] ?? null,
+            'prev_page_url' => $data['prev_page_url'] ?? null,
         ];
     }
 
@@ -168,6 +186,9 @@ class PoinSiswaController extends Controller
     {
         try {
             $this->authorize('view', $poinSiswa);
+
+            // Pastikan relasi semester dan tahun ajaran dimuat
+            $poinSiswa->load(['guruStaf', 'semester.tahunAjaran']);
 
             return response()->json([
                 'success' => true,
@@ -177,9 +198,9 @@ class PoinSiswaController extends Controller
                     'poin_positif' => (int)$poinSiswa->poin_positif,
                     'poin_negatif' => (int)$poinSiswa->poin_negatif,
                     'keterangan'   => $poinSiswa->indikator ?? $poinSiswa->keterangan,
-                    'pelapor'      => $poinSiswa->guruStaf?->nama_lengkap ?? $poinSiswa->guruStaf?->nama,
-                    'tahun_ajaran' => $poinSiswa->tahunAjaran?->nama,
-                    'semester'     => $poinSiswa->tahunAjaran?->semester,
+                    'pelapor'      => $poinSiswa->guruStaf?->nama_lengkap ?? $poinSiswa->guruStaf?->nama ?? 'Sistem',
+                    'tahun_ajaran' => $poinSiswa->semester?->tahunAjaran?->nama ?? '-',
+                    'semester'     => $poinSiswa->semester?->nama ?? '-',
                     'created_at'   => $poinSiswa->created_at->format('d-m-Y H:i'),
                 ],
             ], Response::HTTP_OK);

@@ -16,19 +16,16 @@ class KenaikanKelasController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        // Tambahkan 'index' di sini jika ingin log aktivitas untuk melihat riwayat
-        $this->middleware('log.aktivitas')->only(['prosesMassal']);
+        $this->middleware('log.aktivitas')->only(['prosesMassal', 'generateFromPreviousYear']);
     }
 
-    /**
-     * Menampilkan riwayat siswa berdasarkan kelas dan semester tertentu.
-     * Menggunakan nama metode 'index' sesuai permintaan.
-     */
     public function index(Request $request): JsonResponse
     {
+        $semesterAktif = Semester::where('is_active', true)->first();
+
         $validator = Validator::make($request->all(), [
             'kelas_id'    => 'required|exists:kelas,id',
-            'semester_id' => 'required|exists:semesters,id',
+            'semester_id' => 'nullable|exists:semesters,id',
         ]);
 
         if ($validator->fails()) {
@@ -40,13 +37,22 @@ class KenaikanKelasController extends Controller
         }
 
         $kelasId = $request->input('kelas_id');
-        $semesterId = $request->input('semester_id');
+        $semesterId = $request->input('semester_id') ?? ($semesterAktif ? $semesterAktif->id : null);
 
-        // Mengambil data siswa yang pernah terdaftar di kelas dan semester tersebut
-        $riwayat = DB::table('siswa_kelas')
+        if (!$semesterId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Semester tidak ditemukan.'
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        $querySiswa = DB::table('siswa_kelas')
             ->join('siswa', 'siswa_kelas.siswa_id', '=', 'siswa.id')
             ->where('siswa_kelas.kelas_id', $kelasId)
             ->where('siswa_kelas.semester_id', $semesterId)
+            ->where('siswa.is_active', true);
+
+        $riwayat = (clone $querySiswa)
             ->select(
                 'siswa.id',
                 'siswa.nama_lengkap',
@@ -55,10 +61,96 @@ class KenaikanKelasController extends Controller
             )
             ->get();
 
+        $semesterTerpilih = Semester::find($semesterId);
+
         return response()->json([
             'success' => true,
-            'data'    => $riwayat
+            'data'    => $riwayat,
+            'count'   => $querySiswa->count(),
+            'info'    => [
+                'semester_nama' => $semesterTerpilih ? $semesterTerpilih->nama : null,
+                'is_current_active' => $semesterAktif && $semesterAktif->id == $semesterId
+            ]
         ], Response::HTTP_OK);
+    }
+
+    public function generateFromPreviousYear(): JsonResponse
+    {
+        $this->authorize('create', Kelas::class);
+        set_time_limit(300);
+
+        try {
+            $semesterAktif = Semester::with('tahunAjaran')->where('is_active', true)->first();
+            
+            if (!$semesterAktif || strtolower($semesterAktif->nama) !== 'genap') {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Gagal: Fitur ini hanya tersedia saat Semester aktif berada di Semester Genap.'
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            $tahunAjaranAktif = $semesterAktif->tahunAjaran;
+            $semesterSumber = Semester::where('tahun_ajaran_id', $tahunAjaranAktif->id)
+                ->where('nama', 'Ganjil')
+                ->first();
+
+            if (!$semesterSumber) {
+                return response()->json(['success' => false, 'message' => 'Gagal: Data Semester Ganjil tidak ditemukan.'], Response::HTTP_NOT_FOUND);
+            }
+
+            $siswaGanjil = DB::table('siswa_kelas')
+                ->join('siswa', 'siswa_kelas.siswa_id', '=', 'siswa.id')
+                ->where('siswa_kelas.semester_id', $semesterSumber->id)
+                ->where('siswa_kelas.is_active', true)
+                ->where('siswa.is_active', true)
+                ->select('siswa_kelas.*')
+                ->get();
+
+            if ($siswaGanjil->isEmpty()) {
+                return response()->json(['success' => false, 'message' => 'Gagal: Tidak ada siswa aktif di Semester Ganjil.'], Response::HTTP_NOT_FOUND);
+            }
+
+            $countSiswa = 0;
+
+            DB::transaction(function () use ($siswaGanjil, $semesterAktif, $semesterSumber, &$countSiswa) {
+                foreach ($siswaGanjil as $item) {
+                    $exists = DB::table('siswa_kelas')
+                        ->where('siswa_id', $item->siswa_id)
+                        ->where('semester_id', $semesterAktif->id)
+                        ->exists();
+
+                    if (!$exists) {
+                        DB::table('siswa_kelas')
+                            ->where('siswa_id', $item->siswa_id)
+                            ->where('semester_id', $semesterSumber->id)
+                            ->update(['is_active' => false]);
+
+                        DB::table('siswa_kelas')->insert([
+                            'siswa_id'        => $item->siswa_id,
+                            'kelas_id'        => $item->kelas_id,
+                            'semester_id'     => $semesterAktif->id,
+                            'is_active'       => true,
+                            'created_at'      => now(),
+                            'updated_at'      => now()
+                        ]);
+                        $countSiswa++;
+                    }
+                }
+            });
+
+            return response()->json([
+                'success' => true, 
+                'message' => "Berhasil memindahkan {$countSiswa} siswa ke Semester Genap."
+            ], Response::HTTP_CREATED);
+
+        } catch (Throwable $e) {
+            Log::error('Failed to generate kelas', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Gagal memproses data periode.',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     public function prosesMassal(Request $request): JsonResponse
@@ -81,27 +173,15 @@ class KenaikanKelasController extends Controller
         }
 
         $validated = $validator->validated();
-        
-        // 1. Ambil Semester Aktif (Tujuan) dan Tahun Ajarannya
         $semesterAktif = Semester::with('tahunAjaran')->where('is_active', true)->first();
         
-        if (!$semesterAktif) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal: Tidak ada semester yang aktif.'
-            ], Response::HTTP_BAD_REQUEST);
-        }
-
-        // --- VALIDASI: HARUS SEMESTER GANJIL ---
-        if (!str_contains(strtolower($semesterAktif->nama), 'ganjil')) {
+        if (!$semesterAktif || !str_contains(strtolower($semesterAktif->nama), 'ganjil')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal: Proses kenaikan kelas hanya bisa dilakukan di semester GANJIL (awal tahun ajaran).'
             ], Response::HTTP_BAD_REQUEST);
         }
-        // ----------------------------------------
 
-        // 2. Ambil Semester Sebelumnya (Sumber)
         $semesterLama = Semester::where('id', '<', $semesterAktif->id)
             ->orderBy('id', 'desc')
             ->first();
@@ -113,20 +193,7 @@ class KenaikanKelasController extends Controller
             ], Response::HTTP_BAD_REQUEST);
         }
 
-        // --- VALIDASI: PASTIKAN TAHUN AJARAN BERBEDA ---
-        if ($semesterAktif->tahun_ajaran_id === $semesterLama->tahun_ajaran_id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal: Semester aktif dan semester sebelumnya berada dalam tahun ajaran yang sama.'
-            ], Response::HTTP_BAD_REQUEST);
-        }
-        // ------------------------------------------------
-
-        $summary = [
-            'berhasil_naik' => 0,
-            'lulus'         => 0,
-            'peringatan'    => []
-        ];
+        $summary = ['berhasil_naik' => 0, 'lulus' => 0, 'peringatan' => []];
 
         try {
             DB::transaction(function () use ($validated, $semesterAktif, $semesterLama, &$summary) {
@@ -135,18 +202,17 @@ class KenaikanKelasController extends Controller
                     if (!$kelasLama) continue;
 
                     $excludedIds = $map['excluded_siswa_ids'] ?? [];
-
-                    // Ambil siswa dari semester lama
                     $siswaIds = DB::table('siswa_kelas')
-                        ->where('kelas_id', $kelasLama->id)
-                        ->where('semester_id', $semesterLama->id)
-                        ->where('is_active', true)
-                        ->pluck('siswa_id');
+                        ->join('siswa', 'siswa_kelas.siswa_id', '=', 'siswa.id')
+                        ->where('siswa_kelas.kelas_id', $kelasLama->id)
+                        ->where('siswa_kelas.semester_id', $semesterLama->id)
+                        ->where('siswa_kelas.is_active', true)
+                        ->where('siswa.is_active', true)
+                        ->pluck('siswa_kelas.siswa_id');
 
                     $targetSiswaIds = $siswaIds->diff($excludedIds);
 
                     if (empty($map['kelas_baru_id'])) {
-                        // --- SKENARIO KELULUSAN ---
                         $isKelasAkhir = str_contains(strtoupper($kelasLama->tingkatan->nama_tingkatan), 'XII') || 
                                         str_contains($kelasLama->tingkatan->nama_tingkatan, '12');
                         
@@ -156,25 +222,19 @@ class KenaikanKelasController extends Controller
                         }
 
                         foreach ($targetSiswaIds as $sId) {
-                            // Non-aktifkan riwayat kelas lama
                             DB::table('siswa_kelas')
                                 ->where('siswa_id', $sId)
                                 ->where('kelas_id', $kelasLama->id)
                                 ->where('semester_id', $semesterLama->id)
-                                ->update(['is_active' => true]);
+                                ->update(['is_active' => false]);
 
-                            // Non-aktifkan Siswa di Master
                             $siswa = Siswa::find($sId);
                             if ($siswa) {
                                 $siswa->update(['is_active' => false]);
-                                
                                 if ($siswa->user_id) {
                                     User::where('id', $siswa->user_id)->update(['is_active' => false]);
                                 }
-
-                                // Cek & Non-aktifkan Orang Tua
                                 $orangTuas = $siswa->orangtua; 
-
                                 foreach ($orangTuas as $ot) {
                                     $checkAnakLain = Siswa::whereHas('orangtua', function($query) use ($ot) {
                                             $query->where('orangtua.id', $ot->id);
@@ -194,37 +254,20 @@ class KenaikanKelasController extends Controller
                             $summary['lulus']++;
                         }
                     } else {
-                        // --- SKENARIO NAIK / PINDAH KELAS ---
                         $kelasBaru = Kelas::with('tingkatan')->find($map['kelas_baru_id']);
-
-                        $isKelasAkhirLama = str_contains(strtoupper($kelasLama->tingkatan->nama_tingkatan), 'XII') || 
-                                            str_contains($kelasLama->tingkatan->nama_tingkatan, '12');
                         
-                        if ($isKelasAkhirLama) {
-                            $summary['peringatan'][] = "Gagal Naik: Siswa kelas XII ({$kelasLama->nama_kelas}) tidak boleh pindah kelas, harus lulus.";
-                            continue;
-                        }
-
-                        // Validasi Lompat Tingkat
                         if ($kelasBaru->tingkatan_id > ($kelasLama->tingkatan_id + 1)) {
-                            $summary['peringatan'][] = "Gagal Naik: Tidak boleh lompat tingkat dari {$kelasLama->tingkatan->nama_tingkatan} ke {$kelasBaru->tingkatan->nama_tingkatan}.";
+                            $summary['peringatan'][] = "Gagal Naik: Tidak boleh lompat tingkat.";
                             continue;
                         }
 
-                        if (!$kelasBaru || $kelasLama->jurusan_id !== $kelasBaru->jurusan_id) {
-                            $summary['peringatan'][] = "Jurusan tidak cocok: {$kelasLama->nama_kelas} -> {$kelasBaru->nama_kelas}.";
-                            continue;
-                        }
-                        
                         foreach ($targetSiswaIds as $sId) {
-                            // Non-aktifkan riwayat kelas lama
                             DB::table('siswa_kelas')
                                 ->where('siswa_id', $sId)
                                 ->where('kelas_id', $kelasLama->id)
                                 ->where('semester_id', $semesterLama->id)
-                                ->update(['is_active' => true]); 
+                                ->update(['is_active' => false]); 
 
-                            // Masukkan ke kelas baru
                             DB::table('siswa_kelas')->insert([
                                 'siswa_id'        => $sId,
                                 'kelas_id'        => $kelasBaru->id,
@@ -235,9 +278,7 @@ class KenaikanKelasController extends Controller
                             ]);
 
                             $siswa = Siswa::find($sId);
-                            if ($siswa) {
-                                $siswa->update(['is_active' => true]);
-                            }
+                            if ($siswa) { $siswa->update(['is_active' => true]); }
                             $summary['berhasil_naik']++;
                         }
                     }
@@ -252,10 +293,7 @@ class KenaikanKelasController extends Controller
 
         } catch (Throwable $e) {
             Log::error('Kenaikan Kelas Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage()
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json(['success' => false, 'message' => 'Terjadi kesalahan sistem.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

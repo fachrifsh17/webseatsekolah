@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Berita, Pengumuman, Siswa, Presensi, PoinSiswa, KalenderAkademik, TahunAjaran, GuruMapel};
+use App\Models\{Berita, Pengumuman, Siswa, Presensi, PoinSiswa, KalenderAkademik, Semester, GuruMapel};
 use App\Http\Resources\{BeritaResource};
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -27,41 +27,54 @@ class DashboardController extends Controller
             $hariIni = today();
             $tigaHariLagi = today()->addDays(3);
             
-            $activeTa = TahunAjaran::where('is_active', 1)->first();
-            $activeTaId = $activeTa ? $activeTa->id : null;
+            // 1. Ambil Semester yang sedang AKTIF
+            $semesterAktif = Semester::with('tahunAjaran')
+                ->where('is_active', true)
+                ->first();
+                
+            $semesterId = $semesterAktif ? $semesterAktif->id : null;
 
-            // Memanggil fungsi untuk mendapatkan data siswa
-            $siswa = $this->getSiswa($user->id, $activeTaId);
+            if (!$semesterId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak ada periode semester yang aktif saat ini.'
+                ], Response::HTTP_NOT_FOUND);
+            }
+
+            // 2. Ambil data Siswa berdasarkan Semester ID
+            $siswa = $this->getSiswa($user->id, $semesterId);
 
             if (!$siswa) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Data profil siswa tidak ditemukan atau belum terdaftar di kelas tahun ini'
+                    'message' => 'Data profil siswa tidak ditemukan atau belum terdaftar di kelas periode ini.'
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            // Relasi ke tabel pivot kelas_wali_kelas diabaikan is_active-nya di dalam Model/Query
             $riwayatAktif = $siswa->riwayatKelas->first();
             $kelasObj = $riwayatAktif ? $riwayatAktif->kelas : null;
             $kelasId = $kelasObj ? $kelasObj->id : null;
 
-            $poin = $this->getPoinAkumulatif($siswa->id);
-            $statsPresensi = $this->getPresensiStats($siswa->id, $kelasId, $activeTaId);
-            $jadwalHariIniCount = $this->getJadwalCount($kelasId, $activeTaId);
+            // 3. Ambil Statistik
+            // Poin sekarang bersifat akumulatif (keseluruhan)
+            $poin = $this->getPoinAkumulatif($siswa->id); 
+            $statsPresensi = $this->getPresensiStats($siswa->id, $semesterId);
+            $jadwalHariIniCount = $this->getJadwalCount($kelasId, $semesterId);
 
             $setting = DB::table('sekolah_setting')->first();
-            $akademik = $this->getAkademikData($hariIni, $tigaHariLagi, $activeTaId ? [$activeTaId] : []);
+            $akademik = $this->getAkademikData($hariIni, $tigaHariLagi, $semesterId);
 
             $data = [
                 'header' => [
-                    'tahun_ajaran' => $activeTa?->nama ?? '-',
-                    'semester'     => $activeTa?->semester ?? '-',
+                    'tahun_ajaran' => $semesterAktif->tahunAjaran?->nama ?? '-',
+                    'semester'     => $semesterAktif->nama ?? '-',
+                    'is_active'    => true
                 ],
                 'user_info' => [
                     'nama'       => $siswa->nama_lengkap ?? 'Tanpa Nama',
+                    'nis'        => $siswa->nis,
                     'kelas'      => $kelasObj->nama_kelas ?? '-',
-                    // Mengambil nama wali kelas berdasarkan relasi baru
-                    'wali_kelas' => $kelasObj->waliKelas->nama ?? '-',
+                    'wali_kelas' => $kelasObj->waliKelas->where('pivot.semester_id', $semesterId)->first()->nama ?? '-',
                 ],
                 'statistics' => [
                     'presensi' => [
@@ -93,49 +106,38 @@ class DashboardController extends Controller
             Log::error('Dashboard Siswa Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memuat dashboard',
+                'message' => 'Gagal memuat dashboard: ' . $e->getMessage(),
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-    private function getJadwalCount($kelasId, $activeTaId)
+    private function getJadwalCount($kelasId, $semesterId)
     {
-        if (!$kelasId || !$activeTaId) return 0;
-
+        if (!$kelasId || !$semesterId) return 0;
         return GuruMapel::where('kelas_id', $kelasId)
-            ->where('tahun_ajaran_id', $activeTaId)
+            ->where('semester_id', $semesterId)
             ->where('hari', Carbon::now()->translatedFormat('l'))
-            ->whereHas('mapel', function($q) {
-                $q->where('is_active', 1);
-            })
             ->count();
     }
 
-    /**
-     * Mendapatkan data siswa dan kelas berdasarkan tahun ajaran aktif
-     */
-    private function getSiswa($userId, $activeTaId)
+    private function getSiswa($userId, $semesterId)
     {
         return Siswa::where('user_id', $userId)
-            ->with(['riwayatKelas' => function($query) use ($activeTaId) {
-                // Di sini kita abaikan is_active pada riwayat kelas
-                $query->where('tahun_ajaran_id', $activeTaId)
+            ->where('is_active', true)
+            ->with(['riwayatKelas' => function($query) use ($semesterId) {
+                $query->where('semester_id', $semesterId)
                       ->with(['kelas' => function($q) {
-                          // Tetap cek is_active pada tabel Kelas jika perlu
-                          $q->where('is_active', 1)->with('waliKelas'); 
+                          $q->with('waliKelas');
                       }]); 
-            }])
-            ->first();
+            }])->first();
     }
     
-    // ... fungsi-fungsi lainnya tetap sama
     private function getPoinAkumulatif($siswaId)
     {
+        // PENGUBAHAN: Filter semester_id dihapus agar poin bersifat keseluruhan
         $summary = PoinSiswa::where('siswa_id', $siswaId)
-            ->select(
-                DB::raw('CAST(SUM(poin_positif) AS SIGNED) as total_plus'),
-                DB::raw('CAST(SUM(poin_negatif) AS SIGNED) as total_minus')
-            )->first();
+            ->selectRaw('CAST(SUM(poin_positif) AS SIGNED) as total_plus, CAST(SUM(poin_negatif) AS SIGNED) as total_minus')
+            ->first();
 
         return [
             'total_positif' => (int) ($summary->total_plus ?? 0),
@@ -143,66 +145,42 @@ class DashboardController extends Controller
         ];
     }
 
-    private function getPresensiStats($siswaId, $kelasId, $activeTaId)
+    private function getPresensiStats($siswaId, $semesterId)
     {
-        $query = Presensi::where('siswa_id', $siswaId);
-
-        if ($activeTaId) {
-            $query->where('tahun_ajaran_id', $activeTaId);
-        }
-        
-        if ($kelasId) {
-            $query->where('kelas_id', $kelasId);
-        }
-
-        return $query->select('status', DB::raw('count(*) as total'))
-            ->groupBy('status')
+        return DB::table('presensi_detail')
+            ->join('presensi', 'presensi_detail.presensi_id', '=', 'presensi.id')
+            ->where('presensi_detail.siswa_id', $siswaId)
+            ->where('presensi.semester_id', $semesterId)
+            ->select('presensi_detail.status', DB::raw('count(*) as total'))
+            ->groupBy('presensi_detail.status')
             ->pluck('total', 'status');
     }
 
-    private function getAkademikData($hariIni, $tigaHariLagi, $activeTaIds)
+    private function getAkademikData($hariIni, $tigaHariLagi, $semesterId)
     {
-        $pengumuman = Pengumuman::latest()->first();
-        $formattedPengumuman = null;
-
-        if ($pengumuman) {
-            $formattedPengumuman = [
-                'id'                => $pengumuman->id,
-                'judul'             => $pengumuman->judul,
-                'isi_pengumuman'    => $pengumuman->isi_pengumuman,
-                'tanggal_publikasi' => Carbon::parse($pengumuman->created_at)->format('Y-m-d H:i:s'),
-                'penting'           => (bool) $pengumuman->penting,
-            ];
-        }
+        $pengumuman = Pengumuman::latest()->first(); 
+        
+        $kalender = KalenderAkademik::where('semester_id', $semesterId)
+            ->where(function ($q) use ($hariIni, $tigaHariLagi) {
+                $q->whereBetween('tanggal_mulai', [$hariIni, $tigaHariLagi])
+                  ->orWhere(fn($sub) => $sub->where('tanggal_mulai', '<=', $hariIni)->where('tanggal_selesai', '>=', $hariIni));
+            })
+            ->orderBy('tanggal_mulai', 'asc')->take(5)->get()
+            ->map(fn($item) => [
+                'kegiatan' => $item->kegiatan,
+                'tanggal_mulai' => Carbon::parse($item->tanggal_mulai)->format('Y-m-d'),
+                'status' => $hariIni->between(Carbon::parse($item->tanggal_mulai), Carbon::parse($item->tanggal_selesai)) 
+                            ? "Sedang Berlangsung" : "H-" . (int)$hariIni->diffInDays(Carbon::parse($item->tanggal_mulai), false)
+            ]);
 
         return [
-            'kalender' => KalenderAkademik::whereIn('tahun_ajaran_id', $activeTaIds)
-                ->where(function ($q) use ($hariIni, $tigaHariLagi) {
-                    $q->whereBetween('tanggal_mulai', [$hariIni, $tigaHariLagi])
-                      ->orWhere(function ($sub) use ($hariIni) {
-                          $sub->where('tanggal_mulai', '<=', $hariIni)
-                              ->where('tanggal_selesai', '>=', $hariIni);
-                      });
-                })
-                ->orderBy('tanggal_mulai', 'asc')
-                ->take(5)
-                ->get()
-                ->map(function ($item) use ($hariIni) {
-                    $mulai = Carbon::parse($item->tanggal_mulai);
-                    $selesai = Carbon::parse($item->tanggal_selesai);
-
-                    return [
-                        'kegiatan'        => $item->kegiatan,
-                        'tanggal_mulai'   => $mulai->format('Y-m-d'),
-                        'tanggal_selesai' => $selesai->format('Y-m-d'),
-                        'kategori'        => $item->kategori,
-                        'status'          => $hariIni->between($mulai, $selesai)
-                            ? "Sedang Berlangsung"
-                            : "H-" . $hariIni->diffInDays($mulai)
-                    ];
-                }),
-            'pengumuman_terbaru' => $formattedPengumuman,
-            'berita_terbaru'     => BeritaResource::collection(Berita::latest()->take(1)->get()),
+            'kalender' => $kalender,
+            'pengumuman_terbaru' => $pengumuman ? [
+                'judul' => $pengumuman->judul, 
+                'isi' => $pengumuman->isi_pengumuman,
+                'tanggal' => $pengumuman->created_at->format('d-m-Y')
+            ] : null,
+            'berita_terbaru' => BeritaResource::collection(Berita::latest()->take(1)->get()),
         ];
     }
 }

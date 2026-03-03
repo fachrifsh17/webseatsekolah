@@ -13,10 +13,10 @@ return new class extends Migration
     {
         Schema::create('presensi_detail', function (Blueprint $table) {
             // id bigint UNSIGNED NOT NULL AUTO_INCREMENT
-            $table->bigIncrements('id');
+            $table->id();
 
-            // presensi_id int NOT NULL
-            $table->integer('presensi_id');
+            // PERBAIKAN: Harus unsignedBigInteger agar cocok dengan id() di tabel presensi
+            $table->unsignedBigInteger('presensi_id');
             
             // siswa_id varchar(10) NOT NULL
             $table->string('siswa_id', 10);
@@ -32,14 +32,14 @@ return new class extends Migration
 
             // --- Foreign Keys ---
             
-            // CONSTRAINT `fk_detail_to_header` FOREIGN KEY (`presensi_id`) REFERENCES `presensi` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+            // Menghubungkan ke tabel presensi (Header)
             $table->foreign('presensi_id', 'fk_detail_to_header')
                   ->references('id')
                   ->on('presensi')
                   ->onDelete('cascade')
                   ->onUpdate('cascade');
 
-            // CONSTRAINT `fk_detail_to_siswa` FOREIGN KEY (`siswa_id`) REFERENCES `siswa` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+            // Menghubungkan ke tabel siswa
             $table->foreign('siswa_id', 'fk_detail_to_siswa')
                   ->references('id')
                   ->on('siswa')

@@ -49,10 +49,6 @@ class Semester extends Model
         return $this->hasMany(Presensi::class, 'semester_id');
     }
 
-    public function presensiGuruMapel(): HasMany
-    {
-        return $this->hasMany(PresensiGuruMapel::class, 'semester_id');
-    }
 
     public function poinSiswa(): HasMany
     {

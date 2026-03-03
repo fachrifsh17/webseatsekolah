@@ -3,6 +3,7 @@
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <style>
+        /* CSS tetap sesuai permintaan Anda */
         @page { 
             size: a4 landscape; 
             margin: 0.5cm 0.8cm; 
@@ -21,7 +22,6 @@
         .uppercase { text-transform: uppercase; }
         .underline { text-decoration: underline; }
         
-        /* KOP SURAT */
         .kop { 
             border-bottom: 3px double #000; 
             margin-bottom: 12px; 
@@ -33,7 +33,6 @@
         
         .judul { margin-bottom: 12px; font-weight: bold; font-size: 10pt; }
 
-        /* TABEL */
         table { 
             width: 100%; 
             border-collapse: collapse; 
@@ -59,7 +58,6 @@
         .col-pukul { width: 8%; }
         .col-hari { width: 12%; }
 
-        /* AREA TANDA TANGAN */
         .ttd-container {
             margin-top: 25px;
             width: 100%;
@@ -77,15 +75,15 @@
             font-size: 9pt;
             line-height: 1.4;
         }
-        .spacer-ttd { height: 60px; position: relative; } /* Ruang untuk tanda tangan */
+        .spacer-ttd { height: 60px; position: relative; }
     </style>
 </head>
 <body>
     <div class="kop text-center">
         <div class="instansi">PEMERINTAH PROVINSI {{ strtoupper($kontak->provinsi ?? 'JAWA BARAT') }}</div>
         <div class="instansi">DINAS PENDIDIKAN</div>
-        <div class="instansi">{{ strtoupper($profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII') }}</div>
-        <div class="sekolah">{{ strtoupper($profil->nama_sekolah ?? 'SMKN 1 BANTARKALONG') }}</div>
+        <div class="instansi">{{ strtoupper($profil->cadis ?? 'CABANG DINAS PENDIDIKAN') }}</div>
+        <div class="sekolah">{{ strtoupper($profil->nama_sekolah ?? 'NAMA SEKOLAH') }}</div>
         
         <div class="alamat">{{ $alamat_lengkap }}</div>
         
@@ -96,7 +94,9 @@
 
     <div class="judul text-center">
         <div class="uppercase">PENYESUAIAN JAM PELAJARAN</div>
-        <div class="uppercase">TAHUN PELAJARAN {{ $ta->nama ?? '' }}</div>
+        <div class="uppercase">
+            TAHUN PELAJARAN {{ $ta->nama ?? '' }} SEMESTER {{ $semester->nama ?? '' }}
+        </div>
     </div>
 
     <table>
@@ -164,7 +164,7 @@
                     Mengetahui,<br>
                     Waka Kurikulum
                     <div class="spacer-ttd">
-                        @if($waka && $waka->file_ttd)
+                        @if($waka && isset($waka->file_ttd) && $waka->file_ttd)
                             <img src="{{ public_path('storage/' . $waka->file_ttd) }}" style="max-height: 70px; max-width: 100%; position: absolute; left: 50%; transform: translateX(-50%); top: -5px;">
                         @endif
                     </div>
@@ -176,7 +176,7 @@
                     Menyetujui,<br>
                     Kepala Sekolah
                     <div class="spacer-ttd">
-                        @if($ks && $ks->file_ttd)
+                        @if($ks && isset($ks->file_ttd) && $ks->file_ttd)
                             <img src="{{ public_path('storage/' . $ks->file_ttd) }}" style="max-height: 70px; max-width: 100%; position: absolute; left: 50%; transform: translateX(-50%); top: -5px;">
                         @endif
                     </div>

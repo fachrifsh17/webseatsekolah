@@ -38,6 +38,9 @@ class GuruMapelResource extends JsonResource
                 'mulai'   => $this->jamMulai?->waktu_mulai ? Carbon::parse($this->jamMulai->waktu_mulai)->format('H:i') : null,
                 'selesai' => $this->jamSelesai?->waktu_selesai ? Carbon::parse($this->jamSelesai->waktu_selesai)->format('H:i') : null,
             ],
+            
+            // --- PERUBAHAN DI SINI ---
+            'is_active' => $this->is_active,
 
             'updated_at' => $this->updated_at?->format('d-m-Y H:i'),
         ];

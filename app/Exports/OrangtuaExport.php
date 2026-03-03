@@ -57,7 +57,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
         }
     }
 
-    public function startCell(): string { return 'A11'; }
+    public function startCell(): string { return 'A12'; } // Start cell diturunkan karena filter jadi 2 baris
 
     public function query()
     {
@@ -104,7 +104,6 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
         } else {
             foreach ($anakFiltered as $anak) {
                 $riwayat = $anak->riwayatKelas->where('semester_id', $this->semesterId)->first();
-                
                 $hubungan = $anak->pivot->hubungan ?? '-';
 
                 $rows[] = [
@@ -149,9 +148,10 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $provKapital = strtoupper($this->kontak->provinsi ?? 'Jawa Barat');
                 $alamatLengkap = ($this->kontak->alamat_jalan ?? '-') . ", Desa " . ($this->kontak->desa_kelurahan ?? '-') . " Kec. " . ($this->kontak->kecamatan ?? '-') . ", " . ($this->kontak->kabupaten_kota ?? 'Tasikmalaya');
 
+                // Header Kop Surat
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
+                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
                 $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
                 $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', $alamatLengkap);
                 $sheet->mergeCells("A6:{$lastCol}6"); $sheet->setCellValue('A6', "Telp: " . ($this->kontak->telepon ?? '-') . " | Email: " . ($this->kontak->email_resmi ?? '-') . " | NPSN: " . ($this->profil->npsn ?? '-'));
@@ -160,29 +160,40 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true);
                 $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
+                // Judul
                 $sheet->mergeCells("A7:{$lastCol}7"); $sheet->setCellValue('A7', 'DATA ORANG TUA / WALI MURID');
-                
                 $sheet->mergeCells("A8:{$lastCol}8"); 
-                $sheet->setCellValue('A8', "TAHUN PELAJARAN " . $this->tahunAjaranText . " | SEMESTER " . $this->semesterText);
+                $sheet->setCellValue('A8', "TAHUN PELAJARAN " . $this->tahunAjaranText . " - SEMESTER " . $this->semesterText);
                 
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A7:A8")->getFont()->setBold(true);
 
-                $filterText = "Jurusan: " . ($this->jurusanData ? $this->jurusanData->nama_jurusan : 'Semua') . " | Kelas: " . ($this->kelasData ? $this->kelasData->nama_kelas : 'Semua');
-                $sheet->mergeCells("A9:{$lastCol}9"); $sheet->setCellValue('A9', $filterText);
-                $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle("A9")->getFont()->setItalic(true);
+                // Filter (Dibuat 2 baris ke bawah dan rata kiri)
+                $jurusanName = $this->jurusanData ? $this->jurusanData->nama_jurusan : 'Semua Jurusan';
+                $kelasName = $this->kelasData ? $this->kelasData->nama_kelas : 'Semua Kelas';
 
-                $sheet->getStyle("A11:{$lastCol}11")->applyFromArray([
+                $sheet->setCellValue('A9', "Jurusan : " . $jurusanName);
+                $sheet->setCellValue('A10', "Kelas : " . $kelasName);
+                
+                $sheet->getStyle("A9:A10")->applyFromArray([
+                    'font' => ['italic' => true, 'size' => 10],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT]
+                ]);
+
+                // Table Headings Style
+                $sheet->getStyle("A12:{$lastCol}12")->applyFromArray([
                     'font' => ['bold' => true],
                     'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
                     'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'F2F2F2']]
                 ]);
 
-                $sheet->getStyle("A11:{$lastCol}{$lastRow}")->applyFromArray([
-                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
+                // Table Borders
+                $sheet->getStyle("A12:{$lastCol}{$lastRow}")->applyFromArray([
+                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+                    'alignment' => ['vertical' => Alignment::VERTICAL_CENTER]
                 ]);
 
+                // Tanda Tangan
                 $ttgRow = $lastRow + 3;
                 $lokasi = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
                 
@@ -201,11 +212,9 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
 
                 $imageRow = $ttgRow + 1;
                 
-                // --- PERBAIKAN LOGIKA TANDA TANGAN ---
                 if ($wakaKes && $wakaKes->file_ttd && file_exists(storage_path('app/public/' . $wakaKes->file_ttd))) {
                     $drawing = new Drawing();
                     $drawing->setName('TTD Waka');
-                    $drawing->setDescription('Tanda Tangan Waka');
                     $drawing->setPath(storage_path('app/public/' . $wakaKes->file_ttd));
                     $drawing->setHeight(50);
                     $drawing->setCoordinates('B' . $imageRow);
@@ -216,17 +225,14 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
                     $drawing = new Drawing();
                     $drawing->setName('TTD Kepsek');
-                    $drawing->setDescription('Tanda Tangan Kepsek');
                     $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
                     $drawing->setHeight(50);
                     $drawing->setCoordinates('H' . $imageRow);
                     $drawing->setOffsetX(20);
                     $drawing->setWorksheet($sheet);
                 }
-                // -------------------------------------
 
                 $namaRow = $imageRow + 3;
-
                 $sheet->mergeCells("A{$namaRow}:C{$namaRow}");
                 $sheet->mergeCells("G{$namaRow}:I{$namaRow}");
                 $sheet->setCellValue("A{$namaRow}", "( " . strtoupper($wakaKes->nama ?? '____________________') . " )");

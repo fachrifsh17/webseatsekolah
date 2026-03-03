@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Kelas, Siswa, Jurusan, Semester, ProfilSekolah, DataKontak, Tingkatan};
+use App\Models\{Kelas, Jurusan, Semester, ProfilSekolah, DataKontak};
 use App\Http\Requests\{StoreKelasRequest, UpdateKelasRequest};
 use App\Http\Resources\KelasResource;
 use Illuminate\Http\{Request, JsonResponse};
@@ -20,13 +20,7 @@ class KelasController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.aktivitas')->only([
-            'store', 
-            'update', 
-            'destroy', 
-            'import', 
-            'generateFromPreviousYear'
-        ]);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
         
         $this->authorizeResource(Kelas::class, 'kelas');
     }
@@ -168,79 +162,6 @@ class KelasController extends Controller
                 'success' => false,
                 'message' => 'Gagal mengimpor data kelas.',
                 'errors'  => ['exception' => [$e->getMessage()]],
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    public function generateFromPreviousYear(): JsonResponse
-    {
-        $this->authorize('create', Kelas::class);
-
-        set_time_limit(300);
-
-        try {
-            $semesterAktif = Semester::with('tahunAjaran')->where('is_active', true)->first();
-            
-            if (!$semesterAktif || strtolower($semesterAktif->nama) !== 'genap') {
-                return response()->json([
-                    'success' => false, 
-                    'message' => 'Gagal: Fitur ini hanya tersedia saat Semester aktif berada di Semester Genap.'
-                ], Response::HTTP_BAD_REQUEST);
-            }
-
-            $tahunAjaranAktif = $semesterAktif->tahunAjaran;
-            
-            $semesterSumber = Semester::where('tahun_ajaran_id', $tahunAjaranAktif->id)
-                ->where('nama', 'Ganjil')
-                ->first();
-
-            if (!$semesterSumber) {
-                return response()->json(['success' => false, 'message' => 'Gagal: Data Semester Ganjil tidak ditemukan.'], Response::HTTP_NOT_FOUND);
-            }
-
-            $siswaGanjil = DB::table('siswa_kelas')
-                ->where('semester_id', $semesterSumber->id)
-                ->where('is_active', true)
-                ->get();
-
-            if ($siswaGanjil->isEmpty()) {
-                return response()->json(['success' => false, 'message' => 'Gagal: Tidak ada siswa aktif di Semester Ganjil.'], Response::HTTP_NOT_FOUND);
-            }
-
-            $countSiswa = 0;
-
-            DB::transaction(function () use ($siswaGanjil, $semesterAktif, &$countSiswa) {
-                foreach ($siswaGanjil as $item) {
-                    $exists = DB::table('siswa_kelas')
-                        ->where('siswa_id', $item->siswa_id)
-                        ->where('semester_id', $semesterAktif->id)
-                        ->exists();
-
-                    if (!$exists) {
-                        DB::table('siswa_kelas')->insert([
-                            'siswa_id'        => $item->siswa_id,
-                            'kelas_id'        => $item->kelas_id,
-                            'semester_id'     => $semesterAktif->id,
-                            'is_active'       => true,
-                            'created_at'      => now(),
-                            'updated_at'      => now()
-                        ]);
-                        $countSiswa++;
-                    }
-                }
-            });
-
-            return response()->json([
-                'success' => true, 
-                'message' => "Berhasil memindahkan {$countSiswa} siswa ke Semester Genap."
-            ], Response::HTTP_CREATED);
-
-        } catch (Throwable $e) {
-            Log::error('Failed to generate kelas', ['error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false, 
-                'message' => 'Gagal memproses data periode.',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

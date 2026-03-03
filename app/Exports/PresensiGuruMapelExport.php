@@ -18,7 +18,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 
 class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings
 {
-    protected $query, $labelWaktu, $profil, $kontak, $guruStaf, $tahunAjaran, $daysInMonth, $tahun, $bulan, $isFilterKelas, $tahunAjaranId, $role;
+    protected $query, $labelWaktu, $profil, $kontak, $guruStaf, $tahunAjaran, $daysInMonth, $tahun, $bulan, $isFilterKelas, $semesterId, $role;
     private $rowNumber = 0;
     private $firstRecord = null;
     private $processedSiswa = [];
@@ -26,7 +26,7 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
     private $totalL = 0, $totalP = 0;
     private $grandTotal = ['H' => 0, 'S' => 0, 'I' => 0, 'A' => 0];
 
-    public function __construct($query, $labelWaktu, $profil, $kontak, $guruStaf, $tahunAjaran, $isFilterKelas = false, $bulan = null, $tahun = null, $tahunAjaranId = null, $role = 'guru')
+    public function __construct($query, $labelWaktu, $profil, $kontak, $guruStaf, $tahunAjaran, $isFilterKelas = false, $bulan = null, $tahun = null, $semesterId = null, $role = 'guru')
     {
         $this->query = $query;
         $this->labelWaktu = $labelWaktu;
@@ -35,7 +35,7 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
         $this->guruStaf = $guruStaf;
         $this->tahunAjaran = $tahunAjaran; 
         $this->isFilterKelas = $isFilterKelas;
-        $this->tahunAjaranId = $tahunAjaranId;
+        $this->semesterId = $semesterId;
         $this->role = $role;
         
         $this->bulan = $bulan ?? (str_contains($labelWaktu, 'Bulan-') ? explode('-', $labelWaktu)[2] : date('m'));
@@ -43,7 +43,7 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
         $this->daysInMonth = Carbon::create($this->tahun, $this->bulan)->daysInMonth;
 
         $this->listLibur = DB::table('kalender_akademik')
-            ->where('tahun_ajaran_id', $this->tahunAjaranId)
+            ->where('semester_id', $this->semesterId)
             ->where('kategori', 'Libur')
             ->get();
     }
@@ -52,7 +52,12 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
 
     public function query()
     {
-        return $this->query->with(['mapel', 'kelas', 'getBySiswaDetil.siswa', 'guruMapel.guru']);
+        return $this->query->with([
+            'guruMapel.mapel',
+            'guruMapel.kelas',
+            'guruMapel.guru',
+            'presensiDetail.siswa'
+        ]);
     }
 
     public function headings(): array
@@ -75,8 +80,7 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
         if ($this->isFilterKelas) {
             $rows = [];
             $presensiBulanIni = DB::table('presensi_guru_mapel')
-                ->where('kelas_id', $this->firstRecord->parent_kelas_id ?? $this->firstRecord->kelas_id)
-                ->where('mata_pelajaran_id', $this->firstRecord->mata_pelajaran_id)
+                ->where('guru_mapel_id', $this->firstRecord->guru_mapel_id)
                 ->whereMonth('tanggal', $this->bulan)
                 ->whereYear('tanggal', $this->tahun)
                 ->get();
@@ -88,8 +92,8 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
 
             $siswaList = DB::table('siswa_kelas')
                 ->join('siswa', 'siswa_kelas.siswa_id', '=', 'siswa.id')
-                ->where('siswa_kelas.kelas_id', $this->firstRecord->kelas_id)
-                ->where('siswa_kelas.tahun_ajaran_id', $this->tahunAjaranId)
+                ->where('siswa_kelas.kelas_id', $this->firstRecord->guruMapel->kelas_id)
+                ->where('siswa_kelas.semester_id', $this->semesterId)
                 ->select('siswa.id', 'siswa.nama_lengkap', 'siswa.nis', 'siswa.nisn', 'siswa.jenis_kelamin')
                 ->orderBy('siswa.nama_lengkap', 'asc')
                 ->get();
@@ -142,14 +146,14 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
             $this->rowNumber,
             Carbon::parse($presensi->tanggal)->format('d/m/Y'),
             $presensi->jam_masuk . '-' . $presensi->jam_keluar,
-            $presensi->mapel->nama_mapel ?? '-',
-            $presensi->kelas->nama_kelas ?? '-',
+            $presensi->guruMapel->mapel->nama_mapel ?? '-',
+            $presensi->guruMapel->kelas->nama_kelas ?? '-',
             $presensi->materi ?? '-',
-            $presensi->getBySiswaDetil->where('status', 'hadir')->count(),
-            $presensi->getBySiswaDetil->where('status', 'sakit')->count(),
-            $presensi->getBySiswaDetil->where('status', 'izin')->count(),
-            $presensi->getBySiswaDetil->where('status', 'alfa')->count(),
-            $presensi->getBySiswaDetil->count()
+            $presensi->presensiDetail->where('status', 'hadir')->count(),
+            $presensi->presensiDetail->where('status', 'sakit')->count(),
+            $presensi->presensiDetail->where('status', 'izin')->count(),
+            $presensi->presensiDetail->where('status', 'alfa')->count(),
+            $presensi->presensiDetail->count()
         ];
     }
 
@@ -215,7 +219,7 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
                 }
 
                 $prov = strtoupper($this->kontak->provinsi ?? 'JAWA BARAT');
-                $cabdin = strtoupper($this->profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN');
+                $cabdin = strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN');
                 $namaSekolah = strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH');
                 $alamat = $this->kontak->alamat_jalan ?? '-';
                 $desaKec = "Desa " . ($this->kontak->desa_kelurahan ?? '-') . " Kec. " . ($this->kontak->kecamatan ?? '-');
@@ -223,7 +227,7 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
 
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$prov}");
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', $cabdin);
+                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', "{$cabdin} WILAYAH XII");
                 $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', $namaSekolah);
                 $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "{$alamat}, {$desaKec}, {$kotaKab} - " . ($this->kontak->provinsi ?? 'Jawa Barat'));
                 $sheet->mergeCells("A6:{$lastCol}6"); $sheet->setCellValue('A6', "Telp: " . ($this->kontak->telepon ?? '-') . " | Email: " . ($this->kontak->email_resmi ?? '-') . " | NPSN: " . ($this->profil->npsn ?? '-'));
@@ -237,9 +241,8 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
                 $sheet->getStyle('A8')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $sheet->mergeCells("A9:{$lastCol}9");
-                $namaTahun = $this->tahunAjaran->nama ?? $this->tahunAjaran->tahun_ajaran ?? '-';
-                $semester = strtoupper($this->tahunAjaran->semester ?? '-');
-                $sheet->setCellValue('A9', "TAHUN PELAJARAN " . $namaTahun . " - " . $semester);
+                $sheet->setCellValue('A9', "TAHUN PELAJARAN 2025/2026 - SEMESTER GENAP");
+                
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A9")->getFont()->setBold(true);
 
@@ -247,8 +250,8 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
                 $nipGuru = $this->guruStaf->nip ?? ($this->firstRecord->guruMapel->guru->nip ?? '-');
 
                 $sheet->setCellValue('A10', "Nama Guru: " . $namaGuru);
-                $sheet->setCellValue('A11', "Kelas: " . ($this->firstRecord->kelas->nama_kelas ?? '-'));
-                $sheet->setCellValue('A12', "Mata Pelajaran: " . ($this->firstRecord->mapel->nama_mapel ?? '-'));
+                $sheet->setCellValue('A11', "Kelas: " . ($this->firstRecord->guruMapel->kelas->nama_kelas ?? '-'));
+                $sheet->setCellValue('A12', "Mata Pelajaran: " . ($this->firstRecord->guruMapel->mapel->nama_mapel ?? '-'));
                 $sheet->setCellValue('A13', "Periode: " . Carbon::create($this->tahun, $this->bulan, 1)->translatedFormat('F Y'));
 
                 if ($this->isFilterKelas) {

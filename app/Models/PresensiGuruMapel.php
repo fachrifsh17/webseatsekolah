@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+// Hapus import Kelas, MataPelajaran, Semester, JamSekolah jika tidak digunakan di model lain
 
 class PresensiGuruMapel extends Model
 {
@@ -12,54 +13,36 @@ class PresensiGuruMapel extends Model
 
     protected $fillable = [
         'guru_mapel_id',
-        'kelas_id',
-        'mata_pelajaran_id',
-        'semester_id', // --- PERUBAHAN DI SINI ---
         'tanggal',
-        'jam_masuk',
-        'jam_keluar',
         'materi',
     ];
 
     protected $casts = [
-        'semester_id' => 'integer', // --- PERUBAHAN DI SINI ---
         'tanggal' => 'date',
     ];
 
+    // Relasi utama ke penugasan guru
     public function guruMapel(): BelongsTo
     {
         return $this->belongsTo(GuruMapel::class, 'guru_mapel_id', 'id');
     }
 
-    public function kelas(): BelongsTo
-    {
-        return $this->belongsTo(Kelas::class, 'kelas_id', 'id');
-    }
-
-    public function mapel(): BelongsTo
-    {
-        return $this->belongsTo(MataPelajaran::class, 'mata_pelajaran_id', 'id');
-    }
-
-    // --- PERUBAHAN DI SINI ---
-    // Nama fungsi dan model yang dirujuk diubah ke Semester
-    public function semester(): BelongsTo
-    {
-        return $this->belongsTo(Semester::class, 'semester_id', 'id');
-    }
-
-    public function jamMasukDetail(): BelongsTo
-    {
-        return $this->belongsTo(JamSekolah::class, 'jam_masuk', 'id');
-    }
-
-    public function jamKeluarDetail(): BelongsTo
-    {
-        return $this->belongsTo(JamSekolah::class, 'jam_keluar', 'id');
-    }
-
-    public function getBySiswaDetil(): HasMany
+    // Detail kehadiran siswa
+    public function presensiDetail(): HasMany
     {
         return $this->hasMany(PresensiSiswaDetail::class, 'presensi_guru_mapel_id', 'id');
+    }
+
+    // --- FUNGSI HELPER (Opsional tapi disarankan) ---
+    // Fungsi ini memudahkan mengambil data kelas/mapel tanpa harus menulis $model->guruMapel->kelas
+    
+    public function getKelasNameAttribute()
+    {
+        return $this->guruMapel->kelas->nama_kelas; // Sesuaikan dengan nama kolom di model Kelas
+    }
+
+    public function getMapelNameAttribute()
+    {
+        return $this->guruMapel->mapel->nama_mapel; // Sesuaikan dengan nama kolom di model MataPelajaran
     }
 }

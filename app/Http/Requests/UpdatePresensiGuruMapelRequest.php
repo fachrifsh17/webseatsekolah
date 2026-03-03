@@ -17,31 +17,25 @@ class UpdatePresensiGuruMapelRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Hanya perlu guru_mapel_id untuk referensi penugasan
             'guru_mapel_id'     => ['sometimes', 'integer', 'exists:guru_mapel,id'],
-            'kelas_id'          => ['nullable', 'string', 'exists:kelas,id'],
-            'mata_pelajaran_id' => ['nullable', 'string', 'exists:mata_pelajaran,id'],
-            'tahun_ajaran_id'   => ['nullable', 'string', 'exists:tahun_ajaran,id'],
             'tanggal'           => ['sometimes', 'date'],
-            'jam_masuk'         => ['nullable', 'string'],
-            'jam_keluar'        => ['nullable', 'string'],
             'materi'            => ['nullable', 'string'],
             
-            'presensi'              => ['sometimes', 'array'],
-            'presensi.*.siswa_id'   => ['required_with:presensi', 'string', 'exists:siswa,id'],
-            'presensi.*.status'     => ['required_with:presensi', 'in:hadir,sakit,izin,alpa,Hadir,Sakit,Izin,Alpa'],
-            'presensi.*.catatan'    => ['nullable', 'string'],
+            // Validasi detail presensi siswa
+            'presensi'                => ['sometimes', 'array'],
+            'presensi.*.siswa_id'     => ['required_with:presensi', 'string', 'exists:siswa,id'],
+            'presensi.*.status'       => ['required_with:presensi', 'in:hadir,sakit,izin,alpa,Hadir,Sakit,Izin,Alpa'],
+            'presensi.*.catatan'      => ['nullable', 'string'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'guru_mapel_id.exists'       => 'Data penugasan guru tidak ditemukan.',
-            'kelas_id.exists'            => 'Data kelas tidak ditemukan.',
-            'mata_pelajaran_id.exists'   => 'Data mata pelajaran tidak ditemukan.',
-            'tahun_ajaran_id.exists'     => 'Data tahun ajaran tidak ditemukan.',
-            'tanggal.date'               => 'Format tanggal tidak valid.',
-            'presensi.array'             => 'Format data presensi harus berupa array.',
+            'guru_mapel_id.exists'      => 'Data penugasan guru tidak ditemukan.',
+            'tanggal.date'              => 'Format tanggal tidak valid.',
+            'presensi.array'            => 'Format data presensi harus berupa array.',
             'presensi.*.siswa_id.exists' => 'Data siswa tidak terdaftar.',
             'presensi.*.status.in'       => 'Status harus berupa Hadir, Sakit, Izin, atau Alfa.',
         ];

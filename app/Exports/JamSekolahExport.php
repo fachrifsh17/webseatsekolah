@@ -4,7 +4,7 @@ namespace App\Exports;
 
 use App\Models\JamSekolah;
 use App\Models\TahunAjaran;
-use App\Models\Semester; // --- PERUBAHAN: Import Model Semester ---
+use App\Models\Semester;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -52,7 +52,6 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 $pSheet = $sheet->getDelegate();
                 $lastCol = 'J';
 
-                // --- TAMPILAN HEADER (TIDAK BERUBAH) ---
                 $kepsek = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 1) 
@@ -73,7 +72,10 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
 
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->cabang_dinas ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
+                
+                $sheet->mergeCells("A3:{$lastCol}3"); 
+                $sheet->setCellValue('A3', strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
+                
                 $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
                 
                 $sheet->mergeCells("A5:{$lastCol}5"); 
@@ -89,21 +91,18 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 $sheet->mergeCells("A7:{$lastCol}7"); 
                 $sheet->setCellValue('A7', 'PENYESUAIAN JAM PELAJARAN');
                 
-                // --- PERUBAHAN TAMPILAN HEADER (MENAMPILKAN SEMESTER) ---
                 $ta = TahunAjaran::find($this->tahunAjaranId);
-                // Ambil semester yang aktif untuk tahun ajaran tersebut
                 $semesterAktif = Semester::where('tahun_ajaran_id', $this->tahunAjaranId)
                                          ->where('is_active', true)
                                          ->first();
 
                 $sheet->mergeCells("A8:{$lastCol}8"); 
-                $textHeader = 'TAHUN PELAJARAN ' . ($ta->nama ?? '') . ' | SEMESTER ' . strtoupper($semesterAktif->nama ?? '');
+                $textHeader = 'TAHUN PELAJARAN ' . ($ta->nama ?? '') . ' - SEMESTER ' . strtoupper($semesterAktif->nama ?? '');
                 $sheet->setCellValue('A8', $textHeader);
                 
                 $sheet->getStyle("A7:A8")->getFont()->setBold(true);
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // --- LOGIKA QUERY PIVOT TABLE (PERBAIKAN ERROR SQL) ---
                 $hariMap = [
                     'Senin' => ['t' => 'A', 'l' => 'B'],
                     'Selasa' => ['t' => 'C', 'l' => 'D'],
@@ -112,7 +111,6 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                     'Jumat' => ['t' => 'I', 'l' => 'J']
                 ];
 
-                // --- PERBAIKAN QUERY: Menggunakan relasi 'semester' ---
                 $dataPerHari = JamSekolah::whereHas('semester', function($query) {
                         $query->where('tahun_ajaran_id', $this->tahunAjaranId);
                     })
@@ -120,9 +118,7 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                     ->orderBy('waktu_mulai')
                     ->get()
                     ->groupBy('hari');
-                // ----------------------------------------------------
 
-                // --- PROSES TAMPILAN DATA (LOGIKA SAMA) ---
                 $rowStart = 12;
 
                 foreach ($hariMap as $namaHari => $cols) {
@@ -167,7 +163,6 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                     $sheet->getStyle("A11:J11")->getFont()->setBold(true);
                 }
 
-                // --- TAMPILAN FOOTER (TIDAK BERUBAH) ---
                 $ttgRow = $maxRow + 3;
                 $sheet->mergeCells("G{$ttgRow}:J{$ttgRow}");
                 $lokasiTtd = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';

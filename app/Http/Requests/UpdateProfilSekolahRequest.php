@@ -18,13 +18,15 @@ class UpdateProfilSekolahRequest extends FormRequest
     {
         return [
             'nama_sekolah'    => ['nullable', 'string', 'max:150'],
+            'cadis'           => ['nullable', 'string', 'max:100'],
+            'logo'            => ['nullable', 'image', 'mimes:jpeg,png,jpg', 'max:2048'],
             'sejarah'         => ['nullable', 'string'],
             'visi'            => ['nullable', 'string'],
             'misi'            => ['nullable', 'string'],
             'npsn'            => ['bail', 'nullable', 'string', 'max:20'],
             'akreditasi'      => ['bail', 'nullable', 'string', 'max:10'],
-            'guru_staf_id'    => ['bail', 'nullable', 'string', 'exists:guru_staf,id'],
             'sambutan_kepsek' => ['nullable', 'string'],
+            // guru_staf_id dihapus karena otomatis dari struktur jabatan
         ];
     }
 
@@ -33,6 +35,11 @@ class UpdateProfilSekolahRequest extends FormRequest
         return [
             'nama_sekolah.string'     => 'Nama sekolah harus berupa teks.',
             'nama_sekolah.max'        => 'Nama sekolah maksimal 150 karakter.',
+            'cadis.string'            => 'Cabang dinas harus berupa teks.',
+            'cadis.max'               => 'Cabang dinas maksimal 100 karakter.',
+            'logo.image'              => 'File harus berupa gambar.',
+            'logo.mimes'              => 'Format logo harus jpeg, png, atau jpg.',
+            'logo.max'                => 'Ukuran logo maksimal 2MB.',
             'sejarah.string'          => 'Sejarah harus berupa teks.',
             'visi.string'             => 'Visi harus berupa teks.',
             'misi.string'             => 'Misi harus berupa teks.',
@@ -40,8 +47,6 @@ class UpdateProfilSekolahRequest extends FormRequest
             'npsn.max'                => 'NPSN maksimal 20 karakter.',
             'akreditasi.string'       => 'Akreditasi harus berupa teks.',
             'akreditasi.max'          => 'Akreditasi maksimal 10 karakter.',
-            'guru_staf_id.string'     => 'Guru/Staf ID harus berupa ID string.',
-            'guru_staf_id.exists'     => 'Data guru/staf tidak ditemukan.',
             'sambutan_kepsek.string'  => 'Sambutan kepala sekolah harus berupa teks.',
         ];
     }
@@ -50,12 +55,13 @@ class UpdateProfilSekolahRequest extends FormRequest
     {
         return [
             'nama_sekolah'    => 'Nama sekolah',
+            'cadis'           => 'Cabang dinas',
+            'logo'            => 'Logo sekolah',
             'sejarah'         => 'Sejarah sekolah',
             'visi'            => 'Visi sekolah',
             'misi'            => 'Misi sekolah',
             'npsn'            => 'NPSN',
             'akreditasi'      => 'Akreditasi',
-            'guru_staf_id'    => 'Guru/Staf',
             'sambutan_kepsek' => 'Sambutan kepala sekolah',
         ];
     }

@@ -12,6 +12,8 @@ class ProfilSekolahResource extends JsonResource
         return [
             'id'              => $this->id,
             'nama_sekolah'    => $this->nama_sekolah,
+            'cadis'           => $this->cadis, // Tambahan
+            'logo'            => $this->logo_url, // Menggunakan Accessor logo_url agar dapet URL lengkap
             'npsn'            => $this->npsn,
             'akreditasi'      => $this->akreditasi,
             'visi'            => $this->visi,

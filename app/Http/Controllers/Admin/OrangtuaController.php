@@ -198,17 +198,26 @@ class OrangtuaController extends Controller
                 $anakList = $validated['anak'] ?? [];
                 unset($validated['anak']);
 
-                if (isset($validated['telepon'])) {
-                    $user = User::where('id', $orangtua->user_id)->first();
-                    if ($user) {
-                        $user->username = $validated['telepon'];
-                        $user->password = Hash::make($validated['telepon']);
+                $isReactivating = isset($validated['is_active']) && $orangtua->is_active == 0 && $validated['is_active'] == 1;
+
+                if ($orangtua->user) {
+                    $userData = [];
+
+                    if (isset($validated['telepon'])) {
+                        $userData['username'] = $validated['telepon'];
+                        $userData['password'] = Hash::make($validated['telepon']);
+                    }
+
+                    if (isset($validated['is_active'])) {
+                        $userData['is_active'] = $validated['is_active'];
                         
-                        if (isset($validated['is_active'])) {
-                            $user->is_active = $validated['is_active'];
+                        if ($isReactivating && !isset($validated['telepon'])) {
+                            $userData['password'] = Hash::make($orangtua->telepon);
                         }
-                        
-                        $user->save();
+                    }
+
+                    if (!empty($userData)) {
+                        $orangtua->user->update($userData);
                     }
                 }
 

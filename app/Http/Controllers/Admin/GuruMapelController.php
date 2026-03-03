@@ -346,6 +346,10 @@ class GuruMapelController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
+        // --- PERUBAHAN DI SINI ---
+        $validated['is_active'] = true; // Set otomatis aktif saat buat
+        // -------------------------
+
         try {
             $assignment = DB::transaction(fn() => GuruMapel::create($validated));
             return response()->json([
