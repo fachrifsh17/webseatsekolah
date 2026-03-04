@@ -88,6 +88,16 @@ class SemesterController extends Controller
             $semester = DB::transaction(function () use ($request, $activeTahunAjaran) {
                 $validated = $request->validated();
                 
+                // --- LOGIKA OTOMATIS JIKA TAHUN KOSONG ---
+                if (empty($validated['tahun'])) {
+                    $namaTA = $activeTahunAjaran->nama; // Misal: "2024/2025"
+                    if (str_contains(strtolower($validated['nama']), 'ganjil')) {
+                        $validated['tahun'] = (int) substr($namaTA, 0, 4);
+                    } else {
+                        $validated['tahun'] = (int) substr($namaTA, 5, 4);
+                    }
+                }
+
                 $existingSemester = Semester::where('tahun_ajaran_id', $activeTahunAjaran->id)
                     ->where('nama', $validated['nama'])
                     ->first();
@@ -149,6 +159,16 @@ class SemesterController extends Controller
             DB::transaction(function () use ($request, $semester) {
                 $validated = $request->validated();
                 
+                // --- LOGIKA OTOMATIS JIKA TAHUN DIKOSONGKAN SAAT UPDATE ---
+                if (empty($validated['tahun'])) {
+                    $namaTA = $semester->tahunAjaran->nama; 
+                    if (str_contains(strtolower($validated['nama']), 'ganjil')) {
+                        $validated['tahun'] = (int) substr($namaTA, 0, 4);
+                    } else {
+                        $validated['tahun'] = (int) substr($namaTA, 5, 4);
+                    }
+                }
+
                 $existingSemester = Semester::where('tahun_ajaran_id', $semester->tahun_ajaran_id)
                     ->where('nama', $validated['nama'])
                     ->where('id', '!=', $semester->id)

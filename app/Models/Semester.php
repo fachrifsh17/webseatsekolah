@@ -17,6 +17,7 @@ class Semester extends Model
     protected $fillable = [
         'tahun_ajaran_id',
         'nama',
+        'tahun', // Penambahan kolom tahun
         'is_active',
     ];
 
@@ -48,7 +49,6 @@ class Semester extends Model
     {
         return $this->hasMany(Presensi::class, 'semester_id');
     }
-
 
     public function poinSiswa(): HasMany
     {

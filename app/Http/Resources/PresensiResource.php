@@ -13,13 +13,10 @@ class PresensiResource extends JsonResource
         $isWali = $request->is('*siswa-wali*');
 
         /**
-         * Penjelasan Relasi:
          * $this = Model PresensiDetail
          * $this->header = Model Presensi
-         * $this->header->kelasWali = Model KelasWaliKelas (Pusat datanya di sini)
          */
-        $header = $this->header; // Pastikan di model PresensiDetail relasinya bernama 'header'
-        $waliRelasi = $header?->kelasWali; 
+        $header = $this->header; 
 
         return [
             'id' => $this->id, // ID dari presensi_detail
@@ -31,24 +28,26 @@ class PresensiResource extends JsonResource
             $this->mergeWhen($isWali, [
                 'siswa_id' => (string) $this->siswa_id,
                 'nama_lengkap' => $this->siswa?->nama_lengkap,
-                // Ambil kelas via kelasWali
-                'kelas' => $waliRelasi?->kelas?->nama_kelas,
+                'kelas' => $header?->kelas?->nama_kelas ?? $header?->kelas_id, 
             ]),
 
             $this->mergeWhen(!$isWali, [
                 'siswa' => [
                     'id' => (string) $this->siswa_id,
                     'nama' => $this->siswa?->nama_lengkap,
-                    // Ambil kelas via kelasWali
-                    'kelas' => $waliRelasi?->kelas?->nama_kelas,
+                    'kelas' => $header?->kelas?->nama_kelas ?? $header?->kelas_id,
                 ],
-                // Ambil guru via kelasWali
-                'guru' => $waliRelasi?->guruStaf?->nama,
+                
+                // SEBELUMNYA: Lewat kelasWali (Lama/Boros Query)
+                // SEKARANG: Langsung ambil dari relasi guru di header (Cepat)
+                'guru' => [
+                    'id' => $header?->guru_id,
+                    'nama' => $header?->guru?->nama ?? '-',
+                ],
                 
                 'semester' => [
-                    // Ambil semester via kelasWali
-                    'nama' => $waliRelasi?->semester?->nama ?? '-',
-                    'tahun_ajaran_id' => $waliRelasi?->semester?->tahun_ajaran_id,
+                    'nama' => $header?->semester?->nama ?? '-',
+                    'tahun_ajaran_id' => $header?->semester?->tahun_ajaran_id,
                 ],
             ]),
         ];

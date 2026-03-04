@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany; // Tambahkan ini
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class GuruStaf extends Model
 {
@@ -40,9 +40,9 @@ class GuruStaf extends Model
     ];
 
     protected $casts = [
-        'user_id'    => 'string',
-        'jurusan_id' => 'string',
-        'is_active'  => 'boolean',
+        'user_id'     => 'string',
+        'jurusan_id'  => 'string',
+        'is_active'   => 'boolean',
         'tanggal_lahir' => 'date',
     ];
 
@@ -79,12 +79,8 @@ class GuruStaf extends Model
         return $this->belongsTo(Jurusan::class, 'jurusan_id', 'id');
     }
 
-    /**
-     * Relasi ke Kelas melalui tabel pivot kelas_wali_kelas
-     */
     public function kelas(): BelongsToMany
     {
-        // Diubah dari HasOne menjadi BelongsToMany
         return $this->belongsToMany(Kelas::class, 'kelas_wali_kelas', 'guru_staf_id', 'kelas_id')
                     ->withPivot('tahun_ajaran_id', 'is_active')
                     ->withTimestamps();
@@ -100,9 +96,13 @@ class GuruStaf extends Model
         return $this->hasMany(StrukturJabatan::class, 'guru_staf_id', 'id');
     }
 
+    /**
+     * Relasi ke Presensi
+     * Disesuaikan dengan foreign key 'guru_id' di tabel presensi
+     */
     public function presensi(): HasMany
     {
-        return $this->hasMany(Presensi::class, 'guru_staf_id', 'id');
+        return $this->hasMany(Presensi::class, 'guru_id', 'id');
     }
 
     public function poinSiswa(): HasMany

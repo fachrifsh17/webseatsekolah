@@ -13,9 +13,9 @@ class SemesterResource extends JsonResource
             'id'              => $this->id,
             'tahun_ajaran_id' => $this->tahun_ajaran_id,
             'nama'            => $this->nama,
+            'tahun'           => $this->tahun,
             'is_active'       => (bool) $this->is_active,
             
-            // Relasi ke tahun ajaran (opsional, jika ingin ditampilkan)
             'tahun_ajaran'    => new TahunAjaranResource($this->whenLoaded('tahunAjaran')),
             
             'created_at'      => $this->created_at?->format('d-m-Y H:i'),

@@ -38,18 +38,16 @@ class Kelas extends Model
         });
     }
 
-    /**
-     * Relasi langsung ke tabel pivot (KelasWaliKelas)
-     * Digunakan untuk akses relasi berantai (nested relationship)
-     */
+    public function presensi(): HasMany
+    {
+        return $this->hasMany(Presensi::class, 'kelas_id', 'id');
+    }
+
     public function kelasWali(): HasMany
     {
         return $this->hasMany(KelasWaliKelas::class, 'kelas_id');
     }
 
-    /**
-     * Relasi ke GuruStaf melalui tabel pivot kelas_wali_kelas
-     */
     public function waliKelas(): BelongsToMany
     {
         return $this->belongsToMany(GuruStaf::class, 'kelas_wali_kelas', 'kelas_id', 'guru_staf_id')
@@ -57,9 +55,6 @@ class Kelas extends Model
                     ->withTimestamps();
     }
 
-    /**
-     * Relasi ke tabel Tingkatan
-     */
     public function tingkatan(): BelongsTo
     {
         return $this->belongsTo(Tingkatan::class, 'tingkatan_id');
@@ -75,9 +70,6 @@ class Kelas extends Model
         return $this->hasMany(SiswaKelas::class, 'kelas_id');
     }
 
-    /**
-     * Relasi ke Siswa melalui tabel pivot siswa_kelas
-     */
     public function siswa(): BelongsToMany
     {
         return $this->belongsToMany(Siswa::class, 'siswa_kelas', 'kelas_id', 'siswa_id')

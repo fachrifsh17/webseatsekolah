@@ -14,7 +14,9 @@ class StoreSemesterRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Disesuaikan menjadi nullable agar logika otomatis di Controller bisa jalan
             'nama'      => 'required|string|max:20',
+            'tahun'     => 'nullable|integer|digits:4', 
             'is_active' => 'nullable|boolean',
         ];
     }
@@ -22,9 +24,11 @@ class StoreSemesterRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'nama.required' => 'Nama semester wajib diisi.',
-            'nama.string'   => 'Nama semester harus berupa teks.',
-            'nama.max'      => 'Nama semester maksimal 20 karakter.',
+            'nama.required'     => 'Nama semester wajib diisi.',
+            'nama.string'       => 'Nama semester harus berupa teks.',
+            'nama.max'          => 'Nama semester maksimal 20 karakter.',
+            'tahun.integer'     => 'Tahun harus berupa angka.',
+            'tahun.digits'      => 'Tahun harus berjumlah 4 digit (contoh: 2025).',
             'is_active.boolean' => 'Status aktif harus berupa true atau false.',
         ];
     }
