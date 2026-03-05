@@ -18,11 +18,11 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 
 class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, WithEvents, WithCustomStartCell, WithHeadings
 {
-    protected $query, $labelWaktu, $profil, $kontak, $guruStaf, $tahunAjaran, $daysInMonth, $tahun, $bulan, $isFilterKelas, $semesterId, $role;
+    protected $query, $labelWaktu, $profil, $kontak, $guruStaf, $tahunAjaran, $tahun, $bulan, $isFilterKelas, $semesterId, $role;
     private $rowNumber = 0;
     private $firstRecord = null;
-    private $processedSiswa = [];
-    private $listLibur = null;
+    private $pertemuanData = [];
+    private $mingguGroups = [];
     private $totalL = 0, $totalP = 0;
     private $grandTotal = ['H' => 0, 'S' => 0, 'I' => 0, 'A' => 0];
 
@@ -40,142 +40,105 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
         
         $this->bulan = $bulan ?? (str_contains($labelWaktu, 'Bulan-') ? explode('-', $labelWaktu)[2] : date('m'));
         $this->tahun = $tahun ?? (str_contains($labelWaktu, 'Bulan-') ? explode('-', $labelWaktu)[3] : date('Y'));
-        $this->daysInMonth = Carbon::create($this->tahun, $this->bulan)->daysInMonth;
 
-        $this->listLibur = DB::table('kalender_akademik')
-            ->where('semester_id', $this->semesterId)
-            ->where('kategori', 'Libur')
-            ->get();
+        $sampleQuery = clone $this->query;
+        $this->firstRecord = $sampleQuery->with(['guruMapel.mapel', 'guruMapel.kelas', 'guruMapel.guru'])->first();
+
+        if ($this->isFilterKelas) {
+            $baseQuery = clone $this->query;
+            $this->pertemuanData = $baseQuery->whereMonth('tanggal', $this->bulan)
+                ->whereYear('tanggal', $this->tahun)
+                ->orderBy('tanggal', 'asc')
+                ->select('id', 'tanggal')
+                ->get();
+
+            foreach ($this->pertemuanData as $p) {
+                $weekOfMonth = Carbon::parse($p->tanggal)->weekOfMonth;
+                $this->mingguGroups[$weekOfMonth][] = $p->id;
+            }
+        }
     }
 
     public function startCell(): string { return 'A14'; }
 
     public function query()
     {
-        return $this->query->with([
-            'guruMapel.mapel',
-            'guruMapel.kelas',
-            'guruMapel.guru',
-            'presensiDetail.siswa'
-        ]);
+        if ($this->isFilterKelas) {
+            $presensiIds = $this->pertemuanData->pluck('id');
+            return DB::table('presensi_siswa_detail')
+                ->join('siswa', 'presensi_siswa_detail.siswa_id', '=', 'siswa.id')
+                ->whereIn('presensi_guru_mapel_id', $presensiIds)
+                ->select('siswa.id', 'siswa.nama_lengkap', 'siswa.nis', 'siswa.nisn', 'siswa.jenis_kelamin')
+                ->groupBy('siswa.id', 'siswa.nama_lengkap', 'siswa.nis', 'siswa.nisn', 'siswa.jenis_kelamin')
+                ->orderBy('siswa.nama_lengkap', 'asc');
+        }
+        return $this->query->with(['guruMapel.mapel', 'guruMapel.kelas', 'guruMapel.guru', 'presensiDetail.siswa']);
     }
 
     public function headings(): array
     {
         if ($this->isFilterKelas) {
-            $header = ['NO', 'NIS', 'NISN', 'NAMA LENGKAP', 'JK'];
-            for ($d = 1; $d <= $this->daysInMonth; $d++) { $header[] = $d; }
+            $row1 = ['NO', 'NIS', 'NISN', 'NAMA LENGKAP', 'JK'];
+            foreach ($this->mingguGroups as $weekNum => $ids) {
+                $row1[] = "MINGGU " . $weekNum;
+                for ($i = 1; $i < count($ids); $i++) { $row1[] = ''; }
+            }
+            $row2 = ['', '', '', '', ''];
+            $pCounter = 1;
+            foreach ($this->mingguGroups as $ids) {
+                foreach ($ids as $id) { $row2[] = $pCounter++; }
+            }
             return [
-                array_merge($header, ['KETERANGAN', '', '', '', 'CATATAN']),
-                array_merge(array_fill(0, count($header), ''), ['H', 'S', 'I', 'A', ''])
+                array_merge($row1, ['KETERANGAN', '', '', '', 'CATATAN']),
+                array_merge($row2, ['H', 'S', 'I', 'A', ''])
             ];
         }
         return ['NO', 'TANGGAL', 'JAM', 'MATA PELAJARAN', 'KELAS', 'MATERI', 'H', 'S', 'I', 'A', 'TOTAL'];
     }
 
-    public function map($presensi): array
+    public function map($data): array
     {
-        if (!$this->firstRecord) { $this->firstRecord = $presensi; }
-
+        $this->rowNumber++;
         if ($this->isFilterKelas) {
-            $rows = [];
-            $presensiBulanIni = DB::table('presensi_guru_mapel')
-                ->where('guru_mapel_id', $this->firstRecord->guru_mapel_id)
-                ->whereMonth('tanggal', $this->bulan)
-                ->whereYear('tanggal', $this->tahun)
+            $siswa = $data;
+            $isLaki = (strtolower($siswa->jenis_kelamin ?? '') == 'laki-laki' || strtolower($siswa->jenis_kelamin ?? '') == 'l');
+            $jk = $isLaki ? 'L' : 'P';
+            $isLaki ? $this->totalL++ : $this->totalP++;
+
+            $attendance = DB::table('presensi_siswa_detail')
+                ->whereIn('presensi_guru_mapel_id', $this->pertemuanData->pluck('id'))
+                ->where('siswa_id', $siswa->id)
                 ->get();
 
-            $presensiIds = $presensiBulanIni->pluck('id');
-            $allAttendanceData = DB::table('presensi_siswa_detail')
-                ->whereIn('presensi_guru_mapel_id', $presensiIds)
-                ->get();
+            $row = [$this->rowNumber, "'" . ($siswa->nis ?? '-'), "'" . ($siswa->nisn ?? '-'), strtoupper($siswa->nama_lengkap ?? '-'), $jk];
+            $rekap = ['H' => 0, 'S' => 0, 'I' => 0, 'A' => 0];
 
-            $siswaList = DB::table('siswa_kelas')
-                ->join('siswa', 'siswa_kelas.siswa_id', '=', 'siswa.id')
-                ->where('siswa_kelas.kelas_id', $this->firstRecord->guruMapel->kelas_id)
-                ->where('siswa_kelas.semester_id', $this->semesterId)
-                ->select('siswa.id', 'siswa.nama_lengkap', 'siswa.nis', 'siswa.nisn', 'siswa.jenis_kelamin')
-                ->orderBy('siswa.nama_lengkap', 'asc')
-                ->get();
-            
-            foreach ($siswaList as $siswa) {
-                if (in_array($siswa->id, $this->processedSiswa)) { continue; }
-                $this->processedSiswa[] = $siswa->id;
-
-                $this->rowNumber++;
-                $isLaki = (strtolower($siswa->jenis_kelamin ?? '') == 'laki-laki' || strtolower($siswa->jenis_kelamin ?? '') == 'l');
-                $jk = $isLaki ? 'L' : 'P';
-                $isLaki ? $this->totalL++ : $this->totalP++;
-
-                $row = [$this->rowNumber, "'" . ($siswa->nis ?? '-'), "'" . ($siswa->nisn ?? '-'), strtoupper($siswa->nama_lengkap ?? '-'), $jk];
-                $rekap = ['H' => 0, 'S' => 0, 'I' => 0, 'A' => 0];
-
-                for ($d = 1; $d <= $this->daysInMonth; $d++) {
-                    $dateObj = Carbon::create($this->tahun, $this->bulan, $d);
-                    $dateString = $dateObj->toDateString();
-                    $isLiburKalender = $this->listLibur->contains(fn($item) => $dateString >= $item->tanggal_mulai && $dateString <= $item->tanggal_selesai);
-
-                    if ($dateObj->isWeekend() || $isLiburKalender) {
-                        $row[] = 'L';
-                    } else {
-                        $pTgl = $presensiBulanIni->where('tanggal', $dateString)->first();
-                        if ($pTgl) {
-                            $statusSiswa = $allAttendanceData->where('presensi_guru_mapel_id', $pTgl->id)->where('siswa_id', $siswa->id)->first();
-                            if ($statusSiswa) {
-                                $st = strtoupper(substr($statusSiswa->status, 0, 1));
-                                $row[] = $st;
-                                if (isset($rekap[$st])) {
-                                    $rekap[$st]++;
-                                    $this->grandTotal[$st]++;
-                                }
-                            } else { 
-                                $row[] = '-'; 
-                            }
-                        } else { 
-                            $row[] = ''; 
-                        }
-                    }
+            foreach ($this->mingguGroups as $ids) {
+                foreach ($ids as $pId) {
+                    $statusSiswa = $attendance->where('presensi_guru_mapel_id', $pId)->first();
+                    if ($statusSiswa) {
+                        $st = strtoupper(substr($statusSiswa->status, 0, 1));
+                        $row[] = $st;
+                        if (isset($rekap[$st])) { $rekap[$st]++; $this->grandTotal[$st]++; }
+                    } else { $row[] = '-'; }
                 }
-                $rows[] = array_merge($row, [$rekap['H'], $rekap['S'], $rekap['I'], $rekap['A'], '']);
             }
-            return $rows;
+            return array_merge($row, [$rekap['H'], $rekap['S'], $rekap['I'], $rekap['A'], '']);
         }
 
-        $this->rowNumber++;
-        return [
-            $this->rowNumber,
-            Carbon::parse($presensi->tanggal)->format('d/m/Y'),
-            $presensi->jam_masuk . '-' . $presensi->jam_keluar,
-            $presensi->guruMapel->mapel->nama_mapel ?? '-',
-            $presensi->guruMapel->kelas->nama_kelas ?? '-',
-            $presensi->materi ?? '-',
-            $presensi->presensiDetail->where('status', 'hadir')->count(),
-            $presensi->presensiDetail->where('status', 'sakit')->count(),
-            $presensi->presensiDetail->where('status', 'izin')->count(),
-            $presensi->presensiDetail->where('status', 'alfa')->count(),
-            $presensi->presensiDetail->count()
-        ];
+        return [$this->rowNumber, Carbon::parse($data->tanggal)->format('d/m/Y'), $data->jam_masuk . '-' . $data->jam_keluar, $data->guruMapel->mapel->nama_mapel ?? '-', $data->guruMapel->kelas->nama_kelas ?? '-', $data->materi ?? '-', $data->presensiDetail->where('status', 'hadir')->count(), $data->presensiDetail->where('status', 'sakit')->count(), $data->presensiDetail->where('status', 'izin')->count(), $data->presensiDetail->where('status', 'alfa')->count(), $data->presensiDetail->count()];
     }
 
     public function styles(Worksheet $sheet)
     {
         $lastRow = $sheet->getHighestRow();
         $lastCol = $sheet->getHighestColumn();
-        
         $sheet->getParent()->getDefaultStyle()->getFont()->setName('Arial')->setSize(10);
-        
         $sheet->getStyle("A14:{$lastCol}15")->getFont()->setBold(true);
+        
         $sheet->getStyle("A14:{$lastCol}{$lastRow}")->applyFromArray([
-            'borders' => [
-                'allBorders' => [
-                    'borderStyle' => Border::BORDER_THIN,
-                    'color' => ['rgb' => '000000'],
-                ],
-            ],
-            'alignment' => [
-                'vertical' => Alignment::VERTICAL_CENTER,
-                'horizontal' => Alignment::HORIZONTAL_CENTER
-            ]
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
+            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER, 'horizontal' => Alignment::HORIZONTAL_CENTER]
         ]);
 
         if ($this->isFilterKelas) {
@@ -184,18 +147,19 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
             $sheet->getColumnDimension('C')->setWidth(14);
             $sheet->getColumnDimension('D')->setWidth(30);
             $sheet->getColumnDimension('E')->setWidth(4);
-
-            $lastDayColNum = 5 + $this->daysInMonth;
-            for ($i = 6; $i <= $lastDayColNum; $i++) {
-                $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
-                $sheet->getColumnDimension($col)->setWidth(3.5); 
-            }
-
-            for ($i = $lastDayColNum + 1; $i <= $lastDayColNum + 4; $i++) {
-                $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
-                $sheet->getColumnDimension($col)->setWidth(4.5); 
-            }
             
+            $jmlP = count($this->pertemuanData);
+            $colEndPertemuan = 5 + $jmlP;
+            for ($i = 6; $i <= $colEndPertemuan; $i++) {
+                $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
+                $sheet->getColumnDimension($col)->setWidth(10); 
+            }
+
+            for ($i = $colEndPertemuan + 1; $i <= $colEndPertemuan + 4; $i++) {
+                $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
+                $sheet->getColumnDimension($col)->setWidth(5);
+            }
+
             $sheet->getColumnDimension($lastCol)->setWidth(15);
             $sheet->getStyle("D16:D{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
         }
@@ -208,13 +172,24 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
                 $sheet = $event->sheet;
                 $lastCol = $sheet->getHighestColumn();
                 $lastRow = $sheet->getHighestRow();
+                $jmlP = count($this->pertemuanData);
 
                 if ($this->isFilterKelas) {
-                    foreach(['A','B','C','D','E'] as $col) { $sheet->mergeCells("{$col}14:{$col}15"); }
-                    $rekapStartCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $this->daysInMonth + 1);
-                    $rekapEndCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $this->daysInMonth + 4);
-                    $sheet->mergeCells("{$rekapStartCol}14:{$rekapEndCol}14");
-                    $sheet->setCellValue("{$rekapStartCol}14", "KETERANGAN");
+                    foreach(['A','B','C','D','E'] as $c) { $sheet->mergeCells("{$c}14:{$c}15"); }
+                    $currCol = 6;
+                    foreach ($this->mingguGroups as $ids) {
+                        $count = count($ids);
+                        if ($count > 1) {
+                            $s = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($currCol);
+                            $e = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($currCol + $count - 1);
+                            $sheet->mergeCells("{$s}14:{$e}14");
+                        }
+                        $currCol += $count;
+                    }
+                    $rkpS = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $jmlP + 1);
+                    $rkpE = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $jmlP + 4);
+                    $sheet->mergeCells("{$rkpS}14:{$rkpE}14");
+                    $sheet->setCellValue("{$rkpS}14", "KETERANGAN");
                     $sheet->mergeCells("{$lastCol}14:{$lastCol}15");
                 }
 
@@ -234,24 +209,29 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
                 
                 $sheet->getStyle("A1:{$lastCol}6")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true)->setSize(11);
-                $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
+                $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
 
-                $sheet->mergeCells("A8:{$lastCol}8"); $sheet->setCellValue('A8', 'LAPORAN PRESENSI SISWA (MATA PELAJARAN)');
+                $sheet->mergeCells("A8:{$lastCol}8"); 
+                $sheet->setCellValue('A8', 'LAPORAN PRESENSI SISWA (PER PERTEMUAN)');
                 $sheet->getStyle('A8')->getFont()->setSize(12)->setBold(true);
                 $sheet->getStyle('A8')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $sheet->mergeCells("A9:{$lastCol}9");
-                $sheet->setCellValue('A9', "TAHUN PELAJARAN 2025/2026 - SEMESTER GENAP");
-                
+                $labelTahunAjaran = is_object($this->tahunAjaran) ? $this->tahunAjaran->nama : (is_string($this->tahunAjaran) ? $this->tahunAjaran : $this->tahun . "/" . ($this->tahun + 1));
+                $labelSemester = ($this->semesterId == 1) ? 'GANJIL' : 'GENAP';
+
+                $sheet->mergeCells("A9:{$lastCol}9"); 
+                $sheet->setCellValue('A9', "TAHUN PELAJARAN " . $labelTahunAjaran . " - SEMESTER " . $labelSemester);
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A9")->getFont()->setBold(true);
 
                 $namaGuru = $this->guruStaf->nama ?? ($this->firstRecord->guruMapel->guru->nama ?? '-');
                 $nipGuru = $this->guruStaf->nip ?? ($this->firstRecord->guruMapel->guru->nip ?? '-');
+                $namaKelas = $this->firstRecord->guruMapel->kelas->nama_kelas ?? '-';
+                $namaMapel = $this->firstRecord->guruMapel->mapel->nama_mapel ?? '-';
 
                 $sheet->setCellValue('A10', "Nama Guru: " . $namaGuru);
-                $sheet->setCellValue('A11', "Kelas: " . ($this->firstRecord->guruMapel->kelas->nama_kelas ?? '-'));
-                $sheet->setCellValue('A12', "Mata Pelajaran: " . ($this->firstRecord->guruMapel->mapel->nama_mapel ?? '-'));
+                $sheet->setCellValue('A11', "Kelas: " . $namaKelas);
+                $sheet->setCellValue('A12', "Mata Pelajaran: " . $namaMapel);
                 $sheet->setCellValue('A13', "Periode: " . Carbon::create($this->tahun, $this->bulan, 1)->translatedFormat('F Y'));
 
                 if ($this->isFilterKelas) {
@@ -259,27 +239,25 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
                     $sheet->mergeCells("A{$rekapLRow}:D{$rekapLRow}");
                     $sheet->setCellValue("A{$rekapLRow}", "JUMLAH SISWA LAKI-LAKI (L)");
                     $sheet->setCellValue("E{$rekapLRow}", $this->totalL);
-                    
                     $rekapPRow = $lastRow + 2;
                     $sheet->mergeCells("A{$rekapPRow}:D{$rekapPRow}");
                     $sheet->setCellValue("A{$rekapPRow}", "JUMLAH SISWA PEREMPUAN (P)");
                     $sheet->setCellValue("E{$rekapPRow}", $this->totalP);
-                    
                     $totalRow = $lastRow + 3;
                     $sheet->mergeCells("A{$totalRow}:D{$totalRow}");
                     $sheet->setCellValue("A{$totalRow}", "TOTAL KESELURUHAN SISWA");
                     $sheet->setCellValue("E{$totalRow}", ($this->totalL + $this->totalP));
                     
-                    $colH = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $this->daysInMonth + 1);
-                    $colS = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $this->daysInMonth + 2);
-                    $colI = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $this->daysInMonth + 3);
-                    $colA = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $this->daysInMonth + 4);
+                    $colH = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $jmlP + 1);
+                    $colS = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $jmlP + 2);
+                    $colI = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $jmlP + 3);
+                    $colA = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $jmlP + 4);
                     
                     $sheet->setCellValue($colH . $totalRow, $this->grandTotal['H']);
                     $sheet->setCellValue($colS . $totalRow, $this->grandTotal['S']);
                     $sheet->setCellValue($colI . $totalRow, $this->grandTotal['I']);
                     $sheet->setCellValue($colA . $totalRow, $this->grandTotal['A']);
-
+                    
                     $sheet->getStyle("A{$rekapLRow}:{$lastCol}{$totalRow}")->getFont()->setBold(true);
                     $sheet->getStyle("A{$rekapLRow}:{$lastCol}{$totalRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
                 }
@@ -300,37 +278,24 @@ class PresensiGuruMapelExport implements FromQuery, WithMapping, WithStyles, Wit
                 $sheet->mergeCells("A" . ($ttdRow + 1) . ":D" . ($ttdRow + 1)); $sheet->setCellValue("A" . ($ttdRow + 1), $labelKiri);
                 $sheet->mergeCells("A" . ($ttdRow + 5) . ":D" . ($ttdRow + 5)); $sheet->setCellValue("A" . ($ttdRow + 5), "( " . strtoupper($namaKiri) . " )");
                 $sheet->mergeCells("A" . ($ttdRow + 6) . ":D" . ($ttdRow + 6)); $sheet->setCellValue("A" . ($ttdRow + 6), "NIP. " . $nipKiri);
-
-                $startColTTDKanan = $this->isFilterKelas ? \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $this->daysInMonth + 1) : 'G';
+                
+                $startColTTDKanan = $this->isFilterKelas ? \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(5 + $jmlP + 1) : 'G';
                 $sheet->mergeCells("{$startColTTDKanan}{$ttdRow}:{$lastCol}{$ttdRow}"); $sheet->setCellValue($startColTTDKanan . $ttdRow, $kotaKab . ", " . Carbon::now()->translatedFormat('d F Y'));
                 $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 1) . ":{$lastCol}" . ($ttdRow + 1)); $sheet->setCellValue($startColTTDKanan . ($ttdRow + 1), $labelKanan);
                 $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 5) . ":{$lastCol}" . ($ttdRow + 5)); $sheet->setCellValue($startColTTDKanan . ($ttdRow + 5), "( " . strtoupper($namaKanan) . " )");
                 $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 6) . ":{$lastCol}" . ($ttdRow + 6)); $sheet->setCellValue($startColTTDKanan . ($ttdRow + 6), "NIP. " . $nipKanan);
 
                 if ($ttdKiri && file_exists(storage_path('app/public/' . $ttdKiri))) {
-                    $drawingKiri = new Drawing();
-                    $drawingKiri->setName('TTD Kiri');
-                    $drawingKiri->setPath(storage_path('app/public/' . $ttdKiri));
-                    $drawingKiri->setHeight(50);
-                    $drawingKiri->setCoordinates('B' . ($ttdRow + 2));
-                    $drawingKiri->setWorksheet($sheet->getDelegate());
+                    $drawingKiri = new Drawing(); $drawingKiri->setPath(storage_path('app/public/' . $ttdKiri)); $drawingKiri->setHeight(50); $drawingKiri->setCoordinates('B' . ($ttdRow + 2)); $drawingKiri->setWorksheet($sheet->getDelegate());
                 }
-
                 if ($ttdKanan && file_exists(storage_path('app/public/' . $ttdKanan))) {
-                    $drawingKanan = new Drawing();
-                    $drawingKanan->setName('TTD Kanan');
-                    $drawingKanan->setPath(storage_path('app/public/' . $ttdKanan));
-                    $drawingKanan->setHeight(50);
-                    $drawingKanan->setCoordinates($startColTTDKanan . ($ttdRow + 2));
-                    $drawingKanan->setWorksheet($sheet->getDelegate());
+                    $drawingKanan = new Drawing(); $drawingKanan->setPath(storage_path('app/public/' . $ttdKanan)); $drawingKanan->setHeight(50); $drawingKanan->setCoordinates($startColTTDKanan . ($ttdRow + 2)); $drawingKanan->setWorksheet($sheet->getDelegate());
                 }
 
                 $sheet->getStyle("A{$ttdRow}:{$lastCol}" . ($ttdRow + 6))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A" . ($ttdRow + 5) . ":{$lastCol}" . ($ttdRow + 5))->getFont()->setBold(true);
-                
                 $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE);
-                $sheet->getPageSetup()->setFitToWidth(1);
-                $sheet->getPageSetup()->setFitToHeight(0);
+                $sheet->getPageSetup()->setFitToWidth(1); $sheet->getPageSetup()->setFitToHeight(0);
             },
         ];
     }

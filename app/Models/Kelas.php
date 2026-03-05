@@ -38,6 +38,19 @@ class Kelas extends Model
         });
     }
 
+    // --- RELASI BARU ---
+
+    /**
+     * Relasi langsung ke Presensi Guru Mapel (Denormalized)
+     * Memungkinkan: Kelas::find('K001')->presensiGuruMapel
+     */
+    public function presensiGuruMapel(): HasMany
+    {
+        return $this->hasMany(PresensiGuruMapel::class, 'kelas_id', 'id');
+    }
+
+    // --- RELASI YANG SUDAH ADA ---
+
     public function presensi(): HasMany
     {
         return $this->hasMany(Presensi::class, 'kelas_id', 'id');

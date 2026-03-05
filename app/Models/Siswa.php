@@ -88,10 +88,21 @@ class Siswa extends Model
          ->withTimestamps();
     }
 
-    // RELASI DIUBAH MENJADI presensiDetail SESUAI PERMINTAAN
+    /**
+     * Relasi untuk Presensi Harian (Wali Kelas)
+     */
     public function presensiDetail(): HasMany
     {
         return $this->hasMany(PresensiDetail::class, 'siswa_id');
+    }
+
+    /**
+     * Relasi untuk Presensi Mata Pelajaran (Guru Mapel)
+     * Ditambahkan untuk sinkronisasi dengan Controller Guru Mapel
+     */
+    public function presensiSiswaDetail(): HasMany
+    {
+        return $this->hasMany(PresensiSiswaDetail::class, 'siswa_id');
     }
 
     public function poinSiswa(): HasMany

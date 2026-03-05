@@ -27,12 +27,14 @@ class StorePresensiGuruMapelRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // Hanya perlu guru_mapel_id untuk referensi penugasan
             'guru_mapel_id'     => ['required', 'integer', 'exists:guru_mapel,id'],
-            'tanggal'           => ['required', 'date'],
+            
+            // Diubah menjadi nullable karena untuk Guru, tanggal akan di-handle otomatis oleh Controller
+            // Sedangkan Admin tetap bisa mengirimkan tanggal jika diperlukan
+            'tanggal'           => ['nullable', 'date'],
+            
             'materi'            => ['required', 'string', 'min:5'],
 
-            // Validasi detail presensi siswa
             'presensi'                => ['required', 'array', 'min:1'],
             'presensi.*.siswa_id'     => ['required', 'string', 'exists:siswa,id'],
             'presensi.*.status'       => ['required', 'in:hadir,sakit,izin,alpa,Hadir,Sakit,Izin,Alpa'],
@@ -43,20 +45,16 @@ class StorePresensiGuruMapelRequest extends FormRequest
     public function messages(): array
     {
         return [
-            // Validasi Header
             'guru_mapel_id.required' => 'ID penugasan guru wajib diisi.',
             'guru_mapel_id.exists'   => 'Data penugasan guru tidak ditemukan di sistem.',
-            'tanggal.required'       => 'Tanggal presensi wajib diisi.',
             'tanggal.date'           => 'Format tanggal tidak valid.',
             'materi.required'        => 'Materi pembelajaran tidak boleh kosong.',
             'materi.min'             => 'Isi materi minimal 5 karakter.',
             
-            // Validasi Array Presensi
             'presensi.required'      => 'Daftar kehadiran siswa wajib dikirim.',
             'presensi.array'         => 'Format data presensi harus berupa array.',
             'presensi.min'           => 'Minimal harus ada satu data siswa yang diabsen.',
 
-            // Validasi Item di dalam Array (Siswa)
             'presensi.*.siswa_id.required' => 'ID Siswa pada baris ke-:position wajib diisi.',
             'presensi.*.siswa_id.exists'   => 'Siswa pada baris ke-:position tidak ditemukan.',
             'presensi.*.status.required'   => 'Status hadir baris ke-:position belum dipilih.',

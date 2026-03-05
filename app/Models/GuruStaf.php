@@ -59,6 +59,19 @@ class GuruStaf extends Model
         });
     }
 
+    // --- RELASI BARU ---
+
+    /**
+     * Relasi langsung ke Presensi Guru Mapel (Denormalisasi)
+     * Memungkinkan guru melihat histori mengajarnya dengan cepat: $guru->presensiGuruMapel
+     */
+    public function presensiGuruMapel(): HasMany
+    {
+        return $this->hasMany(PresensiGuruMapel::class, 'guru_staf_id', 'id');
+    }
+
+    // --- RELASI YANG SUDAH ADA ---
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -96,10 +109,6 @@ class GuruStaf extends Model
         return $this->hasMany(StrukturJabatan::class, 'guru_staf_id', 'id');
     }
 
-    /**
-     * Relasi ke Presensi
-     * Disesuaikan dengan foreign key 'guru_id' di tabel presensi
-     */
     public function presensi(): HasMany
     {
         return $this->hasMany(Presensi::class, 'guru_id', 'id');

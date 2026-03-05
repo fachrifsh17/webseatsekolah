@@ -22,7 +22,7 @@ class MataPelajaran extends Model
         'jurusan_id',
         'tipe_mapel',
         'kategori_mapel',
-        'is_active', // Ditambahkan
+        'is_active',
     ];
 
     protected static function boot()
@@ -31,7 +31,6 @@ class MataPelajaran extends Model
 
         static::creating(function ($model) {
             if (empty($model->id)) {
-                // Mencari ID terakhir dengan format Mxxx
                 $lastId = static::where('id', 'like', 'M%')
                     ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                     ->value('id');
@@ -41,6 +40,19 @@ class MataPelajaran extends Model
             }
         });
     }
+
+    // --- RELASI BARU ---
+
+    /**
+     * Relasi langsung ke Presensi Guru Mapel (Optimasi Query)
+     * Memungkinkan: MataPelajaran::find('M001')->presensiGuruMapel
+     */
+    public function presensiGuruMapel(): HasMany
+    {
+        return $this->hasMany(PresensiGuruMapel::class, 'mapel_id', 'id');
+    }
+
+    // --- RELASI YANG SUDAH ADA ---
 
     public function jurusan(): BelongsTo
     {

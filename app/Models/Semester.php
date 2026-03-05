@@ -17,9 +17,22 @@ class Semester extends Model
     protected $fillable = [
         'tahun_ajaran_id',
         'nama',
-        'tahun', // Penambahan kolom tahun
+        'tahun', 
         'is_active',
     ];
+
+    // --- RELASI BARU ---
+    
+    /**
+     * Relasi ke Presensi Guru Mapel (Denormalized)
+     * Memungkinkan kita menarik data: Semester::find(1)->presensiGuruMapel
+     */
+    public function presensiGuruMapel(): HasMany
+    {
+        return $this->hasMany(PresensiGuruMapel::class, 'semester_id');
+    }
+
+    // --- RELASI YANG SUDAH ADA (TETAP DIPERTAHANKAN) ---
 
     public function tahunAjaran(): BelongsTo
     {
