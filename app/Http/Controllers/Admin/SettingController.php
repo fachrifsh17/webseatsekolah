@@ -8,7 +8,6 @@ use App\Models\DataKontak;
 use App\Http\Resources\SekolahSettingResource;
 use App\Http\Resources\DataKontakResource;
 use App\Http\Requests\UpdateSekolahSettingRequest;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
@@ -35,11 +34,10 @@ class SettingController extends Controller
             $setting = SekolahSetting::firstOrCreate(
                 ['id' => 1],
                 [
-                    'tagline'               => '-',
-                    'logo'                  => null,
-                    'pesan_selamat_datang'  => '-',
-                    'buku_poin_path'        => null,
-                    'no_wa_kesiswaan'       => '-',
+                    'tagline'              => '-',
+                    'pesan_selamat_datang' => '-',
+                    'buku_poin_path'       => null,
+                    'no_wa_kesiswaan'      => '-',
                 ]
             );
 
@@ -73,45 +71,42 @@ class SettingController extends Controller
         $this->authorize('update', SekolahSetting::class);
 
         $validated    = $request->validated();
-        $newLogoPath  = null;
-        $newPdfPath   = null;
+        $newPdfName   = null;
+        
+        $pathPdf      = public_path('uploads/buku_poin');
 
         DB::beginTransaction();
         try {
             $setting = SekolahSetting::firstOrCreate(
                 ['id' => 1],
                 [
-                    'tagline'               => '-',
-                    'logo'                  => null,
-                    'pesan_selamat_datang'  => '-',
-                    'buku_poin_path'        => null,
-                    'no_wa_kesiswaan'       => '-',
+                    'tagline'              => '-',
+                    'pesan_selamat_datang' => '-',
+                    'buku_poin_path'       => null,
+                    'no_wa_kesiswaan'      => '-',
                 ]
             );
 
-            if ($request->hasFile('logo')) {
-                $newLogoPath = $request->file('logo')->store('uploads/logo', 'public');
-                $setting->logo = $newLogoPath;
-            }
+            $oldPdf = $setting->buku_poin_path;
 
             if ($request->hasFile('buku_poin_path')) {
-                $newPdfPath = $request->file('buku_poin_path')->store('uploads/buku_poin', 'public');
-                $setting->buku_poin_path = $newPdfPath;
+                $file = $request->file('buku_poin_path');
+                $newPdfName = time() . '_' . $file->getClientOriginalName();
+                $file->move($pathPdf, $newPdfName);
+                $setting->buku_poin_path = $newPdfName;
             }
 
             $setting->fill([
-                'tagline'               => $validated['tagline'] ?? $setting->tagline,
-                'pesan_selamat_datang'  => $validated['pesan_selamat_datang'] ?? $setting->pesan_selamat_datang,
-                'no_wa_kesiswaan'       => $validated['no_wa_kesiswaan'] ?? $setting->no_wa_kesiswaan,
+                'tagline'              => $validated['tagline'] ?? $setting->tagline,
+                'pesan_selamat_datang' => $validated['pesan_selamat_datang'] ?? $setting->pesan_selamat_datang,
+                'no_wa_kesiswaan'      => $validated['no_wa_kesiswaan'] ?? $setting->no_wa_kesiswaan,
             ]);
 
             $setting->save();
-
-            if ($newLogoPath && $setting->getOriginal('logo') && $setting->getOriginal('logo') !== $newLogoPath) {
-                Storage::disk('public')->delete($setting->getOriginal('logo'));
-            }
-            if ($newPdfPath && $setting->getOriginal('buku_poin_path') && $setting->getOriginal('buku_poin_path') !== $newPdfPath) {
-                Storage::disk('public')->delete($setting->getOriginal('buku_poin_path'));
+            
+            if ($newPdfName && $oldPdf) {
+                $oldPdfPath = $pathPdf . '/' . str_replace('uploads/buku_poin/', '', $oldPdf);
+                if (file_exists($oldPdfPath)) unlink($oldPdfPath);
             }
 
             DB::commit();
@@ -124,17 +119,15 @@ class SettingController extends Controller
                 'data'    => [
                     'id'                   => $fresh->id,
                     'tagline'              => $fresh->tagline,
-                    'logo_url'             => $fresh->logo ? Storage::url($fresh->logo) : null,
                     'pesan_selamat_datang' => $fresh->pesan_selamat_datang,
-                    'buku_poin_url'        => $fresh->buku_poin_path ? Storage::url($fresh->buku_poin_path) : null,
+                    'buku_poin_url'        => $fresh->buku_poin_path ? asset('uploads/buku_poin/' . $fresh->buku_poin_path) : null,
                     'no_wa_kesiswaan'      => $fresh->no_wa_kesiswaan,
                     'updated_at'           => $fresh->updated_at ? $fresh->updated_at->format('d-m-Y H:i') : null,
                 ]
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            if ($newLogoPath) Storage::disk('public')->delete($newLogoPath);
-            if ($newPdfPath) Storage::disk('public')->delete($newPdfPath);
+            if ($newPdfName && file_exists($pathPdf . '/' . $newPdfName)) unlink($pathPdf . '/' . $newPdfName);
 
             Log::error('Failed to update settings', ['error' => $e->getMessage()]);
             return response()->json([

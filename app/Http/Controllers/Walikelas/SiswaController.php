@@ -29,26 +29,36 @@ class SiswaController extends Controller
 
         if (!$guru) return [null, null, null];
 
-        $taAktif = TahunAjaran::where('is_active', true)->first();
-        if (!$taAktif) return [$guru, null, null];
+        $semesterAktif = DB::table('semesters')
+            ->join('tahun_ajaran', 'semesters.tahun_ajaran_id', '=', 'tahun_ajaran.id')
+            ->where('semesters.is_active', 1)
+            ->select('semesters.*', 'tahun_ajaran.nama as nama_tahun')
+            ->first();
 
-        $kelas = Kelas::where('wali_kelas_id', $guru->id)
+        if (!$semesterAktif) return [$guru, null, null];
+
+        $kelas = Kelas::with(['jurusan', 'tingkatan'])
+            ->whereHas('kelasWali', function ($q) use ($guru) {
+                $q->where('guru_staf_id', $guru->id)
+                  ->where('is_active', 1);
+            })
             ->where('is_active', 1)
             ->first();
 
-        return [$guru, $kelas, $taAktif];
+        return [$guru, $kelas, $semesterAktif];
     }
 
-    private function applyFilters(Request $request, $query, $kelasId, $taId)
+    private function applyFilters(Request $request, $query, $kelasId, $semesterId)
     {
-        $query->whereHas('riwayatKelas', function ($q) use ($kelasId, $taId) {
-            $q->where('kelas_id', $kelasId)
-              ->where('tahun_ajaran_id', $taId)
-              ->where('is_active', 1);
-        });
-
         $isActive = $request->get('is_active', 1);
+
         $query->where('is_active', $isActive);
+
+        $query->whereHas('riwayatKelas', function ($q) use ($kelasId, $semesterId, $isActive) {
+            $q->where('kelas_id', $kelasId)
+              ->where('semester_id', $semesterId)
+              ->where('is_active', $isActive);
+        });
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -65,35 +75,24 @@ class SiswaController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            [$guru, $kelas, $taAktif] = $this->getIdentity();
+            [$guru, $kelas, $semesterAktif] = $this->getIdentity();
 
-            if (!$kelas) {
+            if (!$kelas || !$semesterAktif) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Anda tidak memiliki kelas perwalian aktif di tahun ajaran ini.'
+                    'message' => 'Data perwalian atau semester aktif tidak ditemukan.'
                 ], Response::HTTP_FORBIDDEN);
             }
 
             $query = Siswa::with(['user', 'orangtua']);
-            $query = $this->applyFilters($request, $query, $kelas->id, $taAktif->id);
+            $query = $this->applyFilters($request, $query, $kelas->id, $semesterAktif->id);
 
-            // PAGINATION & SORTING A-Z
             $perPage = min((int) $request->get('per_page', 20), 100);
             $paginatedData = $query->orderBy('nama_lengkap', 'asc')->paginate($perPage);
 
             $transformedData = collect($paginatedData->items())->map(function($siswa) {
                 $resource = (new SiswaResource($siswa))->toArray(request());
-                
                 unset($resource['kelas']);
-
-                if (isset($resource['orangtua'])) {
-                    $resource['orangtua'] = collect($resource['orangtua'])->map(function($ortu) {
-                        return [
-                            'nama_lengkap' => $ortu['nama_lengkap'] ?? null
-                        ];
-                    })->values();
-                }
-
                 return $resource;
             });
 
@@ -103,7 +102,9 @@ class SiswaController extends Controller
                 'info'    => [
                     'id_kelas'    => $kelas->id,
                     'nama_kelas'  => $kelas->nama_kelas,
-                    'tahun_aktif' => $taAktif->nama . " (" . $taAktif->semester . ")"
+                    'tingkat'     => $kelas->tingkatan->nama_tingkat ?? null,
+                    'jurusan'     => $kelas->jurusan->nama_jurusan ?? null,
+                    'tahun_aktif' => $semesterAktif->nama_tahun . " (" . $semesterAktif->nama . ")"
                 ],
                 'data'    => $transformedData,
                 'meta'    => [
@@ -129,23 +130,24 @@ class SiswaController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            [$guru, $kelas, $taAktif] = $this->getIdentity();
+            [$guru, $kelas, $semesterAktif] = $this->getIdentity();
 
-            if (!$kelas) {
+            if (!$kelas || !$semesterAktif) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Akses ditolak. Anda bukan wali kelas aktif.'
+                    'message' => 'Akses ditolak.'
                 ], Response::HTTP_FORBIDDEN);
             }
 
-            // Pastikan siswa yang dicari memang anggota kelas perwaliannya
-            $siswa = Siswa::with(['user', 'orangtua', 'riwayatKelas' => function($q) use ($taAktif) {
-                $q->where('tahun_ajaran_id', $taAktif->id)->with('kelas');
+            $siswa = Siswa::with(['user', 'orangtua', 'riwayatKelas' => function($q) use ($semesterAktif) {
+                $q->where('semester_id', $semesterAktif->id)->where('is_active', 1)->with('kelas');
             }])
-            ->whereHas('riwayatKelas', function ($q) use ($kelas, $taAktif) {
+            ->whereHas('riwayatKelas', function ($q) use ($kelas, $semesterAktif) {
                 $q->where('kelas_id', $kelas->id)
-                  ->where('tahun_ajaran_id', $taAktif->id);
+                  ->where('semester_id', $semesterAktif->id)
+                  ->where('is_active', 1);
             })
+            ->where('is_active', 1)
             ->findOrFail($id);
 
             return response()->json([
@@ -158,7 +160,7 @@ class SiswaController extends Controller
             Log::error('Walikelas Siswa Show Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Siswa tidak ditemukan dalam kelas perwalian Anda.',
+                'message' => 'Siswa tidak ditemukan.',
             ], Response::HTTP_NOT_FOUND);
         }
     }
@@ -166,30 +168,31 @@ class SiswaController extends Controller
     public function export(Request $request)
     {
         try {
-            [$guru, $kelas, $taAktif] = $this->getIdentity();
+            [$guru, $kelas, $semesterAktif] = $this->getIdentity();
 
-            if (!$kelas) {
-                return response()->json(['success' => false, 'message' => 'Kelas tidak ditemukan.'], Response::HTTP_FORBIDDEN);
+            if (!$kelas || !$semesterAktif) {
+                return response()->json(['success' => false, 'message' => 'Data tidak lengkap.'], Response::HTTP_FORBIDDEN);
             }
 
             $query = Siswa::query();
-            $query = $this->applyFilters($request, $query, $kelas->id, $taAktif->id);
-            
-            // Urutkan A-Z juga saat ekspor
+            $query = $this->applyFilters($request, $query, $kelas->id, $semesterAktif->id);
             $query->orderBy('nama_lengkap', 'asc');
 
-            $nameParts = ['DATA_SISWA'];
-            $nameParts[] = strtoupper(str_replace([' ', '-'], '_', $kelas->nama_kelas));
+            // 1. Format Nama Kelas (Spasi dan Strip diganti Underscore)
+            $namaKelas = strtoupper(str_replace([' ', '-'], '_', $kelas->nama_kelas));
+
+            // 2. Format Tahun Ajaran (Semua karakter non-angka diganti underscore agar jadi 2025_2026)
+            $namaTahun = preg_replace('/[^0-9]/', '_', $semesterAktif->nama_tahun);
+
+            // 3. Format Semester (Ganti spasi menjadi Underscore)
+            $namaSemester = strtoupper(str_replace(' ', '_', $semesterAktif->nama));
             
-            if ($taAktif) {
-                $nameParts[] = strtoupper(str_replace(['/', ' '], '_', $taAktif->nama));
-                $nameParts[] = strtoupper($taAktif->semester);
-            }
-            
+            // 4. Status Aktif
             $isActive = $request->get('is_active', 1);
-            $nameParts[] = $isActive ? 'AKTIF' : 'TIDAK_AKTIF';
-            
-            $fileName = implode('_', $nameParts) . '.xlsx';
+            $statusStr = $isActive ? 'AKTIF' : 'TIDAK_AKTIF';
+
+            // Hasil Akhir: DATA_SISWA_X_RPL_1_2025_2026_GENAP_AKTIF.xlsx
+            $fileName = "DATA_SISWA_{$namaKelas}_{$namaTahun}_{$namaSemester}_{$statusStr}.xlsx";
 
             if (ob_get_contents()) ob_end_clean();
 
@@ -199,7 +202,7 @@ class SiswaController extends Controller
                     DB::table('profil_sekolah')->first(), 
                     DB::table('data_kontak')->first(), 
                     $kelas,
-                    $request->all()
+                    ['is_active' => $isActive, 'semester_id' => $semesterAktif->id]
                 ), 
                 $fileName
             );

@@ -27,8 +27,8 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
     public function __construct($filters, $profil, $kontak)
     {
         $this->filters = $filters;
-        $this->profil = $profil;
-        $this->kontak = $kontak;
+        $this->profil = is_array($profil) ? (object)$profil : $profil;
+        $this->kontak = is_array($kontak) ? (object)$kontak : $kontak;
     }
 
     public function startCell(): string 
@@ -56,7 +56,11 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             $query->where('jurusan_id', $this->filters['jurusan_id']);
         }
 
-        return $query->orderBy('nama_kelas', 'asc');
+        if (!empty($this->filters['tingkatan_id'])) {
+            $query->where('tingkatan_id', $this->filters['tingkatan_id']);
+        }
+
+        return $query->orderBy('tingkatan_id', 'asc')->orderBy('nama_kelas', 'asc');
     }
 
     public function headings(): array
@@ -108,6 +112,20 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $lastCol = 'H';
                 $lastRow = $sheet->getHighestRow();
 
+                if (!empty($this->profil->logo_provinsi)) {
+                    $pathProv = public_path('uploads/profil/' . str_replace('uploads/profil/', '', $this->profil->logo_provinsi));
+                    if (file_exists($pathProv)) {
+                        $drawingProv = new Drawing();
+                        $drawingProv->setName('Logo Provinsi');
+                        $drawingProv->setPath($pathProv);
+                        $drawingProv->setHeight(75);
+                        $drawingProv->setCoordinates('A1');
+                        $drawingProv->setOffsetX(10);
+                        $drawingProv->setOffsetY(5);
+                        $drawingProv->setWorksheet($pSheet);
+                    }
+                }
+
                 $kepsek = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
                     ->where('struktur_jabatan.jabatan_id', 1) 
@@ -128,10 +146,7 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
 
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                
-                $sheet->mergeCells("A3:{$lastCol}3"); 
-                $sheet->setCellValue('A3', strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
-                
+                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
                 $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
                 $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "{$alamatJalan}, {$desaKec}, {$kotaKab} - {$provAsli}");
                 $sheet->mergeCells("A6:{$lastCol}6"); $sheet->setCellValue('A6', "Telp: " . ($this->kontak->telepon ?? '-') . " | Email: " . ($this->kontak->email_resmi ?? '-') . " | NPSN: " . ($this->profil->npsn ?? '-'));
@@ -192,22 +207,20 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $imageRow = $ttgRow + 1;
                 $sheet->getRowDimension($imageRow)->setRowHeight(70); 
 
-                if ($wakaKur && $wakaKur->file_ttd && file_exists(storage_path('app/public/' . $wakaKur->file_ttd))) {
+                if ($wakaKur && $wakaKur->file_ttd && file_exists(storage_path('app/' . $wakaKur->file_ttd))) {
                     $drawing = new Drawing();
                     $drawing->setName('TTD Waka');
-                    $drawing->setDescription('TTD Waka');
-                    $drawing->setPath(storage_path('app/public/' . $wakaKur->file_ttd));
+                    $drawing->setPath(storage_path('app/' . $wakaKur->file_ttd));
                     $drawing->setHeight(60);
                     $drawing->setCoordinates("B{$imageRow}"); 
                     $drawing->setOffsetX(35); 
                     $drawing->setWorksheet($pSheet);
                 }
 
-                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
+                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/' . $kepsek->file_ttd))) {
                     $drawing = new Drawing();
                     $drawing->setName('TTD Kepsek');
-                    $drawing->setDescription('TTD Kepsek');
-                    $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
+                    $drawing->setPath(storage_path('app/' . $kepsek->file_ttd));
                     $drawing->setHeight(60);
                     $drawing->setCoordinates("G{$imageRow}"); 
                     $drawing->setOffsetX(35); 

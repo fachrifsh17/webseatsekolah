@@ -16,10 +16,9 @@ return new class extends Migration
             
             $table->string('nama_sekolah', 150)->nullable();
             
-            // --- Penambahan Kolom Baru ---
             $table->string('cadis', 100)->nullable()->after('nama_sekolah')->comment('Cabang Dinas Wilayah');
             $table->string('logo', 255)->nullable()->after('cadis')->comment('Path/Nama file logo sekolah');
-            // -----------------------------
+            $table->string('logo_provinsi', 255)->nullable()->after('logo')->comment('Path/Nama file logo provinsi');
 
             $table->text('sejarah')->nullable();
             $table->text('visi')->nullable();
@@ -27,14 +26,12 @@ return new class extends Migration
             $table->string('npsn', 20)->nullable();
             $table->string('akreditasi', 10)->nullable();
             
-            // Relasi ke Kepala Sekolah (guru_staf)
             $table->string('guru_staf_id', 10)->nullable();
             
             $table->text('sambutan_kepsek')->nullable()->comment('Teks sambutan Kepala Sekolah');
             
             $table->timestamps();
 
-            // --- SETTING CONSTRAINTS ---
             $table->foreign('guru_staf_id')
                   ->references('id')
                   ->on('guru_staf')

@@ -12,13 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('sekolah_setting', function (Blueprint $table) {
-            // id int NOT NULL PRIMARY KEY
             $table->id(); 
             
             $table->string('tagline', 255)->nullable();
-            
-            // Path logo sekolah
-            $table->string('logo', 255)->nullable()->comment('Nama file atau path logo');
             
             $table->text('pesan_selamat_datang')->nullable();
             

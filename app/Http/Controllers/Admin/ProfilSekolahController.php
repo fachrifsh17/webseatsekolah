@@ -7,7 +7,8 @@ use App\Models\ProfilSekolah;
 use App\Http\Resources\ProfilSekolahResource;
 use App\Http\Requests\UpdateProfilSekolahRequest;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\{DB, Log, Storage}; // Tambahkan Storage
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
@@ -51,8 +52,9 @@ class ProfilSekolahController extends Controller
         $this->authorize('update', ProfilSekolah::class);
 
         $validated = $request->validated();
+        // Disesuaikan ke uploads/profil sesuai Resource sebelumnya
+        $targetPath = public_path('uploads/profil');
 
-        // Ambil data kepsek otomatis dari struktur jabatan jika ada
         $kepsekOtomatis = DB::table('struktur_jabatan')
             ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
             ->where('jabatans.slug', 'kepala-sekolah')
@@ -61,25 +63,39 @@ class ProfilSekolahController extends Controller
 
         DB::beginTransaction();
         try {
-            // Cari data profil lama atau buat baru (id 1)
             $profil = ProfilSekolah::find(1) ?? new ProfilSekolah();
 
-            // --- Logika Upload Logo ---
+            // Logika Upload Logo Sekolah
             if ($request->hasFile('logo')) {
-                // Hapus logo lama jika ada file baru dan file lama terdaftar
-                if ($profil->logo && Storage::disk('public')->exists($profil->logo)) {
-                    Storage::disk('public')->delete($profil->logo);
+                if ($profil->logo) {
+                    $oldPath = $targetPath . '/' . str_replace('uploads/profil/', '', $profil->logo);
+                    if (file_exists($oldPath)) @unlink($oldPath);
                 }
-                
-                // Simpan file baru ke folder public/logos
-                $path = $request->file('logo')->store('logos', 'public');
-                $validated['logo'] = $path;
+
+                $file = $request->file('logo');
+                $fileName = 'logo_' . time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['logo'] = $fileName;
+            }
+
+            // Logika Upload Logo Provinsi
+            if ($request->hasFile('logo_provinsi')) {
+                if ($profil->logo_provinsi) {
+                    $oldProvPath = $targetPath . '/' . str_replace('uploads/profil/', '', $profil->logo_provinsi);
+                    if (file_exists($oldProvPath)) @unlink($oldProvPath);
+                }
+
+                $fileProv = $request->file('logo_provinsi');
+                $fileNameProv = 'prov_' . time() . '_' . $fileProv->getClientOriginalName();
+                $fileProv->move($targetPath, $fileNameProv);
+                $validated['logo_provinsi'] = $fileNameProv;
             }
 
             $profil->fill([
                 'nama_sekolah'    => $validated['nama_sekolah'] ?? $profil->nama_sekolah,
-                'cadis'           => $validated['cadis'] ?? $profil->cadis, // Tambahan
-                'logo'            => $validated['logo'] ?? $profil->logo,   // Tambahan
+                'cadis'           => $validated['cadis'] ?? $profil->cadis,
+                'logo'            => $validated['logo'] ?? $profil->logo,
+                'logo_provinsi'   => $validated['logo_provinsi'] ?? $profil->logo_provinsi,
                 'npsn'            => $validated['npsn'] ?? $profil->npsn,
                 'akreditasi'      => $validated['akreditasi'] ?? $profil->akreditasi,
                 'visi'            => $validated['visi'] ?? $profil->visi,
@@ -89,7 +105,7 @@ class ProfilSekolahController extends Controller
                 'guru_staf_id'    => $kepsekOtomatis->guru_staf_id ?? ($validated['guru_staf_id'] ?? $profil->guru_staf_id),
             ]);
 
-            $profil->id = 1; // Paksa ID tetap 1
+            $profil->id = 1;
             $profil->save();
 
             DB::commit();
@@ -103,6 +119,14 @@ class ProfilSekolahController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
             Log::error('Admin Update Profil Error: ' . $e->getMessage());
+
+            // Hapus file baru jika gagal simpan ke DB
+            if (isset($validated['logo'])) {
+                @unlink($targetPath . '/' . $validated['logo']);
+            }
+            if (isset($validated['logo_provinsi'])) {
+                @unlink($targetPath . '/' . $validated['logo_provinsi']);
+            }
 
             return response()->json([
                 'success'      => false,
@@ -121,10 +145,20 @@ class ProfilSekolahController extends Controller
         try {
             $profil = ProfilSekolah::find(1);
             if ($profil) {
-                // Opsional: Hapus logo dari storage saat data dihapus
+                $targetPath = public_path('uploads/profil');
+                
+                // Hapus Logo Sekolah
                 if ($profil->logo) {
-                    Storage::disk('public')->delete($profil->logo);
+                    $filePath = $targetPath . '/' . str_replace('uploads/profil/', '', $profil->logo);
+                    if (file_exists($filePath)) @unlink($filePath);
                 }
+
+                // Hapus Logo Provinsi
+                if ($profil->logo_provinsi) {
+                    $fileProvPath = $targetPath . '/' . str_replace('uploads/profil/', '', $profil->logo_provinsi);
+                    if (file_exists($fileProvPath)) @unlink($fileProvPath);
+                }
+
                 $profil->delete();
             }
 

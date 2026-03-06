@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\KetuaJurusan;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Siswa, Kelas, TahunAjaran};
+use App\Models\{Siswa, Kelas, TahunAjaran, Semester};
 use App\Http\Resources\SiswaResource;
 use App\Exports\SiswaExport;
 use Maatwebsite\Excel\Facades\Excel;
@@ -28,32 +28,50 @@ class SiswaController extends Controller
 
         if (!$guru) return [null, null, null];
 
-        $taAktif = TahunAjaran::where('is_active', true)->first();
-        if (!$taAktif) return [$guru, null, null];
+        $semesterAktif = Semester::with('tahunAjaran')
+            ->where('is_active', 1)
+            ->whereHas('tahunAjaran', fn($q) => $q->where('is_active', 1))
+            ->first();
+            
+        if (!$semesterAktif) return [$guru, null, null];
 
         $jurusan = $guru->jurusan; 
 
-        return [$guru, $jurusan, $taAktif];
+        return [$guru, $jurusan, $semesterAktif];
     }
 
-    private function applyFilters(Request $request, $query, $jurusanId, $taId)
+    private function applyFilters(Request $request, $query, $jurusanId, $semesterId)
     {
-        $query->whereHas('riwayatKelas', function ($q) use ($jurusanId, $taId) {
-            $q->where('tahun_ajaran_id', $taId)
+        $isActive = $request->get('is_active', 1);
+
+        $query->where('is_active', $isActive)
+        ->whereHas('riwayatKelas', function ($q) use ($jurusanId, $semesterId) {
+            $q->where('semester_id', $semesterId)
               ->where('is_active', 1)
               ->whereHas('kelas', function($qK) use ($jurusanId) {
-                  $qK->where('jurusan_id', $jurusanId);
+                  $qK->where('jurusan_id', $jurusanId)
+                     ->where('is_active', 1);
               });
         });
 
-        if ($request->filled('kelas_id')) {
-            $query->whereHas('riwayatKelas', function($q) use ($request) {
-                $q->where('kelas_id', $request->kelas_id);
+        if ($request->filled('tingkatan_id')) {
+            $query->whereHas('riwayatKelas', function($q) use ($request, $semesterId) {
+                $q->where('semester_id', $semesterId)
+                  ->where('is_active', 1)
+                  ->whereHas('kelas', function($qK) use ($request) {
+                    $qK->where('tingkatan_id', $request->tingkatan_id)
+                       ->where('is_active', 1);
+                });
             });
         }
 
-        $isActive = $request->get('is_active', 1);
-        $query->where('is_active', $isActive);
+        if ($request->filled('kelas_id')) {
+            $query->whereHas('riwayatKelas', function($q) use ($request, $semesterId) {
+                $q->where('semester_id', $semesterId)
+                  ->where('kelas_id', $request->kelas_id)
+                  ->where('is_active', 1);
+            });
+        }
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -70,7 +88,7 @@ class SiswaController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            [$guru, $jurusan, $taAktif] = $this->getIdentity();
+            [$guru, $jurusan, $semesterAktif] = $this->getIdentity();
 
             if (!$jurusan) {
                 return response()->json([
@@ -79,12 +97,17 @@ class SiswaController extends Controller
                 ], Response::HTTP_FORBIDDEN);
             }
 
-            $query = Siswa::with(['user', 'orangtua', 'riwayatKelas.kelas']);
-            $query = $this->applyFilters($request, $query, $jurusan->id, $taAktif->id);
+            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+
+            $query = Siswa::where('is_active', 1)->with(['user', 'orangtua', 'riwayatKelas' => function($q) use ($semesterId) {
+                $q->where('semester_id', $semesterId)
+                  ->where('is_active', 1)
+                  ->with(['kelas' => fn($qk) => $qk->where('is_active', 1)->with('tingkatan')]);
+            }]);
+
+            $query = $this->applyFilters($request, $query, $jurusan->id, $semesterId);
 
             $perPage = min((int) $request->get('per_page', 20), 100);
-            
-            // Penyesuaian: Menggunakan orderByRaw agar case-insensitive (A-Z)
             $paginatedData = $query->orderByRaw('LOWER(nama_lengkap) ASC')->paginate($perPage);
 
             $transformedData = collect($paginatedData->items())->map(function($siswa) {
@@ -111,15 +134,15 @@ class SiswaController extends Controller
                 'info'    => [
                     'id_jurusan'   => $jurusan->id,
                     'nama_jurusan' => $jurusan->nama_jurusan,
-                    'tahun_aktif'  => $taAktif->nama . " (" . $taAktif->semester . ")"
+                    'tahun_aktif'  => $semesterAktif->tahunAjaran?->nama . " (" . $semesterAktif->nama . ")"
                 ],
                 'data'    => $transformedData,
                 'meta'    => [
-                    'current_page' => $paginatedData->currentPage(),
-                    'last_page'    => $paginatedData->lastPage(),
-                    'per_page'     => $paginatedData->perPage(),
-                    'total'        => $paginatedData->total(),
-                    'has_more'     => $paginatedData->hasMorePages(),
+                    'current_page'  => $paginatedData->currentPage(),
+                    'last_page'     => $paginatedData->lastPage(),
+                    'per_page'      => $paginatedData->perPage(),
+                    'total'         => $paginatedData->total(),
+                    'has_more'      => $paginatedData->hasMorePages(),
                     'next_page_url' => $paginatedData->nextPageUrl(),
                     'prev_page_url' => $paginatedData->previousPageUrl(),
                 ]
@@ -137,7 +160,7 @@ class SiswaController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            [$guru, $jurusan, $taAktif] = $this->getIdentity();
+            [$guru, $jurusan, $semesterAktif] = $this->getIdentity();
 
             if (!$jurusan) {
                 return response()->json([
@@ -146,13 +169,18 @@ class SiswaController extends Controller
                 ], Response::HTTP_FORBIDDEN);
             }
 
-            $siswa = Siswa::with(['user', 'orangtua', 'riwayatKelas' => function($q) use ($taAktif) {
-                $q->where('tahun_ajaran_id', $taAktif->id)->with('kelas');
+            $siswa = Siswa::where('is_active', 1)
+            ->with(['user', 'orangtua', 'riwayatKelas' => function($q) use ($semesterAktif) {
+                $q->where('semester_id', $semesterAktif->id)
+                  ->where('is_active', 1)
+                  ->with(['kelas' => fn($qk) => $qk->where('is_active', 1)->with('tingkatan')]);
             }])
-            ->whereHas('riwayatKelas', function ($q) use ($jurusan, $taAktif) {
-                $q->where('tahun_ajaran_id', $taAktif->id)
+            ->whereHas('riwayatKelas', function ($q) use ($jurusan, $semesterAktif) {
+                $q->where('semester_id', $semesterAktif->id)
+                  ->where('is_active', 1)
                   ->whereHas('kelas', function($qK) use ($jurusan) {
-                      $qK->where('jurusan_id', $jurusan->id);
+                      $qK->where('jurusan_id', $jurusan->id)
+                         ->where('is_active', 1);
                   });
             })
             ->findOrFail($id);
@@ -181,37 +209,41 @@ class SiswaController extends Controller
     public function export(Request $request)
     {
         try {
-            [$guru, $jurusan, $taAktif] = $this->getIdentity();
+            [$guru, $jurusan, $semesterAktif] = $this->getIdentity();
 
             if (!$jurusan) {
                 return response()->json(['success' => false, 'message' => 'Jurusan tidak ditemukan.'], Response::HTTP_FORBIDDEN);
             }
 
-            $query = Siswa::with(['user', 'orangtua', 'riwayatKelas.kelas.jurusan']);
-            $query = $this->applyFilters($request, $query, $jurusan->id, $taAktif->id);
-            
-            // Penyesuaian: Menggunakan orderByRaw agar export juga case-insensitive
+            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+
+            $query = Siswa::where('is_active', 1)->with(['user', 'orangtua', 'riwayatKelas.kelas.jurusan', 'riwayatKelas.kelas.tingkatan']);
+            $query = $this->applyFilters($request, $query, $jurusan->id, $semesterId);
             $query->orderByRaw('LOWER(nama_lengkap) ASC');
 
-            $nameParts = ['DATA_SISWA'];
-            
+            $kelasObj = null;
             if ($request->filled('kelas_id')) {
-                $kelasObj = Kelas::find($request->kelas_id);
-                $identityExport = $kelasObj->nama_kelas ?? 'KELAS';
-                $nameParts[] = strtoupper(str_replace([' ', '-'], '_', $identityExport));
-            } else {
-                $identityExport = "Jurusan " . $jurusan->nama_jurusan;
-                $nameParts[] = strtoupper(str_replace([' ', '-'], '_', $jurusan->nama_jurusan));
+                $kelasObj = Kelas::where('is_active', 1)->with(['tingkatan', 'jurusan'])->find($request->kelas_id);
             }
+
+            $statusStr = $request->get('is_active', 1) ? 'AKTIF' : 'TIDAK_AKTIF';
             
-            if ($taAktif) {
-                $nameParts[] = strtoupper(str_replace(['/', ' '], '_', $taAktif->nama));
-                $nameParts[] = strtoupper($taAktif->semester);
+            $filterInfo = [
+                'jurusan' => $jurusan->nama_jurusan,
+                'tingkat' => $kelasObj ? ($kelasObj->tingkatan->nama_tingkatan ?? '-') : ($request->filled('tingkatan_id') ? DB::table('tingkatan')->where('id', $request->tingkatan_id)->value('nama_tingkatan') : 'SEMUA TINGKATAN'),
+                'kelas'   => $kelasObj ? $kelasObj->nama_kelas : 'SEMUA KELAS',
+                'status'  => $statusStr
+            ];
+
+            $nameParts = ['DATA_SISWA'];
+            $nameParts[] = strtoupper(str_replace([' ', '-'], '_', $kelasObj ? $kelasObj->nama_kelas : $jurusan->nama_jurusan));
+
+            if ($semesterAktif) {
+                $nameParts[] = strtoupper(str_replace(['/', ' '], '_', $semesterAktif->tahunAjaran->nama));
+                $nameParts[] = strtoupper($semesterAktif->nama);
             }
-            
-            $isActive = $request->get('is_active', 1);
-            $nameParts[] = $isActive ? 'AKTIF' : 'TIDAK_AKTIF';
-            
+
+            $nameParts[] = $statusStr;
             $fileName = implode('_', $nameParts) . '.xlsx';
 
             if (ob_get_contents()) ob_end_clean();
@@ -221,8 +253,8 @@ class SiswaController extends Controller
                     $query, 
                     DB::table('profil_sekolah')->first(), 
                     DB::table('data_kontak')->first(), 
-                    $identityExport, 
-                    $request->all()
+                    $kelasObj, 
+                    $filterInfo
                 ), 
                 $fileName
             );

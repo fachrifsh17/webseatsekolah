@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Storage; // Tambahkan ini untuk handle URL logo
 
 class ProfilSekolah extends Model
 {
@@ -14,8 +13,9 @@ class ProfilSekolah extends Model
 
     protected $fillable = [
         'nama_sekolah',
-        'cadis',           // Tambahkan ini
-        'logo',            // Tambahkan ini
+        'cadis',
+        'logo',
+        'logo_provinsi',
         'sejarah',
         'visi',
         'misi',
@@ -31,11 +31,20 @@ class ProfilSekolah extends Model
         'akreditasi'   => 'string',
     ];
 
-    // --- Accessor untuk URL Logo (Agar dapet link lengkap di Resource) ---
+    protected $appends = ['logo_url', 'logo_provinsi_url'];
+
     public function getLogoUrlAttribute(): ?string
     {
         if ($this->logo) {
             return url('storage/' . $this->logo);
+        }
+        return null;
+    }
+
+    public function getLogoProvinsiUrlAttribute(): ?string
+    {
+        if ($this->logo_provinsi) {
+            return url('storage/' . $this->logo_provinsi);
         }
         return null;
     }

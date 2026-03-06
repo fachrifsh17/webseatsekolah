@@ -13,7 +13,6 @@ class SekolahSetting extends Model
 
     protected $fillable = [
         'tagline',
-        'logo',
         'pesan_selamat_datang',
         'buku_poin_path',
         'no_wa_kesiswaan',

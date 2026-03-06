@@ -3,11 +3,12 @@
 namespace App\Http\Controllers\KetuaJurusan;
 
 use App\Http\Controllers\Controller;
-use App\Models\{GuruMapel, JamSekolah, TahunAjaran, GuruStaf, MataPelajaran, Kelas, ProfilSekolah, DataKontak};
+use App\Models\{GuruMapel, JamSekolah, TahunAjaran, GuruStaf, MataPelajaran, Kelas, ProfilSekolah, DataKontak, Semester};
 use App\Http\Resources\GuruMapelResource;
 use App\Exports\GuruMapelExport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Log, Auth};
 use Illuminate\Support\Str;
 use Throwable;
@@ -33,13 +34,13 @@ class GuruMapelController extends Controller
     private function applyFilters(Request $request)
     {
         $jurusanId = $this->getJurusanId();
-        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
-        $tahunAjaranId = $request->get('tahun_ajaran_id', $tahunAktif?->id);
+        $semesterAktif = Semester::where('is_active', 1)->first();
+        $semesterId = $request->get('semester_id', $semesterAktif?->id);
 
-        $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'tahunAjaran', 'jamMulai', 'jamSelesai'])
-            ->whereHas('kelas', function ($q) use ($jurusanId, $tahunAjaranId) {
+        $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'semester.tahunAjaran', 'jamMulai', 'jamSelesai'])
+            ->whereHas('kelas', function ($q) use ($jurusanId, $semesterId) {
                 $q->where('jurusan_id', $jurusanId)
-                  ->where('tahun_ajaran_id', $tahunAjaranId)
+                  ->where('semester_id', $semesterId)
                   ->where('is_active', 1);
             });
 
@@ -53,20 +54,20 @@ class GuruMapelController extends Controller
             });
         }
 
-        $query->when($request->tipe_mapel, function ($q, $tipe) {
-            return $q->whereHas('mapel', fn($m) => $m->where('tipe_mapel', $tipe));
+        $query->when($request->kategori_mapel, function ($q, $kategori) {
+            return $q->whereHas('mapel', fn($m) => $m->where('kategori_mapel', $kategori));
         });
 
         if ($request->filled('q')) {
             $search = $request->get('q');
             $query->where(function ($q) use ($search) {
                 $q->whereHas('guru', fn($g) => $g->where('nama', 'LIKE', "%{$search}%")->orWhere('nip', 'LIKE', "%{$search}%"))
-                  ->orWhereHas('mapel', fn($m) => $m->where('nama_mapel', 'LIKE', "%{$search}%"))
+                  ->orWhereHas('mapel', fn($m) => $m->where('nama_mapel', 'LIKE', "%{$search}%")->orWhere('kategori_mapel', 'LIKE', "%{$search}%"))
                   ->orWhereHas('kelas', fn($k) => $k->where('nama_kelas', 'LIKE', "%{$search}%"));
             });
         }
 
-        $query->when($tahunAjaranId, fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId))
+        $query->when($semesterId, fn($q) => $q->where('semester_id', $semesterId))
               ->when($request->guru_staf_id, fn($q, $id) => $q->where('guru_staf_id', $id))
               ->when($request->mata_pelajaran_id, fn($q, $id) => $q->where('mata_pelajaran_id', $id))
               ->when($request->kelas_id, fn($q, $id) => $q->where('kelas_id', $id))
@@ -107,7 +108,7 @@ class GuruMapelController extends Controller
         try {
             $query = $this->applyFilters($request);
             $namaJurusan = $this->getNamaJurusan();
-            $tahunAktif = TahunAjaran::where('is_active', 1)->first();
+            $semesterAktif = Semester::with('tahunAjaran')->where('is_active', 1)->first();
             
             $nameParts = ['JADWAL_GURU_MAPEL'];
             $kriteria = ["JURUSAN " . strtoupper($namaJurusan)];
@@ -120,16 +121,19 @@ class GuruMapelController extends Controller
                 'guru'              => 'Semua Guru',
                 'mapel'             => 'Semua Mapel',
                 'kelas'             => 'Semua Kelas',
-                'tipe_mapel'        => $request->get('tipe_mapel', 'Semua Tipe'),
+                'kategori_mapel'    => $request->get('kategori_mapel', 'Semua Kategori'),
                 'status_mapel'      => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Aktif',
                 'identitas_laporan' => '' 
             ];
 
-            $tahun = $request->filled('tahun_ajaran_id') ? TahunAjaran::find($request->tahun_ajaran_id) : $tahunAktif;
-            if ($tahun) {
-                $filters['tahun_ajaran'] = $tahun->nama;
-                $filters['semester'] = strtoupper($tahun->semester); 
-                $nameParts[] = str_replace(['/', ' '], '_', $tahun->nama) . '_' . strtoupper($tahun->semester);
+            $semester = $request->filled('semester_id') 
+                ? Semester::with('tahunAjaran')->find($request->semester_id) 
+                : $semesterAktif;
+
+            if ($semester) {
+                $filters['tahun_ajaran'] = $semester->tahunAjaran->nama ?? 'Semua';
+                $filters['semester'] = strtoupper($semester->nama); 
+                $nameParts[] = str_replace(['/', ' '], '_', $filters['tahun_ajaran']) . '_' . strtoupper($semester->nama);
             }
 
             if ($request->filled('kelas_id')) {

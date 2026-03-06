@@ -7,7 +7,6 @@ use App\Models\Kurikulum;
 use App\Http\Resources\KurikulumResource;
 use App\Http\Requests\StoreKurikulumRequest;
 use App\Http\Requests\UpdateKurikulumRequest;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
@@ -70,6 +69,7 @@ class KurikulumController extends Controller
     public function store(StoreKurikulumRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/kurikulum');
 
         if (Kurikulum::where('judul', $validated['judul'])->exists()) {
             return response()->json([
@@ -78,12 +78,15 @@ class KurikulumController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
-        if ($request->hasFile('file_jadwal')) {
-            $validated['file_jadwal_path'] = $request->file('file_jadwal')->store('uploads/kurikulum', 'public');
-        }
-
         DB::beginTransaction();
         try {
+            if ($request->hasFile('file_jadwal')) {
+                $file = $request->file('file_jadwal');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['file_jadwal_path'] = $fileName;
+            }
+
             Kurikulum::query()->update(['is_active' => 0]);
             $validated['is_active'] = 1;
 
@@ -98,7 +101,8 @@ class KurikulumController extends Controller
         } catch (Throwable $e) {
             DB::rollBack();
             if (!empty($validated['file_jadwal_path'])) {
-                Storage::disk('public')->delete($validated['file_jadwal_path']);
+                $filePath = $targetPath . '/' . $validated['file_jadwal_path'];
+                if (file_exists($filePath)) unlink($filePath);
             }
             Log::error('Kurikulum Store Error: ' . $e->getMessage());
             return response()->json([
@@ -119,6 +123,7 @@ class KurikulumController extends Controller
     public function update(UpdateKurikulumRequest $request, Kurikulum $kurikulum): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/kurikulum');
         $oldPath = $kurikulum->file_jadwal_path;
 
         if (isset($validated['judul']) && $validated['judul'] !== $kurikulum->judul) {
@@ -130,12 +135,15 @@ class KurikulumController extends Controller
             }
         }
 
-        if ($request->hasFile('file_jadwal')) {
-            $validated['file_jadwal_path'] = $request->file('file_jadwal')->store('uploads/kurikulum', 'public');
-        }
-
         DB::beginTransaction();
         try {
+            if ($request->hasFile('file_jadwal')) {
+                $file = $request->file('file_jadwal');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['file_jadwal_path'] = $fileName;
+            }
+
             if (isset($validated['is_active']) && $validated['is_active'] == 1) {
                 Kurikulum::where('id', '!=', $kurikulum->id)->update(['is_active' => 0]);
             }
@@ -144,7 +152,8 @@ class KurikulumController extends Controller
             DB::commit();
 
             if ($request->hasFile('file_jadwal') && $oldPath) {
-                Storage::disk('public')->delete($oldPath);
+                $fullOldPath = $targetPath . '/' . str_replace('uploads/kurikulum/', '', $oldPath);
+                if (file_exists($fullOldPath)) unlink($fullOldPath);
             }
 
             return response()->json([
@@ -154,6 +163,10 @@ class KurikulumController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
+            if (isset($validated['file_jadwal_path']) && $validated['file_jadwal_path'] !== $oldPath) {
+                $tempPath = $targetPath . '/' . $validated['file_jadwal_path'];
+                if (file_exists($tempPath)) unlink($tempPath);
+            }
             Log::error('Kurikulum Update Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false, 
@@ -171,12 +184,17 @@ class KurikulumController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $filePath = $kurikulum->file_jadwal_path;
+        $oldPath = $kurikulum->file_jadwal_path;
         DB::beginTransaction();
         try {
             $kurikulum->delete();
             DB::commit();
-            if ($filePath) Storage::disk('public')->delete($filePath);
+            
+            if ($oldPath) {
+                $filePath = public_path('uploads/kurikulum/') . str_replace('uploads/kurikulum/', '', $oldPath);
+                if (file_exists($filePath)) unlink($filePath);
+            }
+            
             return response()->json([
                 'success' => true, 
                 'message' => 'Kurikulum berhasil dihapus.'

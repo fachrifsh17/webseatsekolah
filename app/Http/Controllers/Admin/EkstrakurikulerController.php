@@ -7,7 +7,6 @@ use App\Models\Ekstrakurikuler;
 use App\Http\Resources\EkstrakurikulerResource;
 use App\Http\Requests\StoreEkstrakurikulerRequest;
 use App\Http\Requests\UpdateEkstrakurikulerRequest;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
@@ -77,6 +76,7 @@ class EkstrakurikulerController extends Controller
     public function store(StoreEkstrakurikulerRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/ekskul');
 
         $nameConflict = Ekstrakurikuler::where('nama_ekskul', $validated['nama_ekskul'])->exists();
 
@@ -108,7 +108,10 @@ class EkstrakurikulerController extends Controller
         }
 
         if ($request->hasFile('foto')) {
-            $validated['foto'] = $request->file('foto')->store('uploads/ekskul', 'public');
+            $file = $request->file('foto');
+            $fileName = time() . '_' . $file->getClientOriginalName();
+            $file->move($targetPath, $fileName);
+            $validated['foto'] = $fileName;
         }
 
         try {
@@ -120,7 +123,10 @@ class EkstrakurikulerController extends Controller
                 'data'    => new EkstrakurikulerResource($ekskul->load('pembina'))
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            if (!empty($validated['foto'])) Storage::disk('public')->delete($validated['foto']);
+            if (!empty($validated['foto'])) {
+                $filePath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($filePath)) unlink($filePath);
+            }
             Log::error('Failed to create ekstrakurikuler', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
@@ -134,6 +140,7 @@ class EkstrakurikulerController extends Controller
     {
         $validated = $request->validated();
         $oldFoto = $ekstrakurikuler->foto;
+        $targetPath = public_path('uploads/ekskul');
 
         if (isset($validated['nama_ekskul'])) {
             $nameConflict = Ekstrakurikuler::where('nama_ekskul', $validated['nama_ekskul'])
@@ -175,11 +182,17 @@ class EkstrakurikulerController extends Controller
         }
 
         if ($request->hasFile('foto')) {
-            $validated['foto'] = $request->file('foto')->store('uploads/ekskul', 'public');
+            $file = $request->file('foto');
+            $fileName = time() . '_' . $file->getClientOriginalName();
+            $file->move($targetPath, $fileName);
+            $validated['foto'] = $fileName;
         }
 
         if ($request->filled('foto') && $request->foto === 'null') {
-            if ($oldFoto) Storage::disk('public')->delete($oldFoto);
+            if ($oldFoto) {
+                $oldPath = $targetPath . '/' . str_replace('uploads/ekskul/', '', $oldFoto);
+                if (file_exists($oldPath)) unlink($oldPath);
+            }
             $validated['foto'] = null;
         }
 
@@ -188,7 +201,8 @@ class EkstrakurikulerController extends Controller
             $ekstrakurikuler->refresh();
 
             if (!empty($validated['foto']) && $oldFoto && $validated['foto'] !== $oldFoto) {
-                Storage::disk('public')->delete($oldFoto);
+                $oldPath = $targetPath . '/' . str_replace('uploads/ekskul/', '', $oldFoto);
+                if (file_exists($oldPath)) unlink($oldPath);
             }
 
             return response()->json([
@@ -198,7 +212,8 @@ class EkstrakurikulerController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             if (!empty($validated['foto']) && $validated['foto'] !== $oldFoto) {
-                Storage::disk('public')->delete($validated['foto']);
+                $tempPath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($tempPath)) unlink($tempPath);
             }
             Log::error('Failed to update ekstrakurikuler', ['error' => $e->getMessage()]);
             return response()->json([
@@ -212,9 +227,13 @@ class EkstrakurikulerController extends Controller
     public function destroy(Ekstrakurikuler $ekstrakurikuler): JsonResponse
     {
         $oldFoto = $ekstrakurikuler->foto;
+        $targetPath = public_path('uploads/ekskul');
         try {
             DB::transaction(fn() => $ekstrakurikuler->delete());
-            if ($oldFoto) Storage::disk('public')->delete($oldFoto);
+            if ($oldFoto) {
+                $oldPath = $targetPath . '/' . str_replace('uploads/ekskul/', '', $oldFoto);
+                if (file_exists($oldPath)) unlink($oldPath);
+            }
 
             return response()->json([
                 'success' => true,

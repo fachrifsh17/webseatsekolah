@@ -15,7 +15,6 @@ class UpdateSekolahSettingRequest extends FormRequest
     {
         return [
             'tagline'              => ['nullable', 'string', 'max:255'],
-            'logo'                 => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:2048'],
             'pesan_selamat_datang' => ['nullable', 'string'],
             'buku_poin_path'       => ['nullable', 'file', 'mimes:pdf', 'max:5120'],
             'no_wa_kesiswaan'      => ['nullable', 'string', 'max:20', 'regex:/^[0-9+\s-]+$/'],
@@ -27,10 +26,6 @@ class UpdateSekolahSettingRequest extends FormRequest
         return [
             'tagline.string' => 'Tagline harus berupa teks.',
             'tagline.max'    => 'Tagline tidak boleh lebih dari 255 karakter.',
-
-            'logo.file'      => 'Logo harus berupa file.',
-            'logo.mimes'     => 'Logo harus berupa gambar JPG atau PNG.',
-            'logo.max'       => 'Ukuran logo maksimal 2MB.',
 
             'pesan_selamat_datang.string' => 'Pesan selamat datang harus berupa teks.',
 
@@ -48,7 +43,6 @@ class UpdateSekolahSettingRequest extends FormRequest
     {
         return [
             'tagline'              => 'Tagline sekolah',
-            'logo'                 => 'Logo sekolah',
             'pesan_selamat_datang' => 'Pesan selamat datang',
             'buku_poin_path'       => 'Buku poin',
             'no_wa_kesiswaan'      => 'Nomor WhatsApp kesiswaan',

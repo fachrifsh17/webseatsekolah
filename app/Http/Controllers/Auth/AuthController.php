@@ -27,21 +27,31 @@ class AuthController extends Controller
         $user->load([
             'roles',
             'guruStaf.strukturJabatan.jabatan',
-            'guruStaf.kelas',
+            'guruStaf.kelas' => function($q) {
+                $q->wherePivot('is_active', 1);
+            },
             'siswa',
             'orangtua'
         ]);
 
         $fotoPath = null;
         if ($user->guruStaf && $user->guruStaf->foto) {
-            $fotoPath = $user->guruStaf->foto;
+            // PERBAIKAN: Pastikan path diawali folder guru/
+            $rawFoto = $user->guruStaf->foto;
+            $fotoPath = str_starts_with($rawFoto, 'guru/') ? $rawFoto : 'guru/' . $rawFoto;
         } elseif ($user->siswa && $user->siswa->foto) {
-            $fotoPath = $user->siswa->foto;
+            // PERBAIKAN: Pastikan path diawali folder siswa/
+            $rawFoto = $user->siswa->foto;
+            $fotoPath = str_starts_with($rawFoto, 'siswa/') ? $rawFoto : 'siswa/' . $rawFoto;
         }
 
-        $user->foto_url = $fotoPath 
-            ? asset('storage/' . $fotoPath) 
-            : asset('images/default-avatar.png');
+        // Membersihkan jika ada double 'uploads/' dari database
+        if ($fotoPath) {
+            $fotoPath = str_replace('uploads/', '', $fotoPath);
+            $user->foto_url = asset('uploads/' . $fotoPath);
+        } else {
+            $user->foto_url = asset('images/default-avatar.png');
+        }
 
         return response()->json([
             'success' => true,

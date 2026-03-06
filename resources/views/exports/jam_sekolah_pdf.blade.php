@@ -3,11 +3,10 @@
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <style>
-        /* CSS tetap sesuai permintaan Anda */
         @page { 
             size: a4 landscape; 
             margin: 0.5cm 0.8cm; 
-        }
+        } 
         
         body { 
             font-family: 'Helvetica', Arial, sans-serif; 
@@ -26,7 +25,14 @@
             border-bottom: 3px double #000; 
             margin-bottom: 12px; 
             padding-bottom: 5px;
+            width: 100%;
         }
+
+        /* Container Kop dengan Logo */
+        .kop-table { width: 100%; border: none !important; }
+        .kop-table td { border: none !important; padding: 0; vertical-align: middle; }
+        .logo-prov { width: 65px; height: auto; }
+
         .kop .instansi { font-size: 10pt; font-weight: bold; margin: 0; line-height: 1.2; }
         .kop .sekolah { font-size: 14pt; font-weight: bold; margin: 2px 0; line-height: 1.2; }
         .kop .alamat { font-size: 8pt; margin: 1px 0; font-weight: normal; }
@@ -79,17 +85,32 @@
     </style>
 </head>
 <body>
-    <div class="kop text-center">
-        <div class="instansi">PEMERINTAH PROVINSI {{ strtoupper($kontak->provinsi ?? 'JAWA BARAT') }}</div>
-        <div class="instansi">DINAS PENDIDIKAN</div>
-        <div class="instansi">{{ strtoupper($profil->cadis ?? 'CABANG DINAS PENDIDIKAN') }}</div>
-        <div class="sekolah">{{ strtoupper($profil->nama_sekolah ?? 'NAMA SEKOLAH') }}</div>
-        
-        <div class="alamat">{{ $alamat_lengkap }}</div>
-        
-        <div class="alamat">
-            Telp: {{ $kontak->telepon ?? '-' }} | Email: {{ $kontak->email_resmi ?? '-' }} | NPSN: {{ $profil->npsn ?? '-' }}
-        </div>
+    <div class="kop">
+        <table class="kop-table">
+            <tr>
+                <td width="70">
+                    @php
+                        $cleanLogoProv = str_replace(['uploads/profil/', 'public/', 'storage/'], '', $profil->logo_provinsi);
+                        $pathLogoProv = public_path('uploads/profil/' . $cleanLogoProv);
+                    @endphp
+                    @if($profil->logo_provinsi && file_exists($pathLogoProv))
+                        <img src="{{ $pathLogoProv }}" class="logo-prov">
+                    @else
+                        <div style="width: 65px;"></div>
+                    @endif
+                </td>
+                <td class="text-center" style="padding-right: 70px;">
+                    <div class="instansi">PEMERINTAH PROVINSI {{ strtoupper($kontak->provinsi ?? 'JAWA BARAT') }}</div>
+                    <div class="instansi">DINAS PENDIDIKAN</div>
+                    <div class="instansi">{{ strtoupper($profil->cadis ?? 'CABANG DINAS PENDIDIKAN') }}</div>
+                    <div class="sekolah">{{ strtoupper($profil->nama_sekolah ?? 'NAMA SEKOLAH') }}</div>
+                    <div class="alamat">{{ $alamat_lengkap }}</div>
+                    <div class="alamat">
+                        Telp: {{ $kontak->telepon ?? '-' }} | Email: {{ $kontak->email_resmi ?? '-' }} | NPSN: {{ $profil->npsn ?? '-' }}
+                    </div>
+                </td>
+            </tr>
+        </table>
     </div>
 
     <div class="judul text-center">
@@ -164,8 +185,15 @@
                     Mengetahui,<br>
                     Waka Kurikulum
                     <div class="spacer-ttd">
-                        @if($waka && isset($waka->file_ttd) && $waka->file_ttd)
-                            <img src="{{ public_path('storage/' . $waka->file_ttd) }}" style="max-height: 70px; max-width: 100%; position: absolute; left: 50%; transform: translateX(-50%); top: -5px;">
+                        @php
+                            $pathWaka = null;
+                            if($waka && isset($waka->file_ttd) && $waka->file_ttd) {
+                                $cleanWaka = str_replace(['storage/', 'public/'], '', $waka->file_ttd);
+                                $pathWaka = storage_path('app/' . $cleanWaka);
+                            }
+                        @endphp
+                        @if($pathWaka && file_exists($pathWaka))
+                            <img src="{{ $pathWaka }}" style="max-height: 70px; max-width: 100%; position: absolute; left: 50%; transform: translateX(-50%); top: -5px;">
                         @endif
                     </div>
                     <div class="text-bold underline">( {{ strtoupper($waka->nama ?? '____________________') }} )</div>
@@ -176,8 +204,15 @@
                     Menyetujui,<br>
                     Kepala Sekolah
                     <div class="spacer-ttd">
-                        @if($ks && isset($ks->file_ttd) && $ks->file_ttd)
-                            <img src="{{ public_path('storage/' . $ks->file_ttd) }}" style="max-height: 70px; max-width: 100%; position: absolute; left: 50%; transform: translateX(-50%); top: -5px;">
+                        @php
+                            $pathKs = null;
+                            if($ks && isset($ks->file_ttd) && $ks->file_ttd) {
+                                $cleanKs = str_replace(['storage/', 'public/'], '', $ks->file_ttd);
+                                $pathKs = storage_path('app/' . $cleanKs);
+                            }
+                        @endphp
+                        @if($pathKs && file_exists($pathKs))
+                            <img src="{{ $pathKs }}" style="max-height: 70px; max-width: 100%; position: absolute; left: 50%; transform: translateX(-50%); top: -5px;">
                         @endif
                     </div>
                     <div class="text-bold underline">( {{ strtoupper($ks->nama ?? '____________________') }} )</div>

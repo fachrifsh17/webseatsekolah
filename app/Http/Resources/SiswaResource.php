@@ -4,7 +4,6 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 class SiswaResource extends JsonResource
 {
@@ -32,8 +31,6 @@ class SiswaResource extends JsonResource
                 'id'   => $dataKelas->id,
                 'nama' => $dataKelas->nama_kelas,
                 
-                // KUNCI PERUBAHAN DI SINI:
-                // Menggunakan $this->when() agar field 'jurusan' hilang total jika relasi tidak di-load
                 'jurusan' => $this->when($dataKelas->relationLoaded('jurusan') && $dataKelas->jurusan, function() use ($dataKelas) {
                     return [
                         'id'   => $dataKelas->jurusan->id,
@@ -52,7 +49,12 @@ class SiswaResource extends JsonResource
             })->values() : [],
 
             'foto'          => $this->foto,
-            'foto_url'      => $this->foto ? url(Storage::url($this->foto)) : null,
+            
+            // Perubahan: Menyesuaikan path ke folder uploads/siswa/foto di public
+            'foto_url'      => $this->foto 
+                               ? asset('uploads/siswa/foto/' . str_replace('uploads/siswa/foto/', '', $this->foto)) 
+                               : asset('images/default-avatar.png'),
+                               
             'no_telp_siswa' => $this->no_telp_siswa,
             'alamat'        => $this->alamat,
             'is_active'     => $this->is_active !== null ? (int) $this->is_active : null,

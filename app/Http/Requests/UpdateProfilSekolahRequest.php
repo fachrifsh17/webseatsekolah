@@ -20,13 +20,13 @@ class UpdateProfilSekolahRequest extends FormRequest
             'nama_sekolah'    => ['nullable', 'string', 'max:150'],
             'cadis'           => ['nullable', 'string', 'max:100'],
             'logo'            => ['nullable', 'image', 'mimes:jpeg,png,jpg', 'max:2048'],
+            'logo_provinsi'   => ['nullable', 'image', 'mimes:jpeg,png,jpg', 'max:2048'], // Tambahan baru
             'sejarah'         => ['nullable', 'string'],
             'visi'            => ['nullable', 'string'],
             'misi'            => ['nullable', 'string'],
             'npsn'            => ['bail', 'nullable', 'string', 'max:20'],
             'akreditasi'      => ['bail', 'nullable', 'string', 'max:10'],
             'sambutan_kepsek' => ['nullable', 'string'],
-            // guru_staf_id dihapus karena otomatis dari struktur jabatan
         ];
     }
 
@@ -37,9 +37,15 @@ class UpdateProfilSekolahRequest extends FormRequest
             'nama_sekolah.max'        => 'Nama sekolah maksimal 150 karakter.',
             'cadis.string'            => 'Cabang dinas harus berupa teks.',
             'cadis.max'               => 'Cabang dinas maksimal 100 karakter.',
-            'logo.image'              => 'File harus berupa gambar.',
-            'logo.mimes'              => 'Format logo harus jpeg, png, atau jpg.',
-            'logo.max'                => 'Ukuran logo maksimal 2MB.',
+            
+            'logo.image'              => 'File logo sekolah harus berupa gambar.',
+            'logo.mimes'              => 'Format logo sekolah harus jpeg, png, atau jpg.',
+            'logo.max'                => 'Ukuran logo sekolah maksimal 2MB.',
+
+            'logo_provinsi.image'     => 'File logo provinsi harus berupa gambar.',
+            'logo_provinsi.mimes'     => 'Format logo provinsi harus jpeg, png, atau jpg.',
+            'logo_provinsi.max'       => 'Ukuran logo provinsi maksimal 2MB.',
+
             'sejarah.string'          => 'Sejarah harus berupa teks.',
             'visi.string'             => 'Visi harus berupa teks.',
             'misi.string'             => 'Misi harus berupa teks.',
@@ -57,6 +63,7 @@ class UpdateProfilSekolahRequest extends FormRequest
             'nama_sekolah'    => 'Nama sekolah',
             'cadis'           => 'Cabang dinas',
             'logo'            => 'Logo sekolah',
+            'logo_provinsi'   => 'Logo provinsi', // Tambahan baru
             'sejarah'         => 'Sejarah sekolah',
             'visi'            => 'Visi sekolah',
             'misi'            => 'Misi sekolah',

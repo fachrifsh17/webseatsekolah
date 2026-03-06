@@ -3,7 +3,6 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 
 class BeritaResource extends JsonResource
@@ -22,7 +21,11 @@ class BeritaResource extends JsonResource
             // Jika Admin, kirim path asli untuk input form. 
             // Jika Publik, kirim URL lengkap untuk tampilan.
             'foto' => $this->foto, 
-            'foto_url' => $this->foto ? asset('storage/' . $this->foto) : null,
+            
+            // Perubahan: Menyesuaikan path ke folder uploads/berita di public
+            'foto_url' => $this->foto 
+                          ? asset('uploads/berita/' . str_replace('uploads/berita/', '', $this->foto)) 
+                          : null,
             
             // Data tambahan yang biasanya hanya dibutuhkan Admin
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),

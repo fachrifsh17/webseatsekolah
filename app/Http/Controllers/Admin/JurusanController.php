@@ -7,7 +7,6 @@ use App\Models\Jurusan;
 use App\Http\Resources\JurusanResource;
 use App\Http\Requests\StoreJurusanRequest;
 use App\Http\Requests\UpdateJurusanRequest;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
@@ -77,6 +76,7 @@ class JurusanController extends Controller
     public function store(StoreJurusanRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/jurusan');
 
         if (Jurusan::where('nama_jurusan', $validated['nama_jurusan'])->exists()) {
             return response()->json([
@@ -85,11 +85,14 @@ class JurusanController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
-        if ($request->hasFile('foto')) {
-            $validated['foto'] = $request->file('foto')->store('uploads/jurusan', 'public');
-        }
-
         try {
+            if ($request->hasFile('foto')) {
+                $file = $request->file('foto');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['foto'] = $fileName;
+            }
+
             $jurusan = DB::transaction(fn() => Jurusan::create($validated));
             $jurusan->refresh();
 
@@ -100,8 +103,9 @@ class JurusanController extends Controller
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             Log::error('Failed to create jurusan', ['payload' => $validated, 'error' => $e->getMessage()]);
-            if (!empty($validated['foto'] ?? null)) {
-                Storage::disk('public')->delete($validated['foto']);
+            if (!empty($validated['foto'])) {
+                $filePath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($filePath)) unlink($filePath);
             }
             return response()->json([
                 'success' => false,
@@ -114,6 +118,8 @@ class JurusanController extends Controller
     public function update(UpdateJurusanRequest $request, Jurusan $jurusan): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/jurusan');
+        $oldFoto = $jurusan->foto;
 
         if (!empty($validated['nama_jurusan'])) {
             $exists = Jurusan::where('nama_jurusan', $validated['nama_jurusan'])
@@ -128,17 +134,19 @@ class JurusanController extends Controller
             }
         }
 
-        if ($request->hasFile('foto')) {
-            $newPath = $request->file('foto')->store('uploads/jurusan', 'public');
-            if ($newPath) {
-                if ($jurusan->foto) {
-                    Storage::disk('public')->delete($jurusan->foto);
-                }
-                $validated['foto'] = $newPath;
-            }
-        }
-
         try {
+            if ($request->hasFile('foto')) {
+                if ($oldFoto) {
+                    $oldPath = $targetPath . '/' . str_replace('uploads/jurusan/', '', $oldFoto);
+                    if (file_exists($oldPath)) unlink($oldPath);
+                }
+
+                $file = $request->file('foto');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['foto'] = $fileName;
+            }
+
             DB::transaction(fn() => $jurusan->update($validated));
             $jurusan->refresh();
 
@@ -149,8 +157,9 @@ class JurusanController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Failed to update jurusan', ['jurusan_id' => (string) $jurusan->id, 'payload' => $validated, 'error' => $e->getMessage()]);
-            if (!empty($validated['foto'] ?? null) && ($validated['foto'] !== $jurusan->foto)) {
-                Storage::disk('public')->delete($validated['foto']);
+            if (!empty($validated['foto']) && ($validated['foto'] !== $oldFoto)) {
+                $tempPath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($tempPath)) unlink($tempPath);
             }
             return response()->json([
                 'success' => false,
@@ -165,7 +174,8 @@ class JurusanController extends Controller
         try {
             DB::transaction(function () use ($jurusan) {
                 if ($jurusan->foto) {
-                    Storage::disk('public')->delete($jurusan->foto);
+                    $filePath = public_path('uploads/jurusan/') . str_replace('uploads/jurusan/', '', $jurusan->foto);
+                    if (file_exists($filePath)) unlink($filePath);
                 }
                 $jurusan->delete();
             });

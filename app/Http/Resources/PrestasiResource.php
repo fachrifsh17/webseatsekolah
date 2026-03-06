@@ -15,10 +15,9 @@ class PrestasiResource extends JsonResource
             'tingkat' => $this->tingkat,
             'kategori' => $this->kategori,
             'foto_url' => $this->foto 
-                        ? asset('storage/' . $this->foto) 
+                        ? asset('uploads/prestasi/' . str_replace('uploads/prestasi/', '', $this->foto)) 
                         : null,
             
-            // Format: 2026-02-14 (Tanpa jam dan detik)
             'created_at' => $this->created_at ? $this->created_at->format('Y-m-d') : null,
             'updated_at' => $this->updated_at ? $this->updated_at->format('Y-m-d') : null,
         ];

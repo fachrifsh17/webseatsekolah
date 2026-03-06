@@ -63,10 +63,7 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
             ->get();
     }
 
-    public function startCell(): string
-    {
-        return 'A14';
-    }
+    public function startCell(): string { return 'A14'; }
 
     public function query()
     {
@@ -106,9 +103,7 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
 
     public function map($siswa): array
     {
-        if (in_array($siswa->id, $this->processedSiswa)) {
-            return [];
-        }
+        if (in_array($siswa->id, $this->processedSiswa)) { return []; }
         $this->processedSiswa[] = $siswa->id;
 
         $this->rowNumber++;
@@ -127,9 +122,7 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
             ->whereMonth('presensi.tanggal', $this->month)
             ->whereYear('presensi.tanggal', $this->year);
 
-        if ($this->guruId) {
-            $presensiQuery->where('presensi.guru_id', $this->guruId);
-        }
+        if ($this->guruId) { $presensiQuery->where('presensi.guru_id', $this->guruId); }
 
         $presensiBulanIni = $presensiQuery->select('presensi.tanggal', 'presensi_detail.status')->get();
 
@@ -154,7 +147,6 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 }
             }
         }
-
         return [array_merge($row, [$rekap['H'], $rekap['S'], $rekap['I'], $rekap['A'], ''])];
     }
 
@@ -199,9 +191,7 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 $lastCol = $sheet->getHighestColumn();
                 $lastRow = $sheet->getHighestRow();
 
-                foreach (['A', 'B', 'C', 'D', 'E'] as $col) {
-                    $sheet->mergeCells("{$col}14:{$col}15");
-                }
+                foreach (['A', 'B', 'C', 'D', 'E'] as $col) { $sheet->mergeCells("{$col}14:{$col}15"); }
 
                 $rekapStartColNum = 5 + $this->daysInMonth + 1;
                 $rekapStartCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($rekapStartColNum);
@@ -218,32 +208,24 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 $desaKec = "Desa " . ($this->kontak->desa_kelurahan ?? '-') . " Kec. " . ($this->kontak->kecamatan ?? '-');
                 $kotaKab = ($this->kontak->kabupaten_kota ?? 'KOTA');
 
-                $sheet->mergeCells("A1:{$lastCol}1");
-                $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$prov}");
-                $sheet->mergeCells("A2:{$lastCol}2");
-                $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                $sheet->mergeCells("A3:{$lastCol}3");
-                $sheet->setCellValue('A3', "{$cabdin}");
-                $sheet->mergeCells("A4:{$lastCol}4");
-                $sheet->setCellValue('A4', $namaSekolah);
-                $sheet->mergeCells("A5:{$lastCol}5");
-                $sheet->setCellValue('A5', "{$alamat}, {$desaKec}, {$kotaKab}");
-                $sheet->mergeCells("A6:{$lastCol}6");
-                $sheet->setCellValue('A6', "Telp: " . ($this->kontak->telepon ?? '-') . " | Email: " . ($this->kontak->email_resmi ?? '-') . " | NPSN: " . ($this->profil->npsn ?? '-'));
+                $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$prov}");
+                $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
+                $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', "{$cabdin}");
+                $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', $namaSekolah);
+                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', "{$alamat}, {$desaKec}, {$kotaKab}");
+                $sheet->mergeCells("A6:{$lastCol}6"); $sheet->setCellValue('A6', "Telp: " . ($this->kontak->telepon ?? '-') . " | Email: " . ($this->kontak->email_resmi ?? '-') . " | NPSN: " . ($this->profil->npsn ?? '-'));
 
                 $sheet->getStyle("A1:{$lastCol}6")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true)->setSize(11);
                 $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
 
-                $sheet->mergeCells("A8:{$lastCol}8");
-                $sheet->setCellValue('A8', 'LAPORAN PRESENSI SISWA (WALI KELAS)');
+                $sheet->mergeCells("A8:{$lastCol}8"); $sheet->setCellValue('A8', 'LAPORAN PRESENSI SISWA (WALI KELAS)');
                 $sheet->getStyle('A8')->getFont()->setSize(12)->setBold(true);
                 $sheet->getStyle('A8')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $sheet->mergeCells("A9:{$lastCol}9");
                 $tahunAjaranNama = $this->semesterDisplay->tahunAjaran->nama ?? '-';
                 $semesterNama = strtoupper($this->semesterDisplay->nama ?? '-');
-                $sheet->setCellValue('A9', "TAHUN PELAJARAN " . $tahunAjaranNama . " - SEMESTER " . $semesterNama);
+                $sheet->mergeCells("A9:{$lastCol}9"); $sheet->setCellValue('A9', "TAHUN PELAJARAN " . $tahunAjaranNama . " - SEMESTER " . $semesterNama);
                 
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A9")->getFont()->setBold(true);
@@ -253,19 +235,11 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 $sheet->setCellValue('A12', "Periode: " . Carbon::create($this->year, $this->month, 1)->translatedFormat('F Y'));
 
                 $rekapLRow = $lastRow + 1;
-                $sheet->mergeCells("A{$rekapLRow}:D{$rekapLRow}");
-                $sheet->setCellValue("A{$rekapLRow}", "JUMLAH SISWA LAKI-LAKI (L)");
-                $sheet->setCellValue("E{$rekapLRow}", $this->totalL);
-
+                $sheet->mergeCells("A{$rekapLRow}:D{$rekapLRow}"); $sheet->setCellValue("A{$rekapLRow}", "JUMLAH SISWA LAKI-LAKI (L)"); $sheet->setCellValue("E{$rekapLRow}", $this->totalL);
                 $rekapPRow = $lastRow + 2;
-                $sheet->mergeCells("A{$rekapPRow}:D{$rekapPRow}");
-                $sheet->setCellValue("A{$rekapPRow}", "JUMLAH SISWA PEREMPUAN (P)");
-                $sheet->setCellValue("E{$rekapPRow}", $this->totalP);
-
+                $sheet->mergeCells("A{$rekapPRow}:D{$rekapPRow}"); $sheet->setCellValue("A{$rekapPRow}", "JUMLAH SISWA PEREMPUAN (P)"); $sheet->setCellValue("E{$rekapPRow}", $this->totalP);
                 $totalRow = $lastRow + 3;
-                $sheet->mergeCells("A{$totalRow}:D{$totalRow}");
-                $sheet->setCellValue("A{$totalRow}", "TOTAL KESELURUHAN SISWA");
-                $sheet->setCellValue("E{$totalRow}", ($this->totalL + $this->totalP));
+                $sheet->mergeCells("A{$totalRow}:D{$totalRow}"); $sheet->setCellValue("A{$totalRow}", "TOTAL KESELURUHAN SISWA"); $sheet->setCellValue("E{$totalRow}", ($this->totalL + $this->totalP));
 
                 $sheet->setCellValue($rekapStartCol . $totalRow, $this->grandTotal['H']);
                 $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($rekapStartColNum + 1) . $totalRow, $this->grandTotal['S']);
@@ -278,58 +252,36 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
                 $ttdRow = $totalRow + 3;
                 $this->ttdRowOffset = $ttdRow;
 
-                $waka = DB::table('struktur_jabatan')
-                    ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
-                    ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
-                    ->where('jabatans.slug', 'waka-kesiswaan')
-                    ->select('guru_staf.nama', 'guru_staf.nip')
-                    ->first();
+                $waka = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')->where('jabatans.slug', 'waka-kesiswaan')->select('guru_staf.nama', 'guru_staf.nip')->first();
+                $kepsek = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')->where('jabatans.slug', 'kepala-sekolah')->select('guru_staf.nama', 'guru_staf.nip')->first();
 
-                $kepsek = DB::table('struktur_jabatan')
-                    ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
-                    ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
-                    ->where('jabatans.slug', 'kepala-sekolah')
-                    ->select('guru_staf.nama', 'guru_staf.nip')
-                    ->first();
-
-                $sheet->mergeCells("A{$ttdRow}:D{$ttdRow}");
-                $sheet->setCellValue("A{$ttdRow}", ($kotaKab) . ", " . Carbon::now()->translatedFormat('d F Y'));
-
+                $sheet->mergeCells("A{$ttdRow}:D{$ttdRow}"); $sheet->setCellValue("A{$ttdRow}", ($kotaKab) . ", " . Carbon::now()->translatedFormat('d F Y'));
                 $sheet->mergeCells("A" . ($ttdRow + 1) . ":D" . ($ttdRow + 1));
                 if ($this->role === 'admin') {
                     $sheet->setCellValue("A" . ($ttdRow + 1), "Waka Kesiswaan,");
-                    $namaKiri = $waka->nama ?? '................';
-                    $nipKiri = $waka->nip ?? '................';
+                    $namaKiri = $waka->nama ?? '................'; $nipKiri = $waka->nip ?? '................';
                 } else {
                     $sheet->setCellValue("A" . ($ttdRow + 1), "Wali Kelas,");
-                    $namaKiri = $this->waliKelas->nama ?? '................';
-                    $nipKiri = $this->waliKelas->nip ?? '................';
+                    $namaKiri = $this->waliKelas->nama ?? '................'; $nipKiri = $this->waliKelas->nip ?? '................';
                 }
 
                 $sheet->getRowDimension($ttdRow + 3)->setRowHeight(60);
-                $sheet->mergeCells("A" . ($ttdRow + 5) . ":D" . ($ttdRow + 5));
-                $sheet->setCellValue("A" . ($ttdRow + 5), "( " . strtoupper($namaKiri) . " )");
-                $sheet->mergeCells("A" . ($ttdRow + 6) . ":D" . ($ttdRow + 6));
-                $sheet->setCellValue("A" . ($ttdRow + 6), "NIP. " . $nipKiri);
+                $sheet->mergeCells("A" . ($ttdRow + 5) . ":D" . ($ttdRow + 5)); $sheet->setCellValue("A" . ($ttdRow + 5), "( " . strtoupper($namaKiri) . " )");
+                $sheet->mergeCells("A" . ($ttdRow + 6) . ":D" . ($ttdRow + 6)); $sheet->setCellValue("A" . ($ttdRow + 6), "NIP. " . $nipKiri);
 
                 $startColTTDKananNum = 5 + $this->daysInMonth + 1;
                 $startColTTDKanan = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($startColTTDKananNum);
                 
-                $sheet->mergeCells("{$startColTTDKanan}{$ttdRow}:{$lastCol}{$ttdRow}");
-                $sheet->setCellValue($startColTTDKanan . $ttdRow, "Mengetahui,");
-                $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 1) . ":{$lastCol}" . ($ttdRow + 1));
-                $sheet->setCellValue($startColTTDKanan . ($ttdRow + 1), "Kepala Sekolah,");
-                $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 5) . ":{$lastCol}" . ($ttdRow + 5));
-                $sheet->setCellValue($startColTTDKanan . ($ttdRow + 5), "( " . strtoupper($kepsek->nama ?? '................') . " )");
-                $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 6) . ":{$lastCol}" . ($ttdRow + 6));
-                $sheet->setCellValue($startColTTDKanan . ($ttdRow + 6), "NIP. " . ($kepsek->nip ?? '................'));
+                $sheet->mergeCells("{$startColTTDKanan}{$ttdRow}:{$lastCol}{$ttdRow}"); $sheet->setCellValue($startColTTDKanan . $ttdRow, "Mengetahui,");
+                $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 1) . ":{$lastCol}" . ($ttdRow + 1)); $sheet->setCellValue($startColTTDKanan . ($ttdRow + 1), "Kepala Sekolah,");
+                $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 5) . ":{$lastCol}" . ($ttdRow + 5)); $sheet->setCellValue($startColTTDKanan . ($ttdRow + 5), "( " . strtoupper($kepsek->nama ?? '................') . " )");
+                $sheet->mergeCells("{$startColTTDKanan}" . ($ttdRow + 6) . ":{$lastCol}" . ($ttdRow + 6)); $sheet->setCellValue($startColTTDKanan . ($ttdRow + 6), "NIP. " . ($kepsek->nip ?? '................'));
 
                 $sheet->getStyle("A{$ttdRow}:{$lastCol}" . ($ttdRow + 6))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A" . ($ttdRow + 5) . ":{$lastCol}" . ($ttdRow + 5))->getFont()->setBold(true);
 
                 $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE);
-                $sheet->getPageSetup()->setFitToWidth(1);
-                $sheet->getPageSetup()->setFitToHeight(0);
+                $sheet->getPageSetup()->setFitToWidth(1)->setFitToHeight(0);
             },
         ];
     }
@@ -338,48 +290,41 @@ class PresensiExport implements FromQuery, WithMapping, WithStyles, WithEvents, 
     {
         $drawings = [];
         
-        if ($this->profil->logo && file_exists(storage_path('app/public/' . $this->profil->logo))) {
-            $drawingLogo = new Drawing();
-            $drawingLogo->setName('Logo Sekolah');
-            $drawingLogo->setPath(storage_path('app/public/' . $this->profil->logo));
-            $drawingLogo->setHeight(70);
-            $drawingLogo->setCoordinates('A1');
-            $drawingLogo->setOffsetX(10);
-            $drawingLogo->setOffsetY(5);
-            $drawings[] = $drawingLogo;
+        if (!empty($this->profil->logo_provinsi)) {
+            $pathProv = public_path('uploads/profil/' . str_replace('uploads/profil/', '', $this->profil->logo_provinsi));
+            if (file_exists($pathProv)) {
+                $drawingProv = new Drawing();
+                $drawingProv->setName('Logo Provinsi');
+                $drawingProv->setPath($pathProv);
+                $drawingProv->setHeight(75);
+                $drawingProv->setCoordinates('A1');
+                $drawingProv->setOffsetX(10);
+                $drawingProv->setOffsetY(5);
+                $drawings[] = $drawingProv;
+            }
         }
 
         $ttdRow = $this->ttdRowOffset + 2;
         
         if ($this->role === 'admin') {
-            $waka = DB::table('struktur_jabatan')
-                ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
-                ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
-                ->where('jabatans.slug', 'waka-kesiswaan')
-                ->select('struktur_jabatan.file_ttd')
-                ->first();
+            $waka = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')->where('jabatans.slug', 'waka-kesiswaan')->select('struktur_jabatan.file_ttd')->first();
             
-            if ($waka && $waka->file_ttd && file_exists(storage_path('app/public/' . $waka->file_ttd))) {
+            if ($waka && $waka->file_ttd && file_exists(storage_path('app/' . $waka->file_ttd))) {
                 $drawingKiri = new Drawing();
                 $drawingKiri->setName('TTD Waka');
-                $drawingKiri->setPath(storage_path('app/public/' . $waka->file_ttd));
+                $drawingKiri->setPath(storage_path('app/' . $waka->file_ttd));
                 $drawingKiri->setHeight(50);
                 $drawingKiri->setCoordinates('B' . $ttdRow);
                 $drawings[] = $drawingKiri;
             }
         }
 
-        $kepsek = DB::table('struktur_jabatan')
-            ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
-            ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
-            ->where('jabatans.slug', 'kepala-sekolah')
-            ->select('struktur_jabatan.file_ttd')
-            ->first();
+        $kepsek = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')->where('jabatans.slug', 'kepala-sekolah')->select('struktur_jabatan.file_ttd')->first();
 
-        if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
+        if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/' . $kepsek->file_ttd))) {
             $drawingKanan = new Drawing();
             $drawingKanan->setName('TTD Kepsek');
-            $drawingKanan->setPath(storage_path('app/public/' . $kepsek->file_ttd));
+            $drawingKanan->setPath(storage_path('app/' . $kepsek->file_ttd));
             $drawingKanan->setHeight(50);
             $startColTTDKananNum = 5 + $this->daysInMonth + 1;
             $startColTTDKanan = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($startColTTDKananNum + 2);

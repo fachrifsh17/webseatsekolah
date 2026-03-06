@@ -3,7 +3,6 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 class EkstrakurikulerResource extends JsonResource
 {
@@ -18,8 +17,9 @@ class EkstrakurikulerResource extends JsonResource
             'jam_selesai'  => $this->jam_selesai ? (string) $this->jam_selesai : null,
             'pembina_id'   => $this->pembina_id,
             
-            // Tambahkan asset() agar menghasilkan http://domain.com/storage/...
-            'foto_url'     => $this->foto ? asset(Storage::url($this->foto)) : null,
+            'foto_url'     => $this->foto 
+                              ? asset('uploads/ekskul/' . str_replace('uploads/ekskul/', '', $this->foto)) 
+                              : null,
             
             'keterangan'   => $this->keterangan,
             'pembina'      => $this->whenLoaded('pembina', function () {

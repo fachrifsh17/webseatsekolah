@@ -8,7 +8,6 @@ use App\Http\Resources\MediaResource;
 use App\Http\Requests\StoreMediaRequest;
 use App\Http\Requests\UpdateMediaRequest;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
@@ -81,6 +80,7 @@ class MediaController extends Controller
     {
         $validated = $request->validated();
         $jenis = strtolower($validated['jenis_media']);
+        $targetPath = public_path('uploads/media');
         $insertedIds = [];
 
         DB::beginTransaction();
@@ -89,10 +89,12 @@ class MediaController extends Controller
                 $files = is_array($request->file('media')) ? $request->file('media') : [$request->file('media')];
                 foreach ($files as $file) {
                     if ($file->isValid()) {
-                        $path = $file->store('uploads/media', 'public');
+                        $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                        $file->move($targetPath, $fileName);
+                        
                         $media = Media::create([
                             'album_id'    => $validated['album_id'],
-                            'media_path'  => $path,
+                            'media_path'  => $fileName,
                             'jenis_media' => 'Foto',
                             'keterangan'  => $validated['keterangan'] ?? null,
                         ]);
@@ -102,7 +104,10 @@ class MediaController extends Controller
             } else {
                 $path = $validated['media_path'] ?? null;
                 if ($request->hasFile('media') && $request->file('media')->isValid()) {
-                    $path = $request->file('media')->store('uploads/media', 'public');
+                    $file = $request->file('media');
+                    $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                    $file->move($targetPath, $fileName);
+                    $path = $fileName;
                 }
 
                 $media = Media::create([
@@ -138,14 +143,21 @@ class MediaController extends Controller
     public function update(UpdateMediaRequest $request, Media $media): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/media');
+        $oldPath = $media->media_path;
 
         DB::beginTransaction();
         try {
             if ($request->hasFile('media') && $request->file('media')->isValid()) {
-                if ($media->media_path && Storage::disk('public')->exists($media->media_path)) {
-                    Storage::disk('public')->delete($media->media_path);
+                if ($oldPath) {
+                    $fullOldPath = $targetPath . '/' . str_replace('uploads/media/', '', $oldPath);
+                    if (file_exists($fullOldPath)) unlink($fullOldPath);
                 }
-                $validated['media_path'] = $request->file('media')->store('uploads/media', 'public');
+                
+                $file = $request->file('media');
+                $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['media_path'] = $fileName;
             }
 
             $media->update([
@@ -175,10 +187,12 @@ class MediaController extends Controller
 
     public function destroy(Media $media): JsonResponse
     {
+        $oldPath = $media->media_path;
         DB::beginTransaction();
         try {
-            if ($media->media_path && Storage::disk('public')->exists($media->media_path)) {
-                Storage::disk('public')->delete($media->media_path);
+            if ($oldPath) {
+                $filePath = public_path('uploads/media/') . str_replace('uploads/media/', '', $oldPath);
+                if (file_exists($filePath)) unlink($filePath);
             }
             
             $media->delete();

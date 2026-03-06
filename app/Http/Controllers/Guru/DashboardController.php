@@ -4,12 +4,12 @@ namespace App\Http\Controllers\Guru;
 
 use App\Http\Controllers\Controller;
 use App\Models\{
-    Berita, Pengumuman, Siswa, Presensi, KalenderAkademik, Kelas, GuruMapel, TahunAjaran, GuruStaf, JadwalProduktif, SiswaKelas
+    Berita, Pengumuman, Siswa, Presensi, KalenderAkademik, Kelas, GuruMapel, TahunAjaran, GuruStaf, SiswaKelas, Semester
 };
 use App\Http\Resources\BeritaResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\{Log, DB};
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 use Carbon\Carbon;
@@ -35,15 +35,18 @@ class DashboardController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            $activeTaIds = TahunAjaran::where('is_active', 1)->pluck('id');
+            $activeSemester = Semester::where('is_active', 1)->first();
+            $activeSemesterId = $activeSemester?->id;
             $guruStafId = $guruStaf->id;
 
-            $kelasWaliIds = Kelas::where('wali_kelas_id', $guruStafId)
+            $kelasWaliIds = DB::table('kelas_wali_kelas')
+                ->where('guru_staf_id', $guruStafId)
+                ->where('semester_id', $activeSemesterId)
                 ->where('is_active', 1)
-                ->pluck('id');
+                ->pluck('kelas_id');
 
             $siswaBinaanIds = SiswaKelas::whereIn('kelas_id', $kelasWaliIds)
-                ->whereIn('tahun_ajaran_id', $activeTaIds)
+                ->where('semester_id', $activeSemesterId)
                 ->where('is_active', 1)
                 ->pluck('siswa_id');
 
@@ -56,7 +59,7 @@ class DashboardController extends Controller
 
             $manajerial = [];
             if (!empty($jabatanNama)) {
-                $manajerialData = $this->getManajerialData($guruStaf, $jabatanNama, $activeTaIds);
+                $manajerialData = $this->getManajerialData($guruStaf, $jabatanNama, $activeSemesterId);
                 
                 if (isset($manajerialData['summary'])) {
                     $stats = array_merge($stats, $manajerialData['summary']);
@@ -67,7 +70,7 @@ class DashboardController extends Controller
 
             $data = [
                 'statistics' => $stats,
-                'kalender_akademik' => $this->getKalender($activeTaIds),
+                'kalender_akademik' => $this->getKalender($activeSemesterId),
                 'common' => [
                     'recent_pengumuman' => $this->getPengumuman(),
                     'recent_berita' => BeritaResource::collection(Berita::latest()->take(3)->get()),
@@ -102,30 +105,30 @@ class DashboardController extends Controller
     {
         return [
             'total_siswa_binaan' => $siswaBinaanIds->count(),
-            'presensi_hari_ini' => Presensi::whereIn('siswa_id', $siswaBinaanIds)
+            'presensi_hari_ini' => DB::table('presensi_detail')
+                ->whereIn('siswa_id', $siswaBinaanIds)
                 ->whereDate('created_at', today())
                 ->count(),
             'mapel_diampu' => GuruMapel::where('guru_staf_id', $guruStafId)->count(),
         ];
     }
 
-    private function getManajerialData($guruStaf, $jabatan, $activeTaIds): array
+    private function getManajerialData($guruStaf, $jabatan, $activeSemesterId): array
     {
         $res = ['role_jabatan' => $jabatan];
         $today = today();
         
-        $filterAktifPivot = function($q) use ($activeTaIds) {
-            $q->where('is_active', 1)->whereIn('tahun_ajaran_id', $activeTaIds);
+        $filterAktifPivot = function($q) use ($activeSemesterId) {
+            $q->where('is_active', 1)->where('semester_id', $activeSemesterId);
         };
 
         switch ($jabatan) {
             case 'Kepala Sekolah':
                 $res['summary'] = [
                     'total_siswa_global' => Siswa::whereHas('riwayatKelas', $filterAktifPivot)->where('is_active', 1)->count(),
-                    'presensi_siswa_hari_ini' => Presensi::whereDate('created_at', $today)
-                        ->whereHas('siswa', function($q) use ($filterAktifPivot) {
-                            $q->whereHas('riwayatKelas', $filterAktifPivot)->where('is_active', 1);
-                        })->count(),
+                    'presensi_siswa_hari_ini' => DB::table('presensi_detail')
+                        ->whereDate('created_at', $today)
+                        ->count(),
                     'total_guru_staf' => GuruStaf::where('is_active', 1)->count(),
                 ];
                 break;
@@ -134,7 +137,7 @@ class DashboardController extends Controller
                 $res['summary'] = [
                     'total_mapel' => \App\Models\Matapelajaran::where('is_active', 1)->count(),
                     'total_guru_mapel' => GuruMapel::distinct('guru_staf_id')->count(),
-                    'agenda_akademik' => KalenderAkademik::whereIn('tahun_ajaran_id', $activeTaIds)->whereDate('tanggal_mulai', '>=', $today)->count()
+                    'agenda_akademik' => KalenderAkademik::where('semester_id', $activeSemesterId)->whereDate('tanggal_mulai', '>=', $today)->count()
                 ];
                 break;
 
@@ -144,10 +147,10 @@ class DashboardController extends Controller
                     'pelanggaran_hari_ini' => \App\Models\PoinSiswa::whereDate('created_at', $today)
                         ->where('poin_negatif', '>', 0)->count(),
                     'total_ekstrakurikuler' => \App\Models\Ekstrakurikuler::count(),
-                    'siswa_mangkir' => Presensi::whereDate('created_at', $today)->where('status', 'Alpa')
-                        ->whereHas('siswa', function($q) use ($filterAktifPivot) {
-                            $q->whereHas('riwayatKelas', $filterAktifPivot)->where('is_active', 1);
-                        })->count()
+                    'siswa_mangkir' => DB::table('presensi_detail')
+                        ->whereDate('created_at', $today)
+                        ->where('status', 'Alpa')
+                        ->count()
                 ];
                 break;
 
@@ -171,8 +174,8 @@ class DashboardController extends Controller
             case 'Ketua Jurusan':
                 $jurusanId = $guruStaf->jurusan_id;
                 $res['summary'] = [
-                    'siswa_jurusan' => Siswa::whereHas('riwayatKelas', function($q) use ($jurusanId, $activeTaIds) {
-                        $q->whereIn('tahun_ajaran_id', $activeTaIds)
+                    'siswa_jurusan' => Siswa::whereHas('riwayatKelas', function($q) use ($jurusanId, $activeSemesterId) {
+                        $q->where('semester_id', $activeSemesterId)
                           ->where('is_active', 1)
                           ->whereHas('kelas', function($qk) use ($jurusanId) {
                               $qk->where('jurusan_id', $jurusanId);
@@ -189,12 +192,12 @@ class DashboardController extends Controller
         return $res;
     }
 
-    private function getKalender($activeTaIds): array
+    private function getKalender($activeSemesterId): array
     {
         $hariIni = today();
         $tigaHariLagi = today()->addDays(3);
 
-        return KalenderAkademik::whereIn('tahun_ajaran_id', $activeTaIds)
+        return KalenderAkademik::where('semester_id', $activeSemesterId)
             ->where(function ($q) use ($hariIni, $tigaHariLagi) {
                 $q->whereBetween('tanggal_mulai', [$hariIni, $tigaHariLagi])
                   ->orWhere(function ($sub) use ($hariIni) {
@@ -225,7 +228,7 @@ class DashboardController extends Controller
             'id' => $item->id,
             'judul' => $item->judul,
             'isi_pengumuman' => $item->isi_pengumuman,
-            'tanggal_publikasi' => Carbon::parse($item->tanggal_publikasi)->format('Y-m-d H:i:s'),
+            'tanggal_publikasi' => Carbon::parse($item->tanggal_publikasi)->format('Y-m-d'),
             'penting' => $item->penting,
             'created_at' => $item->created_at->format('Y-m-d H:i:s'),
             'updated_at' => $item->updated_at->format('Y-m-d H:i:s'),

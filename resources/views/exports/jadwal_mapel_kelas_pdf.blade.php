@@ -44,15 +44,27 @@
         .ttd-container { height: 70px; margin: 5px 0; }
         .ttd-image { height: 70px; width: auto; max-width: 180px; }
         .spacer { height: 70px; }
+        
+        /* Logo Styling */
+        .logo-container { width: 70px; text-align: center; vertical-align: middle; }
+        .logo-prov { width: 70px; height: auto; }
     </style>
 </head>
 <body>
     <table class="header-table">
         <tr>
-            <td width="100%" class="text-center" style="border: none !important;">
+            <td class="logo-container" style="border: none !important;">
+                @php
+                    $cleanLogoProv = str_replace(['uploads/profil/', 'public/', 'storage/'], '', $profil->logo_provinsi);
+                    $pathLogoProv = public_path('uploads/profil/' . $cleanLogoProv);
+                @endphp
+                @if($profil->logo_provinsi && file_exists($pathLogoProv))
+                    <img src="{{ $pathLogoProv }}" class="logo-prov">
+                @endif
+            </td>
+            <td width="100%" class="text-center" style="border: none !important; padding-right: 70px;">
                 <div style="font-size: 11pt; font-weight: bold;">PEMERINTAH PROVINSI {{ strtoupper($kontak->provinsi ?? 'JAWA BARAT') }}</div>
                 <div style="font-size: 11pt; font-weight: bold;">DINAS PENDIDIKAN</div>
-                {{-- Menggunakan $profil->cadis secara dinamis --}}
                 <div style="font-size: 10pt; font-weight: bold;">{{ strtoupper($profil->cadis ?? 'CABANG DINAS PENDIDIKAN') }}</div>
                 <div class="school-name">{{ $profil->nama_sekolah ?? 'NAMA SEKOLAH' }}</div>
                 <div style="font-size: 8.5pt;">
@@ -135,7 +147,8 @@
                     Wakasek Kurikulum
                     <div class="ttd-container">
                         @php
-                            $pathWaka = $fileTtdWaka ? public_path('storage/' . str_replace('storage/', '', $fileTtdWaka)) : null;
+                            $cleanWaka = str_replace(['storage/', 'public/'], '', $fileTtdWaka);
+                            $pathWaka = $fileTtdWaka ? storage_path('app/' . $cleanWaka) : null;
                         @endphp
                         @if($pathWaka && file_exists($pathWaka))
                             <img src="{{ $pathWaka }}" class="ttd-image">
@@ -152,7 +165,8 @@
                     Kepala Sekolah
                     <div class="ttd-container">
                         @php
-                            $pathKepsek = $fileTtdKepsek ? public_path('storage/' . str_replace('storage/', '', $fileTtdKepsek)) : null;
+                            $cleanKepsek = str_replace(['storage/', 'public/'], '', $fileTtdKepsek);
+                            $pathKepsek = $fileTtdKepsek ? storage_path('app/' . $cleanKepsek) : null;
                         @endphp
                         @if($pathKepsek && file_exists($pathKepsek))
                             <img src="{{ $pathKepsek }}" class="ttd-image">

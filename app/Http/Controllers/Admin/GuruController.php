@@ -14,9 +14,7 @@ use App\Http\Requests\UpdateGuruRequest;
 use App\Exports\GuruExport;
 use App\Imports\GuruImport;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -216,6 +214,7 @@ class GuruController extends Controller
     public function store(StoreGuruRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/guru');
 
         if (!empty($validated['jurusan_id'])) {
             $jurusanAktif = Jurusan::where('id', $validated['jurusan_id'])->where('is_active', 1)->exists();
@@ -229,7 +228,7 @@ class GuruController extends Controller
         }
 
         try {
-            $guru = DB::transaction(function () use ($request, $validated) {
+            $guru = DB::transaction(function () use ($request, $validated, $targetPath) {
                 $lastUser = User::where('id', 'like', 'U%')
                     ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                     ->lockForUpdate()
@@ -262,7 +261,10 @@ class GuruController extends Controller
                 ]);
 
                 if ($request->hasFile('foto')) {
-                    $validated['foto'] = $request->file('foto')->store('uploads/guru', 'public');
+                    $file = $request->file('foto');
+                    $fileName = time() . '_' . $file->getClientOriginalName();
+                    $file->move($targetPath, $fileName);
+                    $validated['foto'] = $fileName;
                 }
 
                 $validated['user_id'] = $newUserId;
@@ -280,7 +282,8 @@ class GuruController extends Controller
             Log::error('Failed to create guru', ['error' => $e->getMessage()]);
 
             if (!empty($validated['foto'])) {
-                Storage::disk('public')->delete($validated['foto']);
+                $filePath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($filePath)) unlink($filePath);
             }
 
             return response()->json([
@@ -301,6 +304,8 @@ class GuruController extends Controller
         }
 
         $validated = $request->validated();
+        $targetPath = public_path('uploads/guru');
+        $oldFoto = $guru->foto;
 
         if (!empty($validated['jurusan_id'])) {
             $jurusanAktif = Jurusan::where('id', $validated['jurusan_id'])->where('is_active', 1)->exists();
@@ -313,15 +318,17 @@ class GuruController extends Controller
             }
         }
 
-        $oldFoto = $guru->foto;
-
         if ($request->hasFile('foto')) {
-            $validated['foto'] = $request->file('foto')->store('uploads/guru', 'public');
+            $file = $request->file('foto');
+            $fileName = time() . '_' . $file->getClientOriginalName();
+            $file->move($targetPath, $fileName);
+            $validated['foto'] = $fileName;
         }
 
         if ($request->filled('foto') && $request->foto === 'null') {
             if ($oldFoto) {
-                Storage::disk('public')->delete($oldFoto);
+                $oldPath = $targetPath . '/' . str_replace('uploads/guru/', '', $oldFoto);
+                if (file_exists($oldPath)) unlink($oldPath);
             }
             $validated['foto'] = null;
         }
@@ -355,8 +362,9 @@ class GuruController extends Controller
                 }
             });
 
-            if ($request->hasFile('foto') && $oldFoto && $oldFoto !== $validated['foto']) {
-                Storage::disk('public')->delete($oldFoto);
+            if (!empty($validated['foto']) && $oldFoto && $oldFoto !== $validated['foto']) {
+                $oldPath = $targetPath . '/' . str_replace('uploads/guru/', '', $oldFoto);
+                if (file_exists($oldPath)) unlink($oldPath);
             }
 
             return response()->json([
@@ -367,8 +375,9 @@ class GuruController extends Controller
         } catch (Throwable $e) {
             Log::error('Failed to update guru', ['error' => $e->getMessage()]);
 
-            if ($request->hasFile('foto') && isset($validated['foto'])) {
-                Storage::disk('public')->delete($validated['foto']);
+            if (!empty($validated['foto']) && $validated['foto'] !== $oldFoto) {
+                $tempPath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($tempPath)) unlink($tempPath);
             }
 
             return response()->json([
@@ -401,7 +410,8 @@ class GuruController extends Controller
                 $guru->delete();
 
                 if ($fotoPath) {
-                    Storage::disk('public')->delete($fotoPath);
+                    $filePath = public_path('uploads/guru/') . str_replace('uploads/guru/', '', $fotoPath);
+                    if (file_exists($filePath)) unlink($filePath);
                 }
             });
 

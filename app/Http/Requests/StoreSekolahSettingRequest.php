@@ -15,7 +15,6 @@ class StoreSekolahSettingRequest extends FormRequest
     {
         return [
             'tagline'              => ['nullable', 'string', 'max:255'],
-            'logo'                 => ['nullable', 'file', 'mimes:png,jpg,jpeg', 'max:2048'],
             'pesan_selamat_datang' => ['nullable', 'string'],
             'buku_poin_path'       => ['nullable', 'file', 'mimes:pdf', 'max:5120'],
             'no_wa_kesiswaan'      => ['nullable', 'string', 'max:20'],
@@ -27,10 +26,6 @@ class StoreSekolahSettingRequest extends FormRequest
         return [
             'tagline.string'   => 'Tagline harus berupa teks.',
             'tagline.max'      => 'Tagline tidak boleh lebih dari 255 karakter.',
-
-            'logo.file'        => 'Logo harus berupa file.',
-            'logo.mimes'       => 'Logo hanya boleh dalam format PNG, JPG, atau JPEG.',
-            'logo.max'         => 'Ukuran logo tidak boleh lebih dari 2 MB.',
 
             'pesan_selamat_datang.string' => 'Pesan selamat datang harus berupa teks.',
 
@@ -47,7 +42,6 @@ class StoreSekolahSettingRequest extends FormRequest
     {
         return [
             'tagline'              => 'Tagline',
-            'logo'                 => 'Logo sekolah',
             'pesan_selamat_datang' => 'Pesan selamat datang',
             'buku_poin_path'       => 'File buku poin',
             'no_wa_kesiswaan'      => 'Nomor WhatsApp kesiswaan',

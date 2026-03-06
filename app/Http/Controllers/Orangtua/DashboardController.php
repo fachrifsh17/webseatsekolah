@@ -46,7 +46,7 @@ class DashboardController extends Controller
                     'semester'     => $semesterAktif->nama ?? '-',
                 ],
                 'sekolah' => [
-                    'buku_poin'    => ($setting && isset($setting->buku_poin_path)) ? asset('storage/' . $setting->buku_poin_path) : null,
+                    'buku_poin'    => ($setting && isset($setting->buku_poin_path)) ? asset('uploads/setting/' . str_replace('uploads/setting/', '', $setting->buku_poin_path)) : null,
                     'wa_kesiswaan' => $setting->no_wa_kesiswaan ?? null,
                 ],
                 'anak_statistics' => $this->getDataAnak($user->id, $semesterAktif->id),
@@ -101,15 +101,15 @@ class DashboardController extends Controller
 
     private function getDataAnak($userId, $semesterId)
     {
-        // CATATAN: Jika error "Column not found: is_active" muncul di sini, 
-        // silakan hapus ->where('is_active', true) di bawah ini.
         $anakList = Siswa::whereHas('orangtua', fn($q) => $q->where('user_id', $userId))
             ->where('is_active', true) 
             ->with(['riwayatKelas' => function($q) use ($semesterId) {
                 $q->where('semester_id', $semesterId)
-                  ->with(['kelas' => function($qk) use ($semesterId) { // FIX: Tambahkan use ($semesterId)
+                  ->where('is_active', 1)
+                  ->with(['kelas' => function($qk) use ($semesterId) {
                       $qk->with(['waliKelas' => function($qw) use ($semesterId) {
-                          $qw->where('pivot.semester_id', $semesterId);
+                          $qw->where('kelas_wali_kelas.semester_id', $semesterId)
+                             ->where('kelas_wali_kelas.is_active', 1);
                       }]);
                   }]);
             }])

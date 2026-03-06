@@ -10,7 +10,7 @@ use App\Http\Requests\UpdateStrukturJabatanRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage; // --- TAMBAHAN ---
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
@@ -28,6 +28,17 @@ class StrukturJabatanController extends Controller
         $this->authorizeResource(StrukturJabatan::class, 'struktur_jabatan');
     }
 
+    public function showTtd($id)
+    {
+        $item = StrukturJabatan::findOrFail($id);
+        
+        if (!$item->file_ttd || !Storage::disk('local')->exists($item->file_ttd)) {
+            abort(404);
+        }
+
+        return Storage::disk('local')->response($item->file_ttd);
+    }
+
     public function index(): JsonResponse
     {
         try {
@@ -40,15 +51,11 @@ class StrukturJabatanController extends Controller
                 'data'    => StrukturJabatanResource::collection($data),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Struktur Jabatan Index Error: ' . $e->getMessage(), [
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
+            Log::error('Struktur Jabatan Index Error: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar struktur jabatan.',
-                'debug'   => $e->getMessage()
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -65,19 +72,16 @@ class StrukturJabatanController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Konflik Data: Guru sudah menjabat atau jabatan sudah terisi.',
-                'errors'  => ['conflict' => ['Pastikan guru dan jabatan tidak ganda.']]
             ], Response::HTTP_CONFLICT);
         }
 
         DB::beginTransaction();
         try {
-            // --- LOGIKA UNGGAH TTD ---
             if ($request->hasFile('file_ttd')) {
                 $file = $request->file('file_ttd');
-                $path = $file->store('tanda_tangan', 'public');
+                $path = $file->store('tanda_tangan', 'local');
                 $validated['file_ttd'] = $path;
             }
-            // -------------------------
 
             $item = StrukturJabatan::create($validated);
             DB::commit();
@@ -93,7 +97,6 @@ class StrukturJabatanController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menambahkan data.',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -119,18 +122,15 @@ class StrukturJabatanController extends Controller
 
         DB::beginTransaction();
         try {
-            // --- LOGIKA UPDATE TTD ---
             if ($request->hasFile('file_ttd')) {
-                // Hapus file lama jika ada
                 if ($strukturJabatan->file_ttd) {
-                    Storage::disk('public')->delete($strukturJabatan->file_ttd);
+                    Storage::disk('local')->delete($strukturJabatan->file_ttd);
                 }
                 
                 $file = $request->file('file_ttd');
-                $path = $file->store('tanda_tangan', 'public');
+                $path = $file->store('tanda_tangan', 'local');
                 $validated['file_ttd'] = $path;
             }
-            // -------------------------
 
             $strukturJabatan->update($validated);
             DB::commit();
@@ -145,7 +145,6 @@ class StrukturJabatanController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui data.',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -153,11 +152,9 @@ class StrukturJabatanController extends Controller
     public function destroy(StrukturJabatan $strukturJabatan): JsonResponse
     {
         try {
-            // --- LOGIKA HAPUS TTD ---
             if ($strukturJabatan->file_ttd) {
-                Storage::disk('public')->delete($strukturJabatan->file_ttd);
+                Storage::disk('local')->delete($strukturJabatan->file_ttd);
             }
-            // ------------------------
 
             $strukturJabatan->delete();
             return response()->json([

@@ -62,7 +62,6 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
         $this->totalsPeriode[$idSiswa]['n_periode'] += $negatif;
 
         $poinTampil = $positif > 0 ? $positif : ($negatif > 0 ? -$negatif : 0);
-
         $formattedDate = $poin->tanggal ? Carbon::parse($poin->tanggal)->translatedFormat('d F Y') : '-';
 
         return [
@@ -122,15 +121,11 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
 
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
-                
                 $sheet->mergeCells("A3:{$lastCol}3"); 
                 $sheet->setCellValue('A3', strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN') . " WILAYAH XII");
-                
                 $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH'));
-                
                 $sheet->mergeCells("A5:{$lastCol}5"); 
                 $sheet->setCellValue('A5', "{$alamatJalan}, {$desaKec}, {$kotaKab} - {$provAsli}");
-                
                 $sheet->mergeCells("A6:{$lastCol}6"); 
                 $sheet->setCellValue('A6', "Telp: " . ($this->kontak->telepon ?? '-') . " | Email: " . ($this->kontak->email_resmi ?? '-') . " | NPSN: " . ($this->profil->npsn ?? '-'));
                 
@@ -149,7 +144,6 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
 
                 $sheet->mergeCells("A9:{$lastCol}9");
                 $sheet->setCellValue('A9', "KELAS : " . strtoupper($this->namaKelas));
-                
                 $sheet->mergeCells("A10:{$lastCol}10");
                 
                 $periodeTampil = 'KESELURUHAN';
@@ -161,17 +155,14 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                     }
                 }
                 $sheet->setCellValue('A10', "PERIODE : " . $periodeTampil);
-                
                 $sheet->getStyle("A9:A10")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
 
                 $summaryHeaderRow = $dataLastRow + 2; 
-                
                 $sheet->setCellValue("A{$summaryHeaderRow}", "RINGKASAN POIN: PERIODE INI VS KUMULATIF");
                 $sheet->getStyle("A{$summaryHeaderRow}")->getFont()->setBold(true);
                 
                 $h = $summaryHeaderRow + 1;
                 $headers = ['NO', 'NIS', 'NISN', 'NAMA SISWA', 'POS (+) PERIODE', 'NEG (-) PERIODE', 'TOTAL (+) KUMULATIF', 'TOTAL (-) KUMULATIF'];
-                
                 $lastSumCol = 'H';
 
                 foreach ($headers as $key => $val) {
@@ -191,7 +182,7 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                         ->groupBy('siswa_id')->get()->keyBy('siswa_id');
                 }
 
-                uasort($this->totalsPeriode, function($a, $b) use ($akumulasiGlobal) {
+                uasort($this->totalsPeriode, function($a, $b) use ($akumulasiGlobal, $siswaIds) {
                     $idA = array_search($a, $this->totalsPeriode); 
                     $idB = array_search($b, $this->totalsPeriode);
                     $valA = $akumulasiGlobal[$idA]->tot_n ?? 0;
@@ -214,7 +205,6 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                     $sheet->setCellValue("F{$curr}", $data['n_periode'] ?: 0);
                     $sheet->setCellValue("G{$curr}", $pGlobal ?: 0);
                     $sheet->setCellValue("H{$curr}", $nGlobal ?: 0);
-                    
                     $curr++;
                 }
 
@@ -234,7 +224,6 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 
                 $formattedDate = $this->labelWaktu ? Carbon::parse($this->labelWaktu)->translatedFormat('d F Y') : Carbon::now()->translatedFormat('d F Y');
                 $sheet->setCellValue("F{$ttgRowLabels}", strtoupper($lokasiTtd) . ", " . $formattedDate);
-                
                 $sheet->getStyle("F{$ttgRowLabels}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $labelRow = $ttgRowLabels + 1;
@@ -274,8 +263,24 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
     public function drawings()
     {
         $drawings = [];
-        $imageRow = $this->ttdRowOffset + 3;
+        
+        // Logo Provinsi
+        if (!empty($this->profil->logo_provinsi)) {
+            $pathProv = public_path('uploads/profil/' . str_replace('uploads/profil/', '', $this->profil->logo_provinsi));
+            if (file_exists($pathProv)) {
+                $drawingProv = new Drawing();
+                $drawingProv->setName('Logo Provinsi');
+                $drawingProv->setPath($pathProv);
+                $drawingProv->setHeight(75);
+                $drawingProv->setCoordinates('A1');
+                $drawingProv->setOffsetX(10);
+                $drawingProv->setOffsetY(5);
+                $drawings[] = $drawingProv;
+            }
+        }
 
+        // TTD Logics
+        $imageRow = $this->ttdRowOffset + 3;
         $wakaKes = DB::table('struktur_jabatan')
             ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
             ->where('struktur_jabatan.jabatan_id', 3)
@@ -288,19 +293,19 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
             ->select('struktur_jabatan.file_ttd')
             ->first();
 
-        if ($wakaKes && $wakaKes->file_ttd && file_exists(storage_path('app/public/' . $wakaKes->file_ttd))) {
+        if ($wakaKes && $wakaKes->file_ttd && file_exists(storage_path('app/' . $wakaKes->file_ttd))) {
             $drawing = new Drawing();
             $drawing->setName('TTD Waka');
-            $drawing->setPath(storage_path('app/public/' . $wakaKes->file_ttd));
+            $drawing->setPath(storage_path('app/' . $wakaKes->file_ttd));
             $drawing->setHeight(70);
             $drawing->setCoordinates('B' . $imageRow);
             $drawings[] = $drawing;
         }
         
-        if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
+        if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/' . $kepsek->file_ttd))) {
             $drawing = new Drawing();
             $drawing->setName('TTD Kepsek');
-            $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
+            $drawing->setPath(storage_path('app/' . $kepsek->file_ttd));
             $drawing->setHeight(70);
             $drawing->setCoordinates('G' . $imageRow);
             $drawings[] = $drawing;

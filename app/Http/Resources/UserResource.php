@@ -8,18 +8,18 @@ class UserResource extends JsonResource
 {
     public function toArray($request)
     {
-        // Tentukan Path Foto (Cek guruStaf atau guru)
-        $fotoPath = null;
+        $fotoUrl = asset('images/default-avatar.png');
         $guruData = $this->relationLoaded('guruStaf') ? $this->guruStaf : ($this->relationLoaded('guru') ? $this->guru : null);
         
-        if ($guruData) {
-            $fotoPath = $guruData->foto;
-        } elseif ($this->relationLoaded('siswa') && $this->siswa) {
-            $fotoPath = $this->siswa->foto;
+        if ($guruData && $guruData->foto) {
+            // Menyesuaikan path untuk Guru
+            $path = str_replace('uploads/guru/', '', $guruData->foto);
+            $fotoUrl = asset('uploads/guru/' . $path);
+        } elseif ($this->relationLoaded('siswa') && $this->siswa && $this->siswa->foto) {
+            // Menyesuaikan path untuk Siswa
+            $path = str_replace('uploads/siswa/foto/', '', $this->siswa->foto);
+            $fotoUrl = asset('uploads/siswa/foto/' . $path);
         }
-
-        // Cek apakah ini request login (untuk sembunyikan foto jika diminta sebelumnya)
-        $isLoginRequest = $request->is('*login*');
 
         return [
             'id'           => $this->id,
@@ -27,8 +27,7 @@ class UserResource extends JsonResource
             'is_active'    => (int) $this->is_active,
             'current_role' => $this->current_role, 
 
-            // Munculkan foto hanya jika bukan login, atau sesuaikan keinginanmu
-            'foto' => $fotoPath ? asset('storage/' . $fotoPath) : asset('images/default-avatar.png'),
+            'foto' => $fotoUrl,
 
             'roles' => $this->whenLoaded('roles', function () {
                 return $this->roles->map(fn($role) => [
@@ -37,7 +36,6 @@ class UserResource extends JsonResource
                 ])->values();
             }),
 
-            // Data Guru (Gunakan variable $guruData yang sudah dicek di atas)
             'guru' => $this->when($guruData, function () use ($guruData) {
                 return [
                     'id'      => $guruData->id,
@@ -47,7 +45,9 @@ class UserResource extends JsonResource
                     'jabatan_struktural' => $guruData->strukturJabatan
                         ? $guruData->strukturJabatan->map(fn($sj) => $sj->jabatan?->nama_jabatan)->filter()->values()
                         : [],
-                    'kelas_wali' => $guruData->kelas?->nama_kelas,
+                    'kelas_wali' => $guruData->kelas instanceof \Illuminate\Support\Collection 
+                        ? $guruData->kelas->first()?->nama_kelas 
+                        : null,
                 ];
             }),
 
@@ -56,7 +56,9 @@ class UserResource extends JsonResource
                     'id'    => $this->siswa->id,
                     'nis'   => $this->siswa->nis,
                     'nama'  => $this->siswa->nama_lengkap,
-                    'kelas' => $this->siswa->kelas?->nama_kelas,
+                    'kelas' => $this->siswa->kelas instanceof \Illuminate\Support\Collection 
+                        ? $this->siswa->kelas->first()?->nama_kelas 
+                        : ($this->siswa->kelas?->nama_kelas ?? null),
                 ];
             }),
 

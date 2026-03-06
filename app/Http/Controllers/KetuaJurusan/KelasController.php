@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\KetuaJurusan;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Kelas, Siswa, Jurusan, TahunAjaran, ProfilSekolah, DataKontak};
+use App\Models\{Kelas, Siswa, Jurusan, TahunAjaran, Semester, ProfilSekolah, DataKontak};
 use App\Http\Resources\KelasResource;
 use Illuminate\Http\{Request, JsonResponse};
 use Illuminate\Support\Facades\{DB, Log, Auth};
@@ -27,18 +27,19 @@ class KelasController extends Controller
     {
         $user = Auth::user();
         $jurusanId = $user->guruStaf?->jurusan_id;
-        $tahunAktif = TahunAjaran::where('is_active', 1)->first();
+        
+        $semesterAktif = Semester::with('tahunAjaran')->where('is_active', 1)->first();
 
         return [
             'jurusan_id' => $jurusanId,
-            'tahun_aktif' => $tahunAktif,
+            'semester_aktif' => $semesterAktif,
             'nama_jurusan' => $user->guruStaf?->jurusan?->nama_jurusan
         ];
     }
 
     public function index(Request $request): JsonResponse
     {
-        ['jurusan_id' => $jurusanId, 'tahun_aktif' => $tahunAktif] = $this->getContext();
+        ['jurusan_id' => $jurusanId, 'semester_aktif' => $sem] = $this->getContext();
 
         if (!$jurusanId) {
             return response()->json([
@@ -54,10 +55,15 @@ class KelasController extends Controller
                 }])
                 ->where('jurusan_id', $jurusanId)
                 ->where('is_active', 1)
+                ->orderBy('tingkatan_id', 'asc')
                 ->orderBy('nama_kelas', 'asc');
 
             if ($request->filled('search')) {
                 $query->where('nama_kelas', 'like', '%' . $request->search . '%');
+            }
+
+            if ($request->filled('tingkatan_id')) {
+                $query->where('tingkatan_id', $request->tingkatan_id);
             }
 
             $perPage = (int) $request->get('per_page', 10);
@@ -69,8 +75,8 @@ class KelasController extends Controller
                 'success' => true,
                 'message' => "Daftar kelas aktif jurusan berhasil dimuat.",
                 'context' => [
-                    'tahun_ajaran' => $tahunAktif?->nama ?? '-',
-                    'semester' => $tahunAktif?->semester ?? '-',
+                    'tahun_ajaran' => $sem?->tahunAjaran?->nama ?? '-',
+                    'semester' => $sem?->nama ?? '-',
                     'jurusan' => $this->getContext()['nama_jurusan']
                 ]
             ], $resource), Response::HTTP_OK);
@@ -94,38 +100,30 @@ class KelasController extends Controller
         }
 
         try {
-            $filters = $request->only(['search', 'tahun_ajaran_id']);
+            $filters = $request->only(['search', 'tingkatan_id']);
             $filters['jurusan_id'] = $jurusanId;
             $filters['is_active'] = 1;
-            $filters['identitas_laporan'] = "JURUSAN " . strtoupper($namaJurusan ?? 'Unit');
+            
+            $filters['identitas_laporan'] = "JURUSAN " . ($namaJurusan ?? 'Unit');
 
             $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 
             $kontak = DataKontak::first() ?? new DataKontak(); 
 
-            $nameParts = ['DATA_KELAS'];
+            $sem = $request->filled('semester_id') 
+                ? Semester::with('tahunAjaran')->find($request->semester_id) 
+                : Semester::with('tahunAjaran')->where('is_active', true)->first();
 
-            if ($request->filled('search')) {
-                $nameParts[] = strtoupper(Str::slug($request->search, '_'));
+            if ($sem) {
+                $filters['semester_id'] = $sem->id;
+                $taName = str_replace(['/', ' '], '_', $sem->tahunAjaran->nama);
+                $semName = strtoupper($sem->nama);
+                $jurusanSlug = strtoupper(Str::slug($namaJurusan, '_'));
+                
+                // Menambahkan "AKTIF" di bagian akhir nama file sesuai permintaan
+                $fileName = "DATA_KELAS_{$jurusanSlug}_{$taName}_{$semName}_AKTIF.xlsx";
+            } else {
+                $fileName = "DATA_KELAS_AKTIF.xlsx";
             }
-
-            if ($namaJurusan) {
-                $cleanJurusan = strtoupper(str_replace([' ', '-'], '_', preg_replace('/[^A-Za-z0-9 ]/', '', $namaJurusan)));
-                $nameParts[] = $cleanJurusan;
-            }
-
-            $ta = $request->filled('tahun_ajaran_id') 
-                ? TahunAjaran::find($request->tahun_ajaran_id) 
-                : TahunAjaran::where('is_active', true)->first();
-
-            if ($ta) {
-                $filters['tahun_ajaran_id'] = $ta->id;
-                $taName = str_replace(['/', ' '], '_', $ta->nama);
-                $semester = strtoupper($ta->semester);
-                $nameParts[] = "{$taName}_{$semester}";
-            }
-
-            $nameParts[] = 'AKTIF';
-            $fileName = implode('_', $nameParts) . '.xlsx';
 
             if (ob_get_contents()) ob_end_clean();
 

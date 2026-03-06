@@ -3,7 +3,6 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 class GuruResource extends JsonResource
 {
@@ -11,9 +10,9 @@ class GuruResource extends JsonResource
     {
         $isAdmin = $request->is('api/admin/*');
 
-        // 1. Definisikan URL foto utama agar bisa dipakai berulang
+        // 1. Definisikan URL foto utama menggunakan asset() langsung ke folder public
         $fullFotoUrl = $this->foto 
-            ? asset(Storage::url($this->foto)) 
+            ? asset('uploads/guru/' . str_replace('uploads/guru/', '', $this->foto)) 
             : asset('images/default-avatar.png');
 
         return [

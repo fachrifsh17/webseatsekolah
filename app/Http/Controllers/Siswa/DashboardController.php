@@ -27,7 +27,6 @@ class DashboardController extends Controller
             $hariIni = today();
             $tigaHariLagi = today()->addDays(3);
             
-            // 1. Ambil Semester yang sedang AKTIF
             $semesterAktif = Semester::with('tahunAjaran')
                 ->where('is_active', true)
                 ->first();
@@ -41,7 +40,6 @@ class DashboardController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            // 2. Ambil data Siswa berdasarkan Semester ID
             $siswa = $this->getSiswa($user->id, $semesterId);
 
             if (!$siswa) {
@@ -55,8 +53,6 @@ class DashboardController extends Controller
             $kelasObj = $riwayatAktif ? $riwayatAktif->kelas : null;
             $kelasId = $kelasObj ? $kelasObj->id : null;
 
-            // 3. Ambil Statistik
-            // Poin sekarang bersifat akumulatif (keseluruhan)
             $poin = $this->getPoinAkumulatif($siswa->id); 
             $statsPresensi = $this->getPresensiStats($siswa->id, $semesterId);
             $jadwalHariIniCount = $this->getJadwalCount($kelasId, $semesterId);
@@ -91,7 +87,7 @@ class DashboardController extends Controller
                     'total_jadwal_hari_ini' => $jadwalHariIniCount
                 ],
                 'sekolah' => [
-                    'buku_poin'    => ($setting && isset($setting->buku_poin_path)) ? asset('storage/' . $setting->buku_poin_path) : null,
+                    'buku_poin'    => ($setting && isset($setting->buku_poin_path)) ? asset('uploads/setting/' . str_replace('uploads/setting/', '', $setting->buku_poin_path)) : null,
                     'wa_kesiswaan' => $setting->no_wa_kesiswaan ?? null,
                 ],
                 'akademik' => $akademik
@@ -134,7 +130,6 @@ class DashboardController extends Controller
     
     private function getPoinAkumulatif($siswaId)
     {
-        // PENGUBAHAN: Filter semester_id dihapus agar poin bersifat keseluruhan
         $summary = PoinSiswa::where('siswa_id', $siswaId)
             ->selectRaw('CAST(SUM(poin_positif) AS SIGNED) as total_plus, CAST(SUM(poin_negatif) AS SIGNED) as total_minus')
             ->first();

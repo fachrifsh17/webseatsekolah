@@ -17,7 +17,6 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
 {
@@ -26,8 +25,8 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
     public function __construct($queryBuilder, $profil, $kontak, $kelasData = null, $filters = [], $jurusanData = null)
     {
         $this->queryBuilder = $queryBuilder;
-        $this->profil = $profil;
-        $this->kontak = $kontak;
+        $this->profil = is_array($profil) ? (object)$profil : $profil;
+        $this->kontak = is_array($kontak) ? (object)$kontak : $kontak;
         $this->kelasData = $kelasData;
         $this->jurusanData = $jurusanData;
         $this->filters = $filters;
@@ -57,7 +56,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
         }
     }
 
-    public function startCell(): string { return 'A12'; } // Start cell diturunkan karena filter jadi 2 baris
+    public function startCell(): string { return 'A13'; }
 
     public function query()
     {
@@ -73,6 +72,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
             'NIS Anak',
             'NISN Anak',
             'Nama Anak',
+            'Tingkatan',
             'Kelas',
             'Hubungan',
             'Status Aktif'
@@ -98,7 +98,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $orangtua->id,
                 strtoupper($orangtua->nama_lengkap),
                 "'" . $orangtua->telepon,
-                '-', '-', '-', '-', '-',
+                '-', '-', '-', '-', '-', '-',
                 $orangtua->is_active ? 'AKTIF' : 'NON-AKTIF',
             ];
         } else {
@@ -113,6 +113,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                     "'" . $anak->nis,
                     "'" . $anak->nisn,
                     strtoupper($anak->nama_lengkap),
+                    $riwayat->kelas?->tingkatan?->nama_tingkatan ?? '-',
                     $riwayat->kelas->nama_kelas ?? '-',
                     strtoupper($hubungan),
                     $orangtua->is_active ? 'AKTIF' : 'NON-AKTIF',
@@ -130,8 +131,22 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet->getDelegate(); 
-                $lastCol = 'I'; 
+                $lastCol = 'J';
                 $lastRow = $sheet->getHighestRow();
+
+                if (!empty($this->profil->logo_provinsi)) {
+                    $pathProv = public_path('uploads/profil/' . str_replace('uploads/profil/', '', $this->profil->logo_provinsi));
+                    if (file_exists($pathProv)) {
+                        $drawingProv = new Drawing();
+                        $drawingProv->setName('Logo Provinsi');
+                        $drawingProv->setPath($pathProv);
+                        $drawingProv->setHeight(75);
+                        $drawingProv->setCoordinates('A1');
+                        $drawingProv->setOffsetX(10);
+                        $drawingProv->setOffsetY(5);
+                        $drawingProv->setWorksheet($sheet);
+                    }
+                }
 
                 $kepsek = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
@@ -148,7 +163,6 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $provKapital = strtoupper($this->kontak->provinsi ?? 'Jawa Barat');
                 $alamatLengkap = ($this->kontak->alamat_jalan ?? '-') . ", Desa " . ($this->kontak->desa_kelurahan ?? '-') . " Kec. " . ($this->kontak->kecamatan ?? '-') . ", " . ($this->kontak->kabupaten_kota ?? 'Tasikmalaya');
 
-                // Header Kop Surat
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN WILAYAH VII'));
@@ -160,7 +174,6 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true);
                 $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
-                // Judul
                 $sheet->mergeCells("A7:{$lastCol}7"); $sheet->setCellValue('A7', 'DATA ORANG TUA / WALI MURID');
                 $sheet->mergeCells("A8:{$lastCol}8"); 
                 $sheet->setCellValue('A8', "TAHUN PELAJARAN " . $this->tahunAjaranText . " - SEMESTER " . $this->semesterText);
@@ -168,84 +181,82 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, ShouldAuto
                 $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A7:A8")->getFont()->setBold(true);
 
-                // Filter (Dibuat 2 baris ke bawah dan rata kiri)
+                $tingkatanName = $this->kelasData?->tingkatan?->nama_tingkatan ?? 'Semua Tingkatan';
                 $jurusanName = $this->jurusanData ? $this->jurusanData->nama_jurusan : 'Semua Jurusan';
                 $kelasName = $this->kelasData ? $this->kelasData->nama_kelas : 'Semua Kelas';
 
-                $sheet->setCellValue('A9', "Jurusan : " . $jurusanName);
-                $sheet->setCellValue('A10', "Kelas : " . $kelasName);
+                $sheet->setCellValue('A9', "Tingkatan : " . $tingkatanName);
+                $sheet->setCellValue('A10', "Jurusan   : " . $jurusanName);
+                $sheet->setCellValue('A11', "Kelas     : " . $kelasName);
                 
-                $sheet->getStyle("A9:A10")->applyFromArray([
+                $sheet->getStyle("A9:A11")->applyFromArray([
                     'font' => ['italic' => true, 'size' => 10],
                     'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT]
                 ]);
 
-                // Table Headings Style
-                $sheet->getStyle("A12:{$lastCol}12")->applyFromArray([
+                $sheet->getStyle("A13:{$lastCol}13")->applyFromArray([
                     'font' => ['bold' => true],
                     'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
                     'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'F2F2F2']]
                 ]);
 
-                // Table Borders
-                $sheet->getStyle("A12:{$lastCol}{$lastRow}")->applyFromArray([
-                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+                $sheet->getStyle("A13:{$lastCol}{$lastRow}")->applyFromArray([
+                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => '000000']]],
                     'alignment' => ['vertical' => Alignment::VERTICAL_CENTER]
                 ]);
 
-                // Tanda Tangan
                 $ttgRow = $lastRow + 3;
                 $lokasi = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
                 
-                $sheet->mergeCells("G{$ttgRow}:I{$ttgRow}");
-                $sheet->setCellValue("G{$ttgRow}", $lokasi . ", " . Carbon::now()->translatedFormat('d F Y'));
-                $sheet->getStyle("G{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->mergeCells("H{$ttgRow}:J{$ttgRow}");
+                $sheet->setCellValue("H{$ttgRow}", $lokasi . ", " . Carbon::now()->translatedFormat('d F Y'));
+                $sheet->getStyle("H{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 
                 $ttgRow++;
                 $sheet->mergeCells("A{$ttgRow}:C{$ttgRow}");
                 $sheet->setCellValue("A{$ttgRow}", "Mengetahui,\nWaka Kesiswaan");
-                $sheet->mergeCells("G{$ttgRow}:I{$ttgRow}");
-                $sheet->setCellValue("G{$ttgRow}", "Menyetujui,\nKepala Sekolah");
+                $sheet->mergeCells("H{$ttgRow}:J{$ttgRow}");
+                $sheet->setCellValue("H{$ttgRow}", "Menyetujui,\nKepala Sekolah");
                 
-                $sheet->getStyle("A{$ttgRow}:I{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
-                $sheet->getStyle("A{$ttgRow}:I{$ttgRow}")->getFont()->setBold(true);
+                $sheet->getStyle("A{$ttgRow}:J{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
+                $sheet->getStyle("A{$ttgRow}:J{$ttgRow}")->getFont()->setBold(true);
 
                 $imageRow = $ttgRow + 1;
                 
-                if ($wakaKes && $wakaKes->file_ttd && file_exists(storage_path('app/public/' . $wakaKes->file_ttd))) {
+                if ($wakaKes && $wakaKes->file_ttd && file_exists(storage_path('app/' . $wakaKes->file_ttd))) {
                     $drawing = new Drawing();
                     $drawing->setName('TTD Waka');
-                    $drawing->setPath(storage_path('app/public/' . $wakaKes->file_ttd));
+                    $drawing->setPath(storage_path('app/' . $wakaKes->file_ttd));
                     $drawing->setHeight(50);
                     $drawing->setCoordinates('B' . $imageRow);
                     $drawing->setOffsetX(20);
                     $drawing->setWorksheet($sheet);
                 }
 
-                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
+                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/' . $kepsek->file_ttd))) {
                     $drawing = new Drawing();
                     $drawing->setName('TTD Kepsek');
-                    $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
+                    $drawing->setPath(storage_path('app/' . $kepsek->file_ttd));
                     $drawing->setHeight(50);
-                    $drawing->setCoordinates('H' . $imageRow);
+                    $drawing->setCoordinates('I' . $imageRow);
                     $drawing->setOffsetX(20);
                     $drawing->setWorksheet($sheet);
                 }
 
                 $namaRow = $imageRow + 3;
                 $sheet->mergeCells("A{$namaRow}:C{$namaRow}");
-                $sheet->mergeCells("G{$namaRow}:I{$namaRow}");
+                $sheet->mergeCells("H{$namaRow}:J{$namaRow}");
                 $sheet->setCellValue("A{$namaRow}", "( " . strtoupper($wakaKes->nama ?? '____________________') . " )");
-                $sheet->setCellValue("G{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
-                $sheet->getStyle("A{$namaRow}:I{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle("A{$namaRow}:I{$namaRow}")->getFont()->setBold(true);
+                $sheet->setCellValue("H{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
+                $sheet->getStyle("A{$namaRow}:J{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A{$namaRow}:J{$namaRow}")->getFont()->setBold(true);
 
                 $nipRow = $namaRow + 1;
                 $sheet->mergeCells("A{$nipRow}:C{$nipRow}");
-                $sheet->mergeCells("G{$nipRow}:I{$nipRow}");
+                $sheet->mergeCells("H{$nipRow}:J{$nipRow}");
                 $sheet->setCellValue("A{$nipRow}", "NIP. " . ($wakaKes->nip ?? '...........................'));
-                $sheet->setCellValue("G{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
-                $sheet->getStyle("A{$nipRow}:I{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->setCellValue("H{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
+                $sheet->getStyle("A{$nipRow}:J{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
     }

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Guru;
 
 use App\Http\Controllers\Controller;
-use App\Models\{PoinSiswa, TahunAjaran, Siswa, Semester};
+use App\Models\{PoinSiswa, Siswa, Semester};
 use App\Http\Requests\StorePoinSiswaRequest;
 use App\Http\Resources\PoinSiswaResource;
 use Illuminate\Http\JsonResponse;
@@ -17,7 +17,6 @@ class PoinSiswaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        // Hanya authorize untuk method yang ada
         $this->authorizeResource(PoinSiswa::class, 'poin_siswa');
     }
 
@@ -29,8 +28,7 @@ class PoinSiswaController extends Controller
         return PoinSiswa::with([
                 'siswa.riwayatKelas' => fn($q) => $q->with('kelas'), 
                 'guruStaf', 
-                'tahunAjaran',
-                'semester'
+                'semester.tahunAjaran'
             ])
             ->select('poin_siswa.*')
             ->addSelect([
@@ -50,14 +48,12 @@ class PoinSiswaController extends Controller
         try {
             $user = Auth::user();
             $guruStafId = $user->guruStaf?->id;
-            $taActive = TahunAjaran::where('is_active', true)->first();
             $semActive = Semester::where('is_active', true)->first();
 
             $query = PoinSiswa::with([
                     'siswa.riwayatKelas' => fn($q) => $q->with('kelas'), 
                     'guruStaf', 
-                    'tahunAjaran',
-                    'semester'
+                    'semester.tahunAjaran'
                 ])
                 ->select('poin_siswa.*')
                 ->addSelect([
@@ -70,23 +66,17 @@ class PoinSiswaController extends Controller
                 ])
                 ->where('poin_siswa.guru_staf_id', $guruStafId);
 
-            $query->whereHas('siswa.riwayatKelas', function($q) use ($request, $taActive, $semActive) {
+            $query->whereHas('siswa.riwayatKelas', function($q) use ($request, $semActive) {
                 if ($request->filled('kelas_id')) {
                     $q->where('kelas_id', $request->kelas_id);
                 }
 
-                if ($request->filled('tahun_ajaran_id')) {
-                    $q->where('tahun_ajaran_id', $request->tahun_ajaran_id);
-                } else if ($taActive) {
-                    $q->where('tahun_ajaran_id', $taActive->id);
+                if ($request->filled('semester_id')) {
+                    $q->where('semester_id', $request->semester_id);
+                } else if ($semActive) {
+                    $q->where('semester_id', $semActive->id);
                 }
             });
-
-            if ($request->filled('tahun_ajaran_id')) {
-                $query->where('poin_siswa.tahun_ajaran_id', $request->tahun_ajaran_id);
-            } else if ($taActive) {
-                $query->where('poin_siswa.tahun_ajaran_id', $taActive->id);
-            }
 
             if ($request->filled('semester_id')) {
                 $query->where('poin_siswa.semester_id', $request->semester_id);
@@ -122,6 +112,8 @@ class PoinSiswaController extends Controller
                     'last_page'     => $data->lastPage(),
                     'per_page'      => $data->perPage(),
                     'total'         => $data->total(),
+                    'next_page_url' => $data->nextPageUrl(),
+                    'prev_page_url' => $data->previousPageUrl(),
                 ],
             ], Response::HTTP_OK);
 
@@ -134,7 +126,6 @@ class PoinSiswaController extends Controller
     public function store(StorePoinSiswaRequest $request): JsonResponse
     {
         try {
-            $ta = TahunAjaran::where('is_active', true)->firstOrFail();
             $sem = Semester::where('is_active', true)->firstOrFail();
             $user = Auth::user();
             $guruStafId = $user->guruStaf?->id;
@@ -145,21 +136,20 @@ class PoinSiswaController extends Controller
 
             $siswa = Siswa::where('id', $request->siswa_id)
                 ->where('is_active', true)
-                ->whereHas('riwayatKelas', function($q) use ($ta) {
-                    $q->where('is_active', true)->where('tahun_ajaran_id', $ta->id);
+                ->whereHas('riwayatKelas', function($q) use ($sem) {
+                    $q->where('is_active', true)->where('semester_id', $sem->id);
                 })
-                ->with(['riwayatKelas' => fn($q) => $q->where('is_active', true)->where('tahun_ajaran_id', $ta->id)])
+                ->with(['riwayatKelas' => fn($q) => $q->where('is_active', true)->where('semester_id', $sem->id)])
                 ->first();
 
             $riwayatAktif = $siswa?->riwayatKelas->first();
 
             if (!$siswa || !$riwayatAktif) {
-                return response()->json(['success' => false, 'message' => 'Siswa tidak ditemukan atau tidak memiliki kelas aktif pada periode ini.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                return response()->json(['success' => false, 'message' => 'Siswa tidak ditemukan, berstatus tidak aktif, atau tidak memiliki kelas aktif pada periode ini.'], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
-            $poin = DB::transaction(function () use ($request, $ta, $sem, $guruStafId, $riwayatAktif) {
+            $poin = DB::transaction(function () use ($request, $sem, $guruStafId, $riwayatAktif) {
                 return PoinSiswa::create(array_merge($request->validated(), [
-                    'tahun_ajaran_id' => $ta->id,
                     'semester_id'     => $sem->id,
                     'guru_staf_id'    => $guruStafId,
                     'kelas_id'        => $riwayatAktif->kelas_id,

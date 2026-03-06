@@ -59,18 +59,10 @@ class GuruStaf extends Model
         });
     }
 
-    // --- RELASI BARU ---
-
-    /**
-     * Relasi langsung ke Presensi Guru Mapel (Denormalisasi)
-     * Memungkinkan guru melihat histori mengajarnya dengan cepat: $guru->presensiGuruMapel
-     */
     public function presensiGuruMapel(): HasMany
     {
         return $this->hasMany(PresensiGuruMapel::class, 'guru_staf_id', 'id');
     }
-
-    // --- RELASI YANG SUDAH ADA ---
 
     public function scopeActive($query)
     {
@@ -95,7 +87,7 @@ class GuruStaf extends Model
     public function kelas(): BelongsToMany
     {
         return $this->belongsToMany(Kelas::class, 'kelas_wali_kelas', 'guru_staf_id', 'kelas_id')
-                    ->withPivot('tahun_ajaran_id', 'is_active')
+                    ->withPivot('semester_id', 'is_active')
                     ->withTimestamps();
     }
 

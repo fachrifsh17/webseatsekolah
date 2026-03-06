@@ -28,8 +28,8 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
     public function __construct($filters, $profil, $kontak, $semester)
     {
         $this->filters = $filters;
-        $this->profil = $profil;
-        $this->kontak = $kontak;
+        $this->profil = is_array($profil) ? (object)$profil : $profil;
+        $this->kontak = is_array($kontak) ? (object)$kontak : $kontak;
         $this->semester = $semester;
     }
 
@@ -99,6 +99,20 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $pSheet = $sheet->getDelegate();
                 $lastCol = 'F'; 
                 $lastRow = $sheet->getHighestRow();
+
+                if (!empty($this->profil->logo_provinsi)) {
+                    $pathProv = public_path('uploads/profil/' . str_replace('uploads/profil/', '', $this->profil->logo_provinsi));
+                    if (file_exists($pathProv)) {
+                        $drawingProv = new Drawing();
+                        $drawingProv->setName('Logo Provinsi');
+                        $drawingProv->setPath($pathProv);
+                        $drawingProv->setHeight(75);
+                        $drawingProv->setCoordinates('A1');
+                        $drawingProv->setOffsetX(10);
+                        $drawingProv->setOffsetY(5);
+                        $drawingProv->setWorksheet($pSheet);
+                    }
+                }
 
                 $sheet->getColumnDimension('A')->setWidth(10);
                 $sheet->getColumnDimension('B')->setWidth(40);
@@ -201,22 +215,20 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $imageRow = $ttgRow + 1;
                 $sheet->getRowDimension($imageRow)->setRowHeight(70);
 
-                if ($wakaKur && $wakaKur->file_ttd && file_exists(storage_path('app/public/' . $wakaKur->file_ttd))) {
+                if ($wakaKur && $wakaKur->file_ttd && file_exists(storage_path('app/' . $wakaKur->file_ttd))) {
                     $drawing = new Drawing();
                     $drawing->setName('TTD Waka');
-                    $drawing->setDescription('TTD Waka');
-                    $drawing->setPath(storage_path('app/public/' . $wakaKur->file_ttd));
+                    $drawing->setPath(storage_path('app/' . $wakaKur->file_ttd));
                     $drawing->setHeight(55);
                     $drawing->setCoordinates("A{$imageRow}");
                     $drawing->setOffsetX(30);
                     $drawing->setWorksheet($pSheet);
                 }
 
-                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
+                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/' . $kepsek->file_ttd))) {
                     $drawing = new Drawing();
                     $drawing->setName('TTD Kepsek');
-                    $drawing->setDescription('TTD Kepsek');
-                    $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
+                    $drawing->setPath(storage_path('app/' . $kepsek->file_ttd));
                     $drawing->setHeight(55);
                     $drawing->setCoordinates("E{$imageRow}");
                     $drawing->setOffsetX(20);

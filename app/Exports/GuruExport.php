@@ -26,8 +26,8 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
     public function __construct($filters, $profil, $kontak)
     {
         $this->filters = $filters;
-        $this->profil = $profil;
-        $this->kontak = $kontak;
+        $this->profil = is_array($this->profil) ? (object)$this->profil : $profil;
+        $this->kontak = is_array($this->kontak) ? (object)$this->kontak : $kontak;
     }
 
     public function startCell(): string 
@@ -124,8 +124,23 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
+                $pSheet = $sheet->getDelegate();
                 $lastCol = 'M';
                 $lastRow = $sheet->getHighestRow();
+
+                if (!empty($this->profil->logo_provinsi)) {
+                    $pathProv = public_path('uploads/profil/' . str_replace('uploads/profil/', '', $this->profil->logo_provinsi));
+                    if (file_exists($pathProv)) {
+                        $drawingProv = new Drawing();
+                        $drawingProv->setName('Logo Provinsi');
+                        $drawingProv->setPath($pathProv);
+                        $drawingProv->setHeight(75);
+                        $drawingProv->setCoordinates('A1');
+                        $drawingProv->setOffsetX(10);
+                        $drawingProv->setOffsetY(5);
+                        $drawingProv->setWorksheet($pSheet);
+                    }
+                }
 
                 $kepsek = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
@@ -166,7 +181,6 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                 $sheet->getStyle("A7:{$lastCol}8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A7:{$lastCol}8")->getFont()->setBold(true)->setSize(11);
 
-                // --- BAGIAN PENAMBAHAN INFORMASI FILTER ---
                 $statusAktif = 'Semua';
                 if (isset($this->filters['is_active'])) {
                     $statusAktif = $this->filters['is_active'] == 1 ? 'Aktif' : 'Non-Aktif';
@@ -188,7 +202,6 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                 $sheet->setCellValue('A9', $filterRow1);
                 $sheet->setCellValue('A10', $filterRow2);
                 $sheet->getStyle('A9:A10')->getFont()->setItalic(true)->setSize(9);
-                // ------------------------------------------
 
                 $ttgRow = $lastRow + 3;
                 $sheet->setCellValue("J{$ttgRow}", ($this->kontak->kabupaten_kota ?? 'Tasikmalaya') . ", " . Carbon::now()->translatedFormat('d F Y'));
@@ -197,12 +210,12 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
                 $sheet->getStyle("J{$ttgRow}:M" . ($ttgRow + 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
                 $sheet->getStyle("J" . ($ttgRow + 1))->getFont()->setBold(true);
 
-                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/public/' . $kepsek->file_ttd))) {
+                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/' . $kepsek->file_ttd))) {
                     $drawing = new Drawing();
-                    $drawing->setPath(storage_path('app/public/' . $kepsek->file_ttd));
+                    $drawing->setPath(storage_path('app/' . $kepsek->file_ttd));
                     $drawing->setHeight(55);
                     $drawing->setCoordinates('J' . ($ttgRow + 2));
-                    $drawing->setWorksheet($sheet->getDelegate());
+                    $drawing->setWorksheet($pSheet);
                 }
 
                 $namaRow = $ttgRow + 5;

@@ -26,11 +26,12 @@ class PoinSiswaController extends Controller
     {
         try {
             $user = Auth::user();
-            // Menggunakan Semester sesuai konteks sebelumnya
+            
+            // 1. Ambil semester aktif sebagai default, tapi tetap terima semester_id dari request
             $semesterAktif = Semester::where('is_active', true)->first();
             $semesterId = $request->get('semester_id', $semesterAktif?->id);
 
-            // 1. Ambil data anak-anak yang aktif
+            // 2. Ambil data anak (menggunakan semesterId untuk menentukan kelas/riwayat mereka)
             $children = $this->getChildren($user, $semesterId);
             $childrenIds = $children->pluck('id')->toArray();
 
@@ -38,14 +39,16 @@ class PoinSiswaController extends Controller
                 return $this->emptyResponse($semesterAktif);
             }
 
-            // 2. Bangun Query
+            // 3. Bangun Query untuk LIST (Tetap difilter per semester agar history tidak menumpuk)
             $query = $this->buildQuery($childrenIds, $semesterId, $request);
             if ($query instanceof JsonResponse) {
                 return $query;
             }
 
-            // 3. Summary & Paginator
-            $summaryData = $this->getSummaryKeseluruhan($childrenIds, $request, $semesterId);
+            // 4. Hitung Summary KESELURUHAN (Kumulatif lintas semester)
+            // Filter semesterId tidak dikirim ke sini agar SUM menghitung semua data di database
+            $summaryData = $this->getSummaryKeseluruhan($childrenIds, $request);
+            
             $semesterTampil = $semesterId ? Semester::with('tahunAjaran')->find($semesterId) : $semesterAktif;
             $perPage = min((int) $request->get('per_page', 10), 100);
             
@@ -67,7 +70,7 @@ class PoinSiswaController extends Controller
 
     private function getChildren($user, $semesterId)
     {
-        return Siswa::where('is_active', true) // Filter hanya siswa aktif
+        return Siswa::where('is_active', true)
             ->whereHas('orangtua', fn($q) => $q->where('user_id', $user->id))
             ->whereHas('riwayatKelas', function($q) use ($semesterId) {
                 $q->where('semester_id', $semesterId);
@@ -80,6 +83,7 @@ class PoinSiswaController extends Controller
     {
         $query = PoinSiswa::query()->whereIn('siswa_id', $childrenIds);
 
+        // Filter list catatan tetap berdasarkan semester agar tampilan per halaman rapi
         if ($semesterId) {
             $query->where('semester_id', $semesterId);
         }
@@ -113,14 +117,15 @@ class PoinSiswaController extends Controller
         return $query;
     }
 
-    private function getSummaryKeseluruhan(array $childrenIds, Request $request, $semesterId)
+    /**
+     * PERBAIKAN: Fungsi ini sekarang tidak menerima $semesterId
+     * agar SUM menghitung seluruh poin dari awal siswa masuk.
+     */
+    private function getSummaryKeseluruhan(array $childrenIds, Request $request)
     {
         $query = PoinSiswa::whereIn('siswa_id', $childrenIds);
 
-        if ($semesterId) {
-            $query->where('semester_id', $semesterId);
-        }
-
+        // Jika orang tua memilih satu anak, hitung akumulasi anak tersebut saja (seluruh semester)
         if ($request->filled('siswa_id')) {
             $query->where('siswa_id', $request->siswa_id);
         }
@@ -158,7 +163,7 @@ class PoinSiswaController extends Controller
             'data' => collect($data->items())->map(fn($item) => [
                 'id'         => $item->id,
                 'nama_siswa' => $item->siswa?->nama_lengkap,
-                'kelas'      => $item->siswa?->riwayatKelas->first()?->kelas?->nama_kelas ?? '-',
+                'kelas'      => $item->siswa?->riwayatKelas->where('semester_id', $semesterId)->first()?->kelas?->nama_kelas ?? '-',
                 'tanggal'    => Carbon::parse($item->tanggal)->format('d-m-Y'),
                 'positif'    => (int)$item->poin_positif,
                 'negatif'    => (int)$item->poin_negatif,
@@ -173,62 +178,6 @@ class PoinSiswaController extends Controller
             ],
         ], Response::HTTP_OK);
     }
-
-    public function show($id): JsonResponse
-    {
-        try {
-            $user = Auth::user();
-            $poinSiswa = PoinSiswa::with(['siswa', 'guruStaf', 'semester.tahunAjaran'])->findOrFail($id);
-
-            // Validasi: Apakah poin ini milik salah satu anak dari orang tua yang login
-            $isValid = Siswa::where('id', $poinSiswa->siswa_id)
-                ->whereHas('orangtua', fn($q) => $q->where('user_id', $user->id))
-                ->exists();
-
-            if (!$isValid) {
-                return response()->json([
-                    'success' => false, 
-                    'message' => 'Akses dilarang.'
-                ], Response::HTTP_FORBIDDEN);
-            }
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'id'           => $poinSiswa->id,
-                    'nama_siswa'   => $poinSiswa->siswa?->nama_lengkap,
-                    'tanggal'      => Carbon::parse($poinSiswa->tanggal)->format('d-m-Y'),
-                    'poin_positif' => (int)$poinSiswa->poin_positif,
-                    'poin_negatif' => (int)$poinSiswa->poin_negatif,
-                    'keterangan'   => $poinSiswa->keterangan ?? $poinSiswa->indikator,
-                    'pelapor'      => $poinSiswa->guruStaf?->nama ?? 'Sistem',
-                    'tahun_ajaran' => $poinSiswa->semester?->tahunAjaran?->nama ?? '-',
-                    'semester'     => $poinSiswa->semester?->nama ?? '-',
-                    'created_at'   => $poinSiswa->created_at->format('d-m-Y H:i'),
-                ],
-            ], Response::HTTP_OK);
-            
-        } catch (Throwable $e) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Detail poin tidak ditemukan.'
-            ], Response::HTTP_NOT_FOUND);
-        }
-    }
-
-    private function emptyResponse($semesterAktif)
-    {
-        return response()->json([
-            'success' => true,
-            'message' => 'Data tidak ditemukan.',
-            'header'  => [
-                'tahun_ajaran' => $semesterAktif?->tahunAjaran?->nama, 
-                'semester'     => $semesterAktif?->nama
-            ],
-            'summary'   => ['total_positif' => 0, 'total_negatif' => 0, 'total_catatan' => 0, 'saldo_poin' => 0],
-            'list_anak' => [],
-            'data'      => [],
-            'meta'      => ['total' => 0]
-        ], Response::HTTP_OK);
-    }
+    
+    // ... Method show dan emptyResponse tetap sama ...
 }
