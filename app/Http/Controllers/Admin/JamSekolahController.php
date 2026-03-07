@@ -85,10 +85,12 @@ class JamSekolahController extends Controller
             $sm = Semester::with('tahunAjaran')->find($semesterId);
             
             if ($sm) {
-                $namaTA = str_replace(['/', '\\', ' '], '-', $sm->tahunAjaran->nama);
-                $namaSem = str_replace(['/', '\\', ' '], '-', $sm->nama);
-                // --- PERUBAHAN: Penambahan nama semester dan kapitalisasi ---
-                $labelFile = strtoupper($namaTA . '-' . $namaSem);
+                // Perubahan: Menggunakan underscore (_) sebagai pemisah dan menghapus karakter ilegal
+                $namaTA = str_replace(['/', '\\', ' ', '-'], '_', $sm->tahunAjaran->nama);
+                $namaSem = str_replace(['/', '\\', ' ', '-'], '_', $sm->nama);
+                
+                // Hasil format: JAM_SEKOLAH_2025_2026_GENAP.xlsx
+                $labelFile = strtoupper($namaTA . '_' . $namaSem);
                 $tahunAjaranId = $sm->tahun_ajaran_id;
             } else {
                 $labelFile = date('Ymd_His');

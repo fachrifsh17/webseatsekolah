@@ -53,8 +53,9 @@ class GuruMapelController extends Controller
             });
         }
 
-        $query->when($request->tipe_mapel, function ($q, $tipe) {
-            return $q->whereHas('mapel', fn($m) => $m->where('tipe_mapel', $tipe));
+        // PERUBAHAN: tipe_mapel -> kategori_mapel
+        $query->when($request->kategori_mapel, function ($q, $kategori) {
+            return $q->whereHas('mapel', fn($m) => $m->where('kategori_mapel', $kategori));
         });
 
         $query->when($request->jurusan_id, function ($q, $jurusanId) {
@@ -126,13 +127,15 @@ class GuruMapelController extends Controller
                 $semester = Semester::with('tahunAjaran')->where('is_active', 1)->first();
             }
 
+            // PERUBAHAN: tipe_mapel -> kategori_mapel
             $filters = [
-                'q'            => $request->get('q'),
-                'hari'         => $request->get('hari'),
-                'tipe_mapel'   => $request->get('tipe_mapel', 'Semua Tipe'),
-                'status_mapel' => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Aktif'
+                'q'             => $request->get('q'),
+                'hari'          => $request->get('hari'),
+                'kategori_mapel'=> $request->get('kategori_mapel', 'Semua Kategori'),
+                'status_mapel'  => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Aktif'
             ];
 
+            $nameParts = []; // Inisialisasi agar tidak error
             if ($semester) {
                 $filters['semester'] = $semester->nama;
                 $filters['tahun_ajaran'] = $semester->tahunAjaran->nama;
@@ -186,8 +189,9 @@ class GuruMapelController extends Controller
                 $nameParts[] = strtoupper($request->hari);
             }
 
-            if ($request->filled('tipe_mapel')) {
-                $kriteria[] = "TIPE: " . strtoupper($request->tipe_mapel);
+            // PERUBAHAN: tipe_mapel -> kategori_mapel
+            if ($request->filled('kategori_mapel')) {
+                $kriteria[] = "KATEGORI: " . strtoupper($request->kategori_mapel);
             }
 
             $filters['identitas_laporan'] = count($kriteria) > 0 ? implode(' | ', $kriteria) : 'SEMUA DATA';
@@ -346,9 +350,7 @@ class GuruMapelController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
-        // --- PERUBAHAN DI SINI ---
-        $validated['is_active'] = true; // Set otomatis aktif saat buat
-        // -------------------------
+        $validated['is_active'] = true; 
 
         try {
             $assignment = DB::transaction(fn() => GuruMapel::create($validated));

@@ -242,7 +242,7 @@ class PoinSiswaController extends Controller
             $kontak = DB::table('data_kontak')->first();
             $semesterObj = Semester::with('tahunAjaran')->findOrFail($request->semester_id);
             
-            $namaSemester = $semesterObj->nama;
+            $namaSemester = strtoupper($semesterObj->nama);
             $namaTA = $semesterObj->tahunAjaran->nama ?? "-";
 
             $namaKelasLaporan = 'SELURUH SISWA';
@@ -266,7 +266,6 @@ class PoinSiswaController extends Controller
 
             $isGanjil = stripos($namaSemester, 'Ganjil') !== false;
             
-            // Validasi bulan masuk semester
             if ($inputMonth) {
                 if ($isGanjil && !in_array((int)$inputMonth, [7, 8, 9, 10, 11, 12])) {
                     return response()->json(['success' => false, 'message' => 'Bulan yang dipilih tidak masuk dalam periode Semester Ganjil (Juli - Desember).'], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -301,10 +300,8 @@ class PoinSiswaController extends Controller
                     $query->whereMonth('tanggal', '>=', 7)
                           ->whereMonth('tanggal', '<=', 12);
                 } else {
-                    $query->where(function($q) {
-                        $q->whereMonth('tanggal', '>=', 1)
+                    $query->whereMonth('tanggal', '>=', 1)
                           ->whereMonth('tanggal', '<=', 6);
-                    });
                 }
             }
 
@@ -317,6 +314,8 @@ class PoinSiswaController extends Controller
                 });
             }
 
+            $labelLengkapTA = $namaTA . " - " . $namaSemester;
+
             return Excel::download(
                 new PoinSiswaExport(
                     $query->orderBy('tanggal', 'asc'), 
@@ -324,7 +323,7 @@ class PoinSiswaController extends Controller
                     $labelWaktu, 
                     $profil, 
                     $kontak, 
-                    $namaSemester . " " . $namaTA
+                    $labelLengkapTA
                 ),
                 $fileName
             );

@@ -22,7 +22,6 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
 {
     protected $query, $profil, $kontak, $kelasObj, $filters;
     private $rowNumber = 0;
-    private $lastRow = 0;
 
     public function __construct($query, $profil, $kontak, $kelas = null, $filters = [])
     {
@@ -33,7 +32,7 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         $this->filters = $filters;
     }
 
-    public function startCell(): string { return 'A15'; }
+    public function startCell(): string { return 'A16'; }
 
     public function query()
     {
@@ -55,8 +54,9 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         $this->rowNumber++;
         $riwayatAktif = $siswa->riwayatKelas ? $siswa->riwayatKelas->where('is_active', 1)->first() : null;
         $namaKelasSiswa = $riwayatAktif && $riwayatAktif->kelas ? $riwayatAktif->kelas->nama_kelas : '-';
+        
         $jkRaw = strtolower($siswa->jenis_kelamin);
-        $jkLengkap = ($jkRaw === 'l' || $jkRaw === 'laki-laki') ? 'Laki-laki' : 'Perempuan';
+        $jkLengkap = ($jkRaw === 'l' || $jkRaw === 'laki-laki') ? 'LAKI-LAKI' : 'PEREMPUAN';
 
         return [
             $this->rowNumber,
@@ -86,53 +86,54 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $drawingProv = new Drawing();
                 $drawingProv->setName('Logo Provinsi');
                 $drawingProv->setPath($pathProv);
-                $drawingProv->setHeight(75);
+                $drawingProv->setHeight(80);
                 $drawingProv->setCoordinates('A1');
-                $drawingProv->setOffsetX(5);
-                $drawingProv->setOffsetY(5);
+                $drawingProv->setOffsetX(45); 
+                $drawingProv->setOffsetY(15); 
+                $drawingProv->setEditAs('oneCell'); 
                 $drawings[] = $drawingProv;
             }
         }
 
-        $ks = DB::table('struktur_jabatan')
-            ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
-            ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
-            ->where('jabatans.slug', 'kepala-sekolah')
-            ->select('struktur_jabatan.file_ttd')
-            ->first();
+        $imageRow = 16 + $this->rowNumber + 4;
 
         $waka = DB::table('struktur_jabatan')
-            ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
             ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
             ->where('jabatans.slug', 'waka-kesiswaan')
             ->select('struktur_jabatan.file_ttd')
             ->first();
 
-        $dataCount = $this->query->count();
-        $this->lastRow = 15 + ($dataCount > 0 ? $dataCount : 0);
-        $imageRow = $this->lastRow + 2;
-
-        if ($ks && $ks->file_ttd) {
-            $path = storage_path('app/' . $ks->file_ttd);
-            if (file_exists($path)) {
-                $drawing = new Drawing();
-                $drawing->setName('TTD Kepala Sekolah');
-                $drawing->setPath($path);
-                $drawing->setHeight(50);
-                $drawing->setCoordinates('K' . $imageRow);
-                $drawings[] = $drawing;
+        if ($waka && $waka->file_ttd) {
+            $pathWaka = storage_path('app/private/' . str_replace(['private/', 'app/private/'], '', $waka->file_ttd));
+            if (file_exists($pathWaka)) {
+                $drawingWaka = new Drawing();
+                $drawingWaka->setPath($pathWaka);
+                $drawingWaka->setHeight(70); 
+                $drawingWaka->setCoordinates('C' . $imageRow);
+                $drawingWaka->setOffsetX(0);
+                $drawingWaka->setOffsetY(-5);
+                $drawingWaka->setEditAs('oneCell'); 
+                $drawings[] = $drawingWaka;
             }
         }
 
-        if ($waka && $waka->file_ttd) {
-            $pathWaka = storage_path('app/' . $waka->file_ttd);
-            if (file_exists($pathWaka)) {
-                $drawingWaka = new Drawing();
-                $drawingWaka->setName('TTD Waka Kesiswaan');
-                $drawingWaka->setPath($pathWaka);
-                $drawingWaka->setHeight(50);
-                $drawingWaka->setCoordinates('B' . $imageRow);
-                $drawings[] = $drawingWaka;
+        $ks = DB::table('struktur_jabatan')
+            ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
+            ->where('jabatans.slug', 'kepala-sekolah')
+            ->select('struktur_jabatan.file_ttd')
+            ->first();
+
+        if ($ks && $ks->file_ttd) {
+            $path = storage_path('app/private/' . str_replace(['private/', 'app/private/'], '', $ks->file_ttd));
+            if (file_exists($path)) {
+                $drawing = new Drawing();
+                $drawing->setPath($path);
+                $drawing->setHeight(70);
+                $drawing->setCoordinates('K' . $imageRow);
+                $drawing->setOffsetX(50);
+                $drawing->setOffsetY(-5);
+                $drawing->setEditAs('oneCell'); 
+                $drawings[] = $drawing;
             }
         }
 
@@ -145,29 +146,47 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
                 $lastCol = 'L'; 
-                $actualLastRow = $sheet->getHighestRow();
+                $dataLastRow = 16 + $this->rowNumber;
 
-                $sheet->getColumnDimension('A')->setWidth(10);
-                $sheet->getColumnDimension('B')->setWidth(18);
+                $sheet->getColumnDimension('A')->setAutoSize(false)->setWidth(5);
+                $sheet->getColumnDimension('B')->setAutoSize(false)->setWidth(10);
+                $sheet->getColumnDimension('C')->setAutoSize(false)->setWidth(15);
+                $sheet->getColumnDimension('D')->setAutoSize(false)->setWidth(15);
+                $sheet->getColumnDimension('E')->setAutoSize(false)->setWidth(40);
 
-                $prov = strtoupper($this->kontak->provinsi ?? 'JAWA BARAT');
+                $provAsli = $this->kontak->provinsi ?? 'Jawa Barat';
+                $provKapital = strtoupper($provAsli);
                 $cabdin = strtoupper($this->profil->cadis ?? 'CABANG DINAS PENDIDIKAN');
                 $namaSekolah = strtoupper($this->profil->nama_sekolah ?? 'NAMA SEKOLAH');
-                $alamatLengkap = trim(($this->kontak->alamat_jalan ?? '') . " Des. " . ($this->kontak->desa_kelurahan ?? '') . " Kec. " . ($this->kontak->kecamatan ?? '') . " " . ($this->kontak->kabupaten_kota ?? ''));
+                
+                $alamatJalan = $this->kontak->alamat_jalan ?? '-';
+                $desaKec = "Desa " . ($this->kontak->desa_kelurahan ?? '-') . " Kec. " . ($this->kontak->kecamatan ?? '-');
+                $kotaKab = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
+                $pos = $this->kontak->kode_pos ?? '-';
+                $telepon = $this->kontak->telepon ?? '-';
+                $email = $this->kontak->email_resmi ?? '-';
+                $npsn = $this->profil->npsn ?? '-';
 
-                $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$prov}");
+                $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', $cabdin);
                 $sheet->mergeCells("A4:{$lastCol}4"); $sheet->setCellValue('A4', $namaSekolah);
-                $sheet->mergeCells("A5:{$lastCol}5"); $sheet->setCellValue('A5', $alamatLengkap);
-                $sheet->mergeCells("A6:{$lastCol}6"); $sheet->setCellValue('A6', "Telp: " . ($this->kontak->telepon ?? '') . " | Email: " . ($this->kontak->email_resmi ?? '') . " | NPSN: " . ($this->profil->npsn ?? ''));
+                
+                $sheet->mergeCells("A5:{$lastCol}5"); 
+                $sheet->setCellValue('A5', "{$alamatJalan}, {$desaKec}, {$kotaKab} {$pos} {$provAsli}");
+                
+                $sheet->mergeCells("A6:{$lastCol}6"); 
+                $sheet->setCellValue('A6', "Telp: {$telepon} | Email: {$email} | NPSN: {$npsn}");
                 
                 $sheet->getStyle("A1:{$lastCol}6")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true);
-                $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
+                $sheet->getStyle("A4:{$lastCol}4")->getFont()->setSize(14);
+                $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_DOUBLE);
 
-                $sheet->mergeCells("A8:{$lastCol}8"); $sheet->setCellValue('A8', 'DATA INDUK PESERTA DIDIK');
+                $sheet->mergeCells("A8:{$lastCol}8"); 
+                $sheet->setCellValue('A8', 'DATA INDUK PESERTA DIDIK');
                 $sheet->getStyle('A8')->getFont()->setBold(true)->setSize(12);
+                $sheet->getStyle('A8')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $sem = DB::table('semesters')->join('tahun_ajaran', 'semesters.tahun_ajaran_id', '=', 'tahun_ajaran.id')
                         ->where('semesters.is_active', 1)->select('semesters.nama', 'tahun_ajaran.nama as thn')->first();
@@ -176,51 +195,32 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->mergeCells("A9:{$lastCol}9"); 
                 $sheet->setCellValue('A9', $txtTahun);
                 $sheet->getStyle('A9')->getFont()->setBold(true);
-                $sheet->getStyle("A8:A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle('A9')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $jurusan = $this->filters['nama_jurusan'] ?? ($this->filters['jurusan'] ?? '-');
-                if ($jurusan === '-' && $this->kelasObj && $this->kelasObj->jurusan) {
-                    $jurusan = $this->kelasObj->jurusan->nama_jurusan;
-                } elseif ($jurusan === '-' && !empty($this->filters['jurusan_id'])) {
-                    $jurusan = DB::table('jurusans')->where('id', $this->filters['jurusan_id'])->value('nama_jurusan');
-                }
-
                 $tingkat = $this->filters['nama_tingkat'] ?? ($this->filters['tingkat'] ?? '-');
-                if ($tingkat === '-' && $this->kelasObj && $this->kelasObj->tingkatan) {
-                    $tingkat = $this->kelasObj->tingkatan->nama_tingkatan;
-                } elseif ($tingkat === '-' && !empty($this->filters['tingkatan_id'])) {
-                    $tingkat = DB::table('tingkatan')->where('id', $this->filters['tingkatan_id'])->value('nama_tingkatan');
-                }
-
                 $namaKelas = $this->filters['nama_kelas'] ?? ($this->filters['kelas'] ?? 'SEMUA KELAS');
-                if ($namaKelas === 'SEMUA KELAS' && $this->kelasObj) {
-                    $namaKelas = $this->kelasObj->nama_kelas;
-                }
-
                 $isActive = $this->filters['is_active'] ?? 1;
                 $statusText = $isActive == 0 ? 'TIDAK AKTIF' : 'AKTIF';
+                $jkFilter = $this->filters['jenis_kelamin'] ?? 'SEMUA';
 
-                $sheet->setCellValue('A10', "JURUSAN : " . strtoupper($jurusan ?? '-'));
-                $sheet->setCellValue('A11', "TINGKAT : " . strtoupper($tingkat ?? '-'));
+                $sheet->setCellValue('A10', "JURUSAN : " . strtoupper($jurusan));
+                $sheet->setCellValue('A11', "TINGKAT : " . strtoupper($tingkat));
                 $sheet->setCellValue('A12', "KELAS   : " . strtoupper($namaKelas));
-                $sheet->setCellValue('A13', "STATUS  : " . strtoupper($statusText));
+                $sheet->setCellValue('A13', "Jenis Kelamin: " . strtoupper($jkFilter));
+                $sheet->setCellValue('A14', "STATUS  : " . strtoupper($statusText));
 
-                $sheet->getStyle("A15:{$lastCol}15")->applyFromArray([
+                $sheet->getStyle("A16:{$lastCol}16")->applyFromArray([
                     'font' => ['bold' => true],
-                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
-                    'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F2F2F2']]
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
                 ]);
 
-                $sheet->getStyle("A15:{$lastCol}{$actualLastRow}")->applyFromArray([
-                    'borders' => [
-                        'allBorders' => [
-                            'borderStyle' => Border::BORDER_THIN
-                        ]
-                    ],
+                $sheet->getStyle("A16:{$lastCol}{$dataLastRow}")->applyFromArray([
+                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
                     'alignment' => ['vertical' => Alignment::VERTICAL_CENTER]
                 ]);
 
-                for ($row = 16; $row <= $actualLastRow; $row++) {
+                for ($row = 17; $row <= $dataLastRow; $row++) {
                     $sheet->getStyle("A{$row}:D{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                     $sheet->getStyle("H{$row}:I{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                     $sheet->getStyle("L{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -229,36 +229,31 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                     }
                 }
 
-                $ttdRow = $actualLastRow + 2; 
-                $kabKota = strtoupper($this->kontak->kabupaten_kota ?? 'TASIKMALAYA');
+                $ttdRow = $dataLastRow + 2; 
+                $lokasiTtd = strtoupper($this->kontak->kabupaten_kota ?? 'TASIKMALAYA');
                 
-                $waka = DB::table('struktur_jabatan')
-                    ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
-                    ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
-                    ->where('jabatans.slug', 'waka-kesiswaan')
-                    ->select('guru_staf.nama', 'guru_staf.nip')
-                    ->first();
-                
-                $ks = DB::table('struktur_jabatan')
-                    ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
-                    ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
-                    ->where('jabatans.slug', 'kepala-sekolah')
-                    ->select('guru_staf.nama', 'guru_staf.nip')
-                    ->first();
+                $waka = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')->where('jabatans.slug', 'waka-kesiswaan')->select('guru_staf.nama', 'guru_staf.nip')->first();
+                $ks = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')->where('jabatans.slug', 'kepala-sekolah')->select('guru_staf.nama', 'guru_staf.nip')->first();
 
-                $sheet->setCellValue("B" . $ttdRow, "Mengetahui,");
-                $sheet->setCellValue("B" . ($ttdRow + 1), "Waka Kesiswaan,");
-                $sheet->setCellValue("B" . ($ttdRow + 5), "( " . strtoupper($waka->nama ?? '____________________') . " )");
-                $sheet->setCellValue("B" . ($ttdRow + 6), "NIP. " . ($waka->nip ?? '........................'));
+                $sheet->setCellValue("C" . $ttdRow, "Mengetahui,");
+                $sheet->setCellValue("C" . ($ttdRow + 1), "Waka Kesiswaan,");
                 
-                $sheet->setCellValue("K" . $ttdRow, $kabKota . ", " . Carbon::now()->translatedFormat('d F Y'));
+                $sheet->setCellValue("K" . $ttdRow, $lokasiTtd . ", " . strtoupper(Carbon::now()->translatedFormat('d F Y')));
                 $sheet->setCellValue("K" . ($ttdRow + 1), "Kepala Sekolah,");
-                $sheet->setCellValue("K" . ($ttdRow + 5), "( " . strtoupper($ks->nama ?? '____________________') . " )");
-                $sheet->setCellValue("K" . ($ttdRow + 6), "NIP. " . ($ks->nip ?? '........................'));
 
-                $sheet->getStyle("B" . ($ttdRow + 5) . ":K" . ($ttdRow + 5))->getFont()->setBold(true)->setUnderline(true);
-                $sheet->getStyle("B" . $ttdRow . ":B" . ($ttdRow + 6))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle("K" . $ttdRow . ":K" . ($ttdRow + 6))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("C{$ttdRow}:K" . ($ttdRow + 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+                $namaRow = $ttdRow + 5;
+                $sheet->setCellValue("C" . $namaRow, "( " . strtoupper($waka->nama ?? '____________________') . " )");
+                $sheet->setCellValue("K" . $namaRow, "( " . strtoupper($ks->nama ?? '____________________') . " )");
+                
+                $sheet->getStyle("C{$namaRow}:K{$namaRow}")->getFont()->setBold(true)->setUnderline(true);
+                $sheet->getStyle("C{$namaRow}:K{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+                $nipRow = $namaRow + 1;
+                $sheet->setCellValue("C" . $nipRow, "NIP. " . ($waka->nip ?? '........................'));
+                $sheet->setCellValue("K" . $nipRow, "NIP. " . ($ks->nip ?? '........................'));
+                $sheet->getStyle("C{$nipRow}:K{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
     }

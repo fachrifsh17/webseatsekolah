@@ -31,7 +31,7 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
 
     public function startCell(): string 
     { 
-        return 'A11'; 
+        return 'A12'; 
     }
 
     public function collection() 
@@ -60,8 +60,9 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                         $drawingProv->setPath($pathProv);
                         $drawingProv->setHeight(75);
                         $drawingProv->setCoordinates('A1');
-                        $drawingProv->setOffsetX(10);
-                        $drawingProv->setOffsetY(5);
+                        $drawingProv->setOffsetX(35);
+                        $drawingProv->setOffsetY(10);
+                        $drawingProv->setEditAs('oneCell');
                         $drawingProv->setWorksheet($pSheet);
                     }
                 }
@@ -95,82 +96,56 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true);
                 $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
-                $sheet->mergeCells("A7:{$lastCol}7"); 
-                $sheet->setCellValue('A7', 'PENYESUAIAN JAM PELAJARAN');
+                $sheet->mergeCells("A8:{$lastCol}8"); 
+                $sheet->setCellValue('A8', 'PENYESUAIAN JAM PELAJARAN');
                 
                 $ta = TahunAjaran::find($this->tahunAjaranId);
-                $semesterAktif = Semester::where('tahun_ajaran_id', $this->tahunAjaranId)
-                                         ->where('is_active', true)
-                                         ->first();
+                $semesterAktif = Semester::where('tahun_ajaran_id', $this->tahunAjaranId)->where('is_active', true)->first();
 
-                $sheet->mergeCells("A8:{$lastCol}8"); 
+                $sheet->mergeCells("A9:{$lastCol}9"); 
                 $textHeader = 'TAHUN PELAJARAN ' . ($ta->nama ?? '') . ' - SEMESTER ' . strtoupper($semesterAktif->nama ?? '');
-                $sheet->setCellValue('A8', $textHeader);
+                $sheet->setCellValue('A9', $textHeader);
                 
-                $sheet->getStyle("A7:A8")->getFont()->setBold(true);
-                $sheet->getStyle("A7:A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("A8:A9")->getFont()->setBold(true);
+                $sheet->getStyle("A8:A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $hariMap = [
-                    'Senin' => ['t' => 'A', 'l' => 'B'],
-                    'Selasa' => ['t' => 'C', 'l' => 'D'],
-                    'Rabu' => ['t' => 'E', 'l' => 'F'],
-                    'Kamis' => ['t' => 'G', 'l' => 'H'],
-                    'Jumat' => ['t' => 'I', 'l' => 'J']
-                ];
+                $hariMap = ['Senin' => ['t' => 'A', 'l' => 'B'], 'Selasa' => ['t' => 'C', 'l' => 'D'], 'Rabu' => ['t' => 'E', 'l' => 'F'], 'Kamis' => ['t' => 'G', 'l' => 'H'], 'Jumat' => ['t' => 'I', 'l' => 'J']];
 
-                $dataPerHari = JamSekolah::whereHas('semester', function($query) {
-                        $query->where('tahun_ajaran_id', $this->tahunAjaranId);
-                    })
+                $dataPerHari = JamSekolah::whereHas('semester', function($query) { $query->where('tahun_ajaran_id', $this->tahunAjaranId); })
                     ->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
-                    ->orderBy('waktu_mulai')
-                    ->get()
-                    ->groupBy('hari');
+                    ->orderBy('waktu_mulai')->get()->groupBy('hari');
 
-                $rowStart = 12;
-
+                $rowStart = 13;
                 foreach ($hariMap as $namaHari => $cols) {
                     $currentRow = $rowStart;
                     if (isset($dataPerHari[$namaHari])) {
                         foreach ($dataPerHari[$namaHari] as $jam) {
                             $waktu = Carbon::parse($jam->waktu_mulai)->format('H.i') . ' - ' . Carbon::parse($jam->waktu_selesai)->format('H.i');
                             $sheet->setCellValue($cols['t'] . $currentRow, $waktu);
-                            
-                            $label = '';
                             $jenisTrim = ucfirst(strtolower(trim($jam->jenis)));
-
-                            if ($jenisTrim === 'Pelajaran') {
-                                $label = $jam->jam_ke;
-                            } elseif ($jenisTrim === 'Istirahat') {
-                                $label = 'ISTIRAHAT';
-                            } else {
-                                $label = strtoupper($jam->keterangan ?? 'KEGIATAN');
-                            }
-                            
+                            $label = ($jenisTrim === 'Pelajaran') ? $jam->jam_ke : (($jenisTrim === 'Istirahat') ? 'ISTIRAHAT' : strtoupper($jam->keterangan ?? 'KEGIATAN'));
                             $sheet->setCellValue($cols['l'] . $currentRow, $label);
 
                             if ($jenisTrim === 'Istirahat') {
-                                $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)
-                                      ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFFF00');
+                                $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFFF00');
                             } elseif ($jenisTrim === 'Kegiatan') {
-                                $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)
-                                      ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFC6E0B4');
+                                $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFC6E0B4');
                             }
-
                             $currentRow++;
                         }
                     }
                 }
 
                 $maxRow = $sheet->getHighestRow();
-                if ($maxRow >= 11) {
-                    $sheet->getStyle("A11:J$maxRow")->applyFromArray([
+                if ($maxRow >= 12) {
+                    $sheet->getStyle("A12:J$maxRow")->applyFromArray([
                         'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
                         'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]
                     ]);
-                    $sheet->getStyle("A11:J11")->getFont()->setBold(true);
+                    $sheet->getStyle("A12:J12")->getFont()->setBold(true);
                 }
 
-                $ttgRow = $maxRow + 3;
+                $ttgRow = $maxRow + 2;
                 $sheet->mergeCells("G{$ttgRow}:J{$ttgRow}");
                 $lokasiTtd = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';
                 $sheet->setCellValue("G{$ttgRow}", $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
@@ -178,52 +153,58 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
 
                 $ttgRow++;
                 $sheet->mergeCells("A{$ttgRow}:C{$ttgRow}");
-                $sheet->setCellValue("A{$ttgRow}", "Mengetahui,\nWaka Kurikulum");
-                
+                $sheet->setCellValue("A{$ttgRow}", "Mengetahui,");
                 $sheet->mergeCells("G{$ttgRow}:J{$ttgRow}");
-                $sheet->setCellValue("G{$ttgRow}", "Menyetujui,\nKepala Sekolah");
-                
-                $sheet->getStyle("A{$ttgRow}:J{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setWrapText(true);
-                $sheet->getStyle("A{$ttgRow}:J{$ttgRow}")->getFont()->setBold(true);
+                $sheet->setCellValue("G{$ttgRow}", "Menyetujui,");
+                $sheet->getStyle("A{$ttgRow}:J{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+                $ttgRow++;
+                $sheet->mergeCells("A{$ttgRow}:C{$ttgRow}");
+                $sheet->setCellValue("A{$ttgRow}", "Waka Kurikulum,");
+                $sheet->mergeCells("G{$ttgRow}:J{$ttgRow}");
+                $sheet->setCellValue("G{$ttgRow}", "Kepala Sekolah,");
+                $sheet->getStyle("A{$ttgRow}:J{$ttgRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $imageRow = $ttgRow + 1;
+                $sheet->getRowDimension($imageRow)->setRowHeight(50);
                 
-                if ($wakaKur && $wakaKur->file_ttd && file_exists(storage_path('app/' . $wakaKur->file_ttd))) {
-                    $drawing = new Drawing();
-                    $drawing->setName('TTD Waka');
-                    $drawing->setPath(storage_path('app/' . $wakaKur->file_ttd));
-                    $drawing->setHeight(50);
-                    $drawing->setCoordinates("B{$imageRow}");
-                    $drawing->setOffsetX(10);
-                    $drawing->setOffsetY(10);
-                    $drawing->setWorksheet($pSheet);
+                if ($wakaKur && $wakaKur->file_ttd) {
+                    $fullPathWaka = storage_path('app/private/' . str_replace(['private/', 'app/private/'], '', $wakaKur->file_ttd));
+                    if (file_exists($fullPathWaka)) {
+                        $drawingWaka = new Drawing();
+                        $drawingWaka->setPath($fullPathWaka);
+                        $drawingWaka->setHeight(60);
+                        $drawingWaka->setCoordinates("B{$imageRow}");
+                        $drawingWaka->setOffsetX(-10);
+                        $drawingWaka->setEditAs('oneCell');
+                        $drawingWaka->setWorksheet($pSheet);
+                    }
                 }
 
-                if ($kepsek && $kepsek->file_ttd && file_exists(storage_path('app/' . $kepsek->file_ttd))) {
-                    $drawing = new Drawing();
-                    $drawing->setName('TTD Kepsek');
-                    $drawing->setPath(storage_path('app/' . $kepsek->file_ttd));
-                    $drawing->setHeight(50);
-                    $drawing->setCoordinates("I{$imageRow}");
-                    $drawing->setOffsetX(15);
-                    $drawing->setOffsetY(10);
-                    $drawing->setWorksheet($pSheet);
+                if ($kepsek && $kepsek->file_ttd) {
+                    $fullPathKepsek = storage_path('app/private/' . str_replace(['private/', 'app/private/'], '', $kepsek->file_ttd));
+                    if (file_exists($fullPathKepsek)) {
+                        $drawingKepsek = new Drawing();
+                        $drawingKepsek->setPath($fullPathKepsek);
+                        $drawingKepsek->setHeight(60);
+                        $drawingKepsek->setCoordinates("H{$imageRow}");
+                        $drawingKepsek->setOffsetX(40); 
+                        $drawingKepsek->setEditAs('oneCell');
+                        $drawingKepsek->setWorksheet($pSheet);
+                    }
                 }
 
-                $namaRow = $ttgRow + 4;
+                $namaRow = $imageRow + 1;
                 $sheet->mergeCells("A{$namaRow}:C{$namaRow}");
                 $sheet->setCellValue("A{$namaRow}", "( " . strtoupper($wakaKur->nama ?? '____________________') . " )"); 
-                
                 $sheet->mergeCells("G{$namaRow}:J{$namaRow}");
                 $sheet->setCellValue("G{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
-                
                 $sheet->getStyle("A{$namaRow}:J{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getStyle("A{$namaRow}:J{$namaRow}")->getFont()->setBold(true);
 
                 $nipRow = $namaRow + 1;
                 $sheet->mergeCells("A{$nipRow}:C{$nipRow}");
                 $sheet->setCellValue("A{$nipRow}", "NIP. " . ($wakaKur->nip ?? '...........................'));
-                
                 $sheet->mergeCells("G{$nipRow}:J{$nipRow}");
                 $sheet->setCellValue("G{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
                 $sheet->getStyle("A{$nipRow}:J{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);

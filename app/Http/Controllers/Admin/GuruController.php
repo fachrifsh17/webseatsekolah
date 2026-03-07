@@ -38,6 +38,8 @@ class GuruController extends Controller
         $jabatan = $request->get('jabatan_fungsional');
         $status = $request->get('status_kepegawaian');
         $jurusan = $request->get('jurusan_id');
+        $jk = $request->get('jenis_kelamin');
+        $agama = $request->get('agama');
         $active = $request->has('is_active') ? $request->get('is_active') : 1;
 
         $data = GuruStaf::with(['jurusan', 'user'])
@@ -51,6 +53,8 @@ class GuruController extends Controller
             ->when($jabatan, fn($q) => $q->where('jabatan_fungsional', $jabatan))
             ->when($status, fn($q) => $q->where('status_kepegawaian', $status))
             ->when($jurusan, fn($q) => $q->where('jurusan_id', $jurusan))
+            ->when($jk, fn($q) => $q->where('jenis_kelamin', $jk))
+            ->when($agama, fn($q) => $q->where('agama', $agama))
             ->where('is_active', $active)
             ->latest()
             ->paginate($request->get('per_page', 12));
@@ -78,7 +82,7 @@ class GuruController extends Controller
         $this->authorize('viewAny', GuruStaf::class);
 
         try {
-            $filters = $request->only(['q', 'jabatan_fungsional', 'status_kepegawaian', 'jurusan_id', 'is_active', 'semester_id']);
+            $filters = $request->only(['q', 'jabatan_fungsional', 'status_kepegawaian', 'jurusan_id', 'is_active', 'semester_id', 'jenis_kelamin', 'agama']);
             
             if (!isset($filters['is_active'])) {
                 $filters['is_active'] = 1;
@@ -117,6 +121,14 @@ class GuruController extends Controller
 
             if (!empty($filters['jabatan_fungsional'])) {
                 $nameParts[] = strtoupper(str_replace(' ', '_', $filters['jabatan_fungsional']));
+            }
+
+            if (!empty($filters['jenis_kelamin'])) {
+                $nameParts[] = $filters['jenis_kelamin'] == 'L' ? 'LAKI_LAKI' : 'PEREMPUAN';
+            }
+
+            if (!empty($filters['agama'])) {
+                $nameParts[] = strtoupper($filters['agama']);
             }
 
             if (!empty($filters['jurusan_id'])) {

@@ -45,6 +45,10 @@ class SiswaController extends Controller
             $query->whereHas('riwayatKelas', fn($q) => $q->where('kelas_id', $request->kelas_id));
         }
 
+        if ($request->filled('jenis_kelamin')) {
+            $query->where('jenis_kelamin', $request->jenis_kelamin);
+        }
+
         if ($request->filled('semester_id')) {
             $query->whereHas('riwayatKelas', function($q) use ($request) {
                 $q->where('semester_id', $request->semester_id);
@@ -131,7 +135,7 @@ class SiswaController extends Controller
         }
 
         $tahunAjaranAktif = DB::table('tahun_ajaran')->where('is_active', 1)->first();
-        $labelTahun = $tahunAjaranAktif ? strtoupper(Str::slug($tahunAjaranAktif->nama, '_')) : 'TAHUN_TIDAK_DIKETAHUI';
+        $labelTahun = $tahunAjaranAktif ? strtoupper(str_replace(['/', '-'], '_', $tahunAjaranAktif->nama)) : 'TAHUN_TIDAK_DIKETAHUI';
 
         $labelPeriode = 'PERIODE_TIDAK_DIKETAHUI';
         if ($semesterFocus) {
@@ -150,6 +154,10 @@ class SiswaController extends Controller
             if ($kelasData) {
                 $filename .= '_' . strtoupper(Str::slug($kelasData->nama_kelas, '_'));
             }
+        }
+
+        if ($request->filled('jenis_kelamin')) {
+            $filename .= '_' . strtoupper($request->jenis_kelamin);
         }
 
         $filename .= '_' . $labelTahun . '_' . $labelPeriode;
