@@ -97,9 +97,18 @@ class AlbumController extends Controller
         $validated['tanggal_kegiatan'] = $validated['tanggal_kegiatan'] ?? null;
 
         DB::beginTransaction();
+        $targetFolder = public_path('uploads/album');
+
         try {
             if ($request->hasFile('cover') && $request->file('cover')->isValid()) {
-                $validated['cover_path'] = $request->file('cover')->store('uploads/album', 'public');
+                $file = $request->file('cover');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                
+                // Pindahkan langsung ke public/uploads/album
+                $file->move($targetFolder, $fileName);
+                
+                // Simpan hanya nama filenya saja di DB (konsisten dengan diskusi sebelumnya)
+                $validated['cover_path'] = $fileName;
             }
 
             $album = Album::create($validated);
@@ -112,8 +121,9 @@ class AlbumController extends Controller
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
-            if (!empty($validated['cover_path']) && Storage::disk('public')->exists($validated['cover_path'])) {
-                Storage::disk('public')->delete($validated['cover_path']);
+            // Hapus file fisik jika transaksi gagal
+            if (!empty($validated['cover_path']) && file_exists($targetFolder . '/' . $validated['cover_path'])) {
+                unlink($targetFolder . '/' . $validated['cover_path']);
             }
             Log::error('Failed to create album', ['payload' => $validated, 'error' => $e->getMessage()]);
             return response()->json([
@@ -137,20 +147,25 @@ class AlbumController extends Controller
         }
 
         DB::beginTransaction();
-        $newCoverPath = null;
+        $targetFolder = public_path('uploads/album');
+        $newCoverFile = null;
         $originalCover = $album->getOriginal('cover_path');
 
         try {
             if ($request->hasFile('cover') && $request->file('cover')->isValid()) {
-                $newCoverPath = $request->file('cover')->store('uploads/album', 'public');
-                $validated['cover_path'] = $newCoverPath;
+                $file = $request->file('cover');
+                $newCoverFile = time() . '_' . $file->getClientOriginalName();
+                
+                $file->move($targetFolder, $newCoverFile);
+                $validated['cover_path'] = $newCoverFile;
             }
 
             $album->fill($validated);
             $album->save();
 
-            if ($newCoverPath && $originalCover && Storage::disk('public')->exists($originalCover)) {
-                Storage::disk('public')->delete($originalCover);
+            // Hapus cover lama jika ada cover baru dan file lama ada di public/uploads/album
+            if ($newCoverFile && $originalCover && file_exists($targetFolder . '/' . $originalCover)) {
+                unlink($targetFolder . '/' . $originalCover);
             }
 
             DB::commit();
@@ -162,8 +177,8 @@ class AlbumController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            if ($newCoverPath && Storage::disk('public')->exists($newCoverPath)) {
-                Storage::disk('public')->delete($newCoverPath);
+            if ($newCoverFile && file_exists($targetFolder . '/' . $newCoverFile)) {
+                unlink($targetFolder . '/' . $newCoverFile);
             }
             Log::error('Failed to update album', [
                 'album_id' => (string) $album->id,
@@ -181,14 +196,19 @@ class AlbumController extends Controller
     public function destroy(Album $album): JsonResponse
     {
         DB::beginTransaction();
+        $targetFolder = public_path('uploads/album');
+
         try {
-            if (!empty($album->cover_path) && Storage::disk('public')->exists($album->cover_path)) {
-                Storage::disk('public')->delete($album->cover_path);
+            // Hapus cover album
+            if (!empty($album->cover_path) && file_exists($targetFolder . '/' . $album->cover_path)) {
+                unlink($targetFolder . '/' . $album->cover_path);
             }
 
+            // Hapus media terkait (asumsi folder media sama atau sesuaikan folder media jika berbeda)
             foreach ($album->media as $media) {
-                if (!empty($media->media_path) && Storage::disk('public')->exists($media->media_path)) {
-                    Storage::disk('public')->delete($media->media_path);
+                $mediaTarget = public_path('uploads/media/' . $media->media_path);
+                if (!empty($media->media_path) && file_exists($mediaTarget)) {
+                    unlink($mediaTarget);
                 }
                 $media->delete();
             }
@@ -197,9 +217,9 @@ class AlbumController extends Controller
             DB::commit();
 
             return response()->json([
-                'success'      => true,
-                'message'      => 'Album berhasil dihapus',
-                'notification' => 'Berhasil dihapus'
+                'success'       => true,
+                'message'       => 'Album berhasil dihapus',
+                'notification'  => 'Berhasil dihapus'
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
@@ -208,10 +228,10 @@ class AlbumController extends Controller
                 'error'    => $e->getMessage()
             ]);
             return response()->json([
-                'success'      => false,
-                'message'      => 'Gagal menghapus album',
-                'notification' => 'Gagal dihapus',
-                'errors'       => ['exception' => [$e->getMessage()]]
+                'success'       => false,
+                'message'       => 'Gagal menghapus album',
+                'notification'  => 'Gagal dihapus',
+                'errors'        => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

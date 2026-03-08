@@ -7,7 +7,6 @@ use App\Models\Prestasi;
 use App\Http\Resources\PrestasiResource;
 use App\Http\Requests\StorePrestasiRequest;
 use App\Http\Requests\UpdatePrestasiRequest;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
@@ -91,13 +90,17 @@ class PrestasiController extends Controller
     public function store(StorePrestasiRequest $request): JsonResponse
     {
         $validated = $request->validated();
-
-        if ($request->hasFile('foto')) {
-            $validated['foto'] = $request->file('foto')->store('uploads/prestasi', 'public');
-        }
+        $targetPath = public_path('uploads/prestasi');
 
         DB::beginTransaction();
         try {
+            if ($request->hasFile('foto')) {
+                $file = $request->file('foto');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['foto'] = $fileName;
+            }
+
             $prestasi = Prestasi::create($validated);
             DB::commit();
 
@@ -108,8 +111,9 @@ class PrestasiController extends Controller
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             DB::rollBack();
-            if (!empty($validated['foto'] ?? null)) {
-                Storage::disk('public')->delete($validated['foto']);
+            if (!empty($validated['foto'])) {
+                $filePath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($filePath)) unlink($filePath);
             }
             Log::error('Failed to create prestasi', ['payload' => $validated, 'error' => $e->getMessage()]);
             return response()->json([
@@ -123,21 +127,25 @@ class PrestasiController extends Controller
     public function update(UpdatePrestasiRequest $request, Prestasi $prestasi): JsonResponse
     {
         $validated = $request->validated();
-
-        if ($request->hasFile('foto')) {
-            $newPath = $request->file('foto')->store('uploads/prestasi', 'public');
-            if ($newPath) {
-                if ($prestasi->foto) {
-                    Storage::disk('public')->delete($prestasi->foto);
-                }
-                $validated['foto'] = $newPath;
-            }
-        }
+        $targetPath = public_path('uploads/prestasi');
+        $oldFoto = $prestasi->foto;
 
         DB::beginTransaction();
         try {
+            if ($request->hasFile('foto')) {
+                $file = $request->file('foto');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['foto'] = $fileName;
+            }
+
             $prestasi->update($validated);
             DB::commit();
+
+            if ($request->hasFile('foto') && $oldFoto) {
+                $fullOldPath = $targetPath . '/' . str_replace('uploads/prestasi/', '', $oldFoto);
+                if (file_exists($fullOldPath)) unlink($fullOldPath);
+            }
 
             return response()->json([
                 'success' => true,
@@ -146,8 +154,9 @@ class PrestasiController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            if (!empty($validated['foto'] ?? null) && ($validated['foto'] !== $prestasi->foto)) {
-                Storage::disk('public')->delete($validated['foto']);
+            if (isset($validated['foto']) && $validated['foto'] !== $oldFoto) {
+                $tempPath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($tempPath)) unlink($tempPath);
             }
             Log::error('Failed to update prestasi', [
                 'prestasi_id' => (string) $prestasi->id,
@@ -164,14 +173,16 @@ class PrestasiController extends Controller
 
     public function destroy(Prestasi $prestasi): JsonResponse
     {
+        $oldFoto = $prestasi->foto;
         DB::beginTransaction();
         try {
-            if ($prestasi->foto) {
-                Storage::disk('public')->delete($prestasi->foto);
-            }
-
             $prestasi->delete();
             DB::commit();
+
+            if ($oldFoto) {
+                $filePath = public_path('uploads/prestasi/') . str_replace('uploads/prestasi/', '', $oldFoto);
+                if (file_exists($filePath)) unlink($filePath);
+            }
 
             return response()->json([
                 'success'      => true,

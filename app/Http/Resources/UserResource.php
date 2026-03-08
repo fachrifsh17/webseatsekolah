@@ -8,15 +8,15 @@ class UserResource extends JsonResource
 {
     public function toArray($request)
     {
-        $fotoUrl = asset('images/default-avatar.png');
+        // PERUBAHAN DISINI: Default diset null, bukan path gambar
+        $fotoUrl = null; 
+        
         $guruData = $this->relationLoaded('guruStaf') ? $this->guruStaf : ($this->relationLoaded('guru') ? $this->guru : null);
         
         if ($guruData && $guruData->foto) {
-            // Menyesuaikan path untuk Guru
             $path = str_replace('uploads/guru/', '', $guruData->foto);
             $fotoUrl = asset('uploads/guru/' . $path);
         } elseif ($this->relationLoaded('siswa') && $this->siswa && $this->siswa->foto) {
-            // Menyesuaikan path untuk Siswa
             $path = str_replace('uploads/siswa/foto/', '', $this->siswa->foto);
             $fotoUrl = asset('uploads/siswa/foto/' . $path);
         }
@@ -27,7 +27,7 @@ class UserResource extends JsonResource
             'is_active'    => (int) $this->is_active,
             'current_role' => $this->current_role, 
 
-            'foto' => $fotoUrl,
+            'foto' => $fotoUrl, // Akan bernilai null jika tidak ada di DB
 
             'roles' => $this->whenLoaded('roles', function () {
                 return $this->roles->map(fn($role) => [
@@ -52,13 +52,15 @@ class UserResource extends JsonResource
             }),
 
             'siswa' => $this->when($this->relationLoaded('siswa') && $this->siswa, function () {
+                $riwayatAktif = $this->siswa->riwayatKelas->first();
+                
                 return [
                     'id'    => $this->siswa->id,
                     'nis'   => $this->siswa->nis,
                     'nama'  => $this->siswa->nama_lengkap,
-                    'kelas' => $this->siswa->kelas instanceof \Illuminate\Support\Collection 
-                        ? $this->siswa->kelas->first()?->nama_kelas 
-                        : ($this->siswa->kelas?->nama_kelas ?? null),
+                    'kelas' => ($riwayatAktif && $riwayatAktif->kelas) 
+                        ? $riwayatAktif->kelas->nama_kelas 
+                        : null,
                 ];
             }),
 

@@ -190,13 +190,7 @@ class PresensiController extends Controller
                 return response()->json(['success' => false, 'message' => 'Semester tidak ditemukan.'], Response::HTTP_NOT_FOUND);
             }
 
-            $isWali = DB::table('kelas_wali_kelas')
-                ->where('kelas_id', (string) $kelas_id)
-                ->where('guru_staf_id', $guruId)
-                ->where('semester_id', $semester->id)
-                ->exists();
-
-            if (!$isWali) {
+            if (!$this->checkIsWali($kelas_id, $guruId, $semester->id)) {
                 return response()->json(['success' => false, 'message' => 'Akses Ditolak: Anda tidak memiliki riwayat sebagai Wali Kelas di kelas ini.'], 403);
             }
 
@@ -208,60 +202,13 @@ class PresensiController extends Controller
                 ->where('semester_id', $semester->id)
                 ->first();
 
-            if (!$header) {
-                if ($carbonDate->isWeekend()) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Tidak dapat memuat siswa: Hari ' . $carbonDate->locale('id')->dayName . ' adalah hari libur.',
-                    ], Response::HTTP_UNPROCESSABLE_ENTITY);
-                }
-
-                $liburKalender = KalenderAkademik::where('semester_id', $semester->id)
-                    ->where('kategori', 'Libur')
-                    ->whereDate('tanggal_mulai', '<=', $tanggal)
-                    ->whereDate('tanggal_selesai', '>=', $tanggal)
-                    ->first();
-
-                if ($liburKalender) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Tidak dapat memuat siswa: Tanggal tersebut adalah hari libur (' . ($liburKalender->keterangan ?? 'Kalender Akademik') . ').',
-                    ], Response::HTTP_UNPROCESSABLE_ENTITY);
-                }
+            $errorLibur = $this->validateHariLibur($header, $carbonDate, $tanggal, $semester->id);
+            if ($errorLibur) {
+                return $errorLibur;
             }
 
-            $querySiswa = Siswa::query();
-
-            if ($header) {
-                $querySiswa->whereHas('presensiDetail', function($q) use ($header) {
-                    $q->where('presensi_id', $header->id);
-                });
-            } else {
-                $querySiswa->whereHas('riwayatKelas', function($q) use ($kelas_id, $semester) {
-                    $q->where('kelas_id', (string) $kelas_id)
-                      ->where('semester_id', $semester->id)
-                      ->where('is_active', 1);
-                })->where('is_active', 1);
-            }
-
-            $siswa = $querySiswa->with(['presensiDetail' => function($q) use ($header) {
-                if ($header) {
-                    $q->where('presensi_id', $header->id);
-                } else {
-                    $q->whereRaw('1 = 0'); 
-                }
-            }])
-            ->orderBy('nama_lengkap', 'asc')
-            ->get();
-
-            $collection = $siswa->map(fn($item) => [
-                'siswa_id'   => $item->id,
-                'nama'       => $item->nama_lengkap,
-                'nisn'       => $item->nisn,
-                'status'     => $item->presensiDetail->first()?->status ?? null,
-                'keterangan' => $item->presensiDetail->first()?->keterangan ?? null,
-                'is_active'  => $item->is_active
-            ]);
+            $siswa = $this->getSiswaPresensi($header, $kelas_id, $semester);
+            $collection = $this->formatListSiswa($siswa, $header);
 
             return response()->json([
                 'success' => true, 
@@ -281,6 +228,79 @@ class PresensiController extends Controller
         }
     }
 
+    private function checkIsWali($kelas_id, $guruId, $semesterId)
+    {
+        return DB::table('kelas_wali_kelas')
+            ->where('kelas_id', (string) $kelas_id)
+            ->where('guru_staf_id', $guruId)
+            ->where('semester_id', $semesterId)
+            ->exists();
+    }
+
+    private function validateHariLibur($header, $carbonDate, $tanggal, $semesterId)
+    {
+        if (!$header) {
+            if ($carbonDate->isWeekend()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak dapat memuat siswa: Hari ' . $carbonDate->locale('id')->dayName . ' adalah hari libur.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $liburKalender = KalenderAkademik::where('semester_id', $semesterId)
+                ->where('kategori', 'Libur')
+                ->whereDate('tanggal_mulai', '<=', $tanggal)
+                ->whereDate('tanggal_selesai', '>=', $tanggal)
+                ->first();
+
+            if ($liburKalender) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak dapat memuat siswa: Tanggal tersebut adalah hari libur (' . ($liburKalender->keterangan ?? 'Kalender Akademik') . ').',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+        return null;
+    }
+
+    private function getSiswaPresensi($header, $kelas_id, $semester)
+    {
+        $querySiswa = Siswa::query();
+
+        if ($header) {
+            $querySiswa->whereHas('presensiDetail', function($q) use ($header) {
+                $q->where('presensi_id', $header->id);
+            });
+        } else {
+            $querySiswa->whereHas('riwayatKelas', function($q) use ($kelas_id, $semester) {
+                $q->where('kelas_id', (string) $kelas_id)
+                  ->where('semester_id', $semester->id)
+                  ->where('is_active', 1);
+            })->where('is_active', 1);
+        }
+
+        return $querySiswa->with(['presensiDetail' => function($q) use ($header) {
+            if ($header) {
+                $q->where('presensi_id', $header->id);
+            } else {
+                $q->whereRaw('1 = 0'); 
+            }
+        }])
+        ->orderBy('nama_lengkap', 'asc')
+        ->get();
+    }
+
+    private function formatListSiswa($siswa, $header)
+    {
+        return $siswa->map(fn($item) => [
+            'siswa_id'   => $item->id,
+            'nama'       => $item->nama_lengkap,
+            'nisn'       => $item->nisn,
+            'status'     => $item->presensiDetail->first()?->status ?? null,
+            'keterangan' => $item->presensiDetail->first()?->keterangan ?? null,
+            'is_active'  => $item->is_active
+        ]);
+    }
     public function store(StorePresensiRequest $request): JsonResponse
     {
         $this->authorize('create', Presensi::class);

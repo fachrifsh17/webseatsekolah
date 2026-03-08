@@ -26,7 +26,6 @@ class SiswaResource extends JsonResource
             'tanggal_lahir' => $this->tanggal_lahir?->toDateString(),
             'jenis_kelamin' => $this->jenis_kelamin,
 
-            // Mengambil data dari tabel pivot siswa_kelas melalui relasi riwayatKelas
             'kelas' => $dataKelas ? [
                 'id'   => $dataKelas->id,
                 'nama' => $dataKelas->nama_kelas,
@@ -50,10 +49,9 @@ class SiswaResource extends JsonResource
 
             'foto'          => $this->foto,
             
-            // Perubahan: Menyesuaikan path ke folder uploads/siswa/foto di public
             'foto_url'      => $this->foto 
-                               ? asset('uploads/siswa/foto/' . str_replace('uploads/siswa/foto/', '', $this->foto)) 
-                               : asset('images/default-avatar.png'),
+                                ? asset('uploads/' . str_replace('uploads/', '', $this->foto)) 
+                                : asset('images/default-avatar.png'),
                                
             'no_telp_siswa' => $this->no_telp_siswa,
             'alamat'        => $this->alamat,

@@ -314,8 +314,6 @@ class PoinSiswaController extends Controller
                 });
             }
 
-            $labelLengkapTA = $namaTA . " - " . $namaSemester;
-
             return Excel::download(
                 new PoinSiswaExport(
                     $query->orderBy('tanggal', 'asc'), 
@@ -323,7 +321,8 @@ class PoinSiswaController extends Controller
                     $labelWaktu, 
                     $profil, 
                     $kontak, 
-                    $labelLengkapTA
+                    $namaTA,
+                    $namaSemester
                 ),
                 $fileName
             );

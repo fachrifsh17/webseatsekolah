@@ -11,7 +11,7 @@ use App\Imports\SiswaImport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\{DB, Log, Hash};
+use Illuminate\Support\Facades\{DB, Log, Hash, File};
 use Illuminate\Support\Arr;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
@@ -214,7 +214,7 @@ class SiswaController extends Controller
     {
         $validated = $request->validated();
         $semesterAktif = DB::table('semesters')->where('is_active', 1)->first();
-        $targetPath = public_path('uploads/siswa/foto');
+        $targetPath = public_path('uploads/siswa');
 
         if (!$semesterAktif) {
             return response()->json([
@@ -234,10 +234,12 @@ class SiswaController extends Controller
                 }
 
                 if ($request->hasFile('foto')) {
+                    if (!File::exists($targetPath)) File::makeDirectory($targetPath, 0755, true);
+                    
                     $file = $request->file('foto');
-                    $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                    $fileName = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
                     $file->move($targetPath, $fileName);
-                    $data['foto'] = $fileName;
+                    $data['foto'] = 'siswa/' . $fileName;
                 }
 
                 $lastUser = User::where('id', 'like', 'U%')
@@ -293,8 +295,8 @@ class SiswaController extends Controller
 
         } catch (ValidationException $e) {
             if (isset($data['foto'])) {
-                $tempPath = $targetPath . '/' . $data['foto'];
-                if (file_exists($tempPath)) unlink($tempPath);
+                $tempFile = str_replace('siswa/', '', $data['foto']);
+                if (File::exists($targetPath . '/' . $tempFile)) File::delete($targetPath . '/' . $tempFile);
             }
             return response()->json([
                 'success' => false,
@@ -303,8 +305,8 @@ class SiswaController extends Controller
             ], 422);
         } catch (Throwable $e) {
             if (isset($data['foto'])) {
-                $tempPath = $targetPath . '/' . $data['foto'];
-                if (file_exists($tempPath)) unlink($tempPath);
+                $tempFile = str_replace('siswa/', '', $data['foto']);
+                if (File::exists($targetPath . '/' . $tempFile)) File::delete($targetPath . '/' . $tempFile);
             }
             Log::error("Store Siswa Error: " . $e->getMessage());
             return response()->json([
@@ -318,7 +320,7 @@ class SiswaController extends Controller
     {
         $validated = $request->validated();
         $semesterAktif = DB::table('semesters')->where('is_active', 1)->first();
-        $targetPath = public_path('uploads/siswa/foto');
+        $targetPath = public_path('uploads/siswa');
 
         $data = Arr::only($validated, (new Siswa())->getFillable());
         $oldFoto = $siswa->foto;
@@ -337,14 +339,16 @@ class SiswaController extends Controller
                 }
 
                 if ($request->hasFile('foto')) {
+                    if (!File::exists($targetPath)) File::makeDirectory($targetPath, 0755, true);
+
                     $file = $request->file('foto');
-                    $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                    $fileName = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
                     $file->move($targetPath, $fileName);
-                    $data['foto'] = $fileName;
+                    $data['foto'] = 'siswa/' . $fileName;
                     
                     if ($oldFoto) {
-                        $fullOldPath = $targetPath . '/' . str_replace('uploads/siswa/foto/', '', $oldFoto);
-                        if (file_exists($fullOldPath)) unlink($fullOldPath);
+                        $cleanOldName = str_replace(['uploads/siswa/', 'siswa/', 'foto/'], '', $oldFoto);
+                        if (File::exists($targetPath . '/' . $cleanOldName)) File::delete($targetPath . '/' . $cleanOldName);
                     }
                 }
 
@@ -378,14 +382,14 @@ class SiswaController extends Controller
                     }
 
                     $siswa->load('orangtua');
-                    if ($siswa->orangtua) {
-                        $siswa->orangtua->update(['is_active' => $status]);
-                        if ($siswa->orangtua->user_id) {
-                            $otUser = User::find($siswa->orangtua->user_id);
+                    foreach ($siswa->orangtua as $ot) {
+                        $ot->update(['is_active' => $status]);
+                        if ($ot->user_id) {
+                            $otUser = User::find($ot->user_id);
                             if ($otUser) {
                                 $otUser->is_active = $status;
                                 if ($isReactivating) {
-                                    $otUser->password = Hash::make($siswa->orangtua->telepon);
+                                    $otUser->password = Hash::make($ot->telepon);
                                 }
                                 $otUser->save();
                             }
@@ -436,8 +440,8 @@ class SiswaController extends Controller
 
         } catch (ValidationException $e) {
             if ($request->hasFile('foto') && isset($data['foto'])) {
-                $tempPath = $targetPath . '/' . $data['foto'];
-                if (file_exists($tempPath)) unlink($tempPath);
+                $tempFile = str_replace('siswa/', '', $data['foto']);
+                if (File::exists($targetPath . '/' . $tempFile)) File::delete($targetPath . '/' . $tempFile);
             }
             return response()->json([
                 'success' => false,
@@ -446,8 +450,8 @@ class SiswaController extends Controller
             ], 422);
         } catch (Throwable $e) {
             if ($request->hasFile('foto') && isset($data['foto'])) {
-                $tempPath = $targetPath . '/' . $data['foto'];
-                if (file_exists($tempPath)) unlink($tempPath);
+                $tempFile = str_replace('siswa/', '', $data['foto']);
+                if (File::exists($targetPath . '/' . $tempFile)) File::delete($targetPath . '/' . $tempFile);
             }
             Log::error("Update Siswa Error: " . $e->getMessage());
             return response()->json([
@@ -467,10 +471,10 @@ class SiswaController extends Controller
                 SiswaKelas::where('siswa_id', $siswa->id)->update(['is_active' => 0]);
                 
                 $siswa->load('orangtua');
-                if ($siswa->orangtua) {
-                    $siswa->orangtua->update(['is_active' => 0]);
-                    if ($siswa->orangtua->user_id) {
-                        User::where('id', $siswa->orangtua->user_id)->update(['is_active' => 0]);
+                foreach ($siswa->orangtua as $ot) {
+                    $ot->update(['is_active' => 0]);
+                    if ($ot->user_id) {
+                        User::where('id', $ot->user_id)->update(['is_active' => 0]);
                     }
                 }
 
@@ -481,8 +485,9 @@ class SiswaController extends Controller
             });
 
             if ($oldFoto) {
-                $filePath = public_path('uploads/siswa/foto/') . str_replace('uploads/siswa/foto/', '', $oldFoto);
-                if (file_exists($filePath)) unlink($filePath);
+                $cleanOldName = str_replace(['uploads/siswa/', 'siswa/', 'foto/'], '', $oldFoto);
+                $filePath = public_path('uploads/siswa/') . $cleanOldName;
+                if (File::exists($filePath)) File::delete($filePath);
             }
 
             return response()->json([

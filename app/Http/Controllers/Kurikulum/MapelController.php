@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Kurikulum;
 
 use App\Http\Controllers\Controller;
-use App\Models\{MataPelajaran, Jurusan, ProfilSekolah, DataKontak};
+use App\Models\{MataPelajaran, Jurusan, ProfilSekolah, DataKontak, Semester}; // Tambahkan Semester
 use App\Http\Resources\MapelResource;
 use App\Http\Requests\{StoreMapelRequest, UpdateMapelRequest};
 use App\Exports\MapelExport;
@@ -88,29 +88,38 @@ class MapelController extends Controller
             
             $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 
             $kontak = DataKontak::first() ?? new DataKontak(); 
+            
+            // Ambil semester aktif beserta tahun ajarannya
+            $activeSemester = Semester::with('tahunAjaran')->where('is_active', 1)->first();
 
-            $filenameParts = ['DATA_MATA_PELAJARAN'];
-
-            if ($filters['is_active'] == 0) {
-                $filenameParts[] = 'NON_AKTIF';
-            }
+            $filenameParts = ['DATA_MAPEL'];
 
             if ($request->filled('jurusan_id')) {
                 $jurusan = Jurusan::find($request->jurusan_id);
                 if ($jurusan) {
                     $filenameParts[] = strtoupper(str_replace([' ', '-'], '_', $jurusan->nama_jurusan));
                 }
+            } else {
+                $filenameParts[] = 'SEMUA_JURUSAN';
             }
 
-            if ($request->filled('tipe_mapel')) {
-                $filenameParts[] = strtoupper($request->tipe_mapel);
+            if ($activeSemester) {
+                // Gunakan nama tahun ajaran dari relasi
+                $namaTa = strtoupper(str_replace([' ', '-', '/'], '_', $activeSemester->tahunAjaran->nama));
+                $namaSemester = strtoupper(str_replace(' ', '_', $activeSemester->nama));
+                
+                $filenameParts[] = $namaTa;
+                $filenameParts[] = $namaSemester;
             }
+
+            $filenameParts[] = ($filters['is_active'] == 1) ? 'AKTIF' : 'NON_AKTIF';
 
             $fileName = implode('_', $filenameParts) . '.xlsx';
 
             if (ob_get_contents()) ob_end_clean();
 
-            return Excel::download(new MapelExport($filters, $profil, $kontak), $fileName);
+            // Kirim $activeSemester ke Export Class
+            return Excel::download(new MapelExport($filters, $profil, $kontak, $activeSemester), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Mapel Error', ['error' => $e->getMessage()]);
             return response()->json([
@@ -122,38 +131,39 @@ class MapelController extends Controller
     }
 
     public function import(Request $request): JsonResponse
-{
-    $this->authorize('create', MataPelajaran::class);
+    {
+        $this->authorize('create', MataPelajaran::class);
 
-    $request->validate(['file' => 'required|mimes:xlsx,xls,csv,txt|max:2048']);
+        $request->validate(['file' => 'required|mimes:xlsx,xls,csv,txt|max:2048']);
 
-    try {
-        $access = [
-            'isFullAccess' => true,
-            'guruStaf' => null,
-            'namaJabatan' => 'Admin'
-        ];
+        try {
+            $access = [
+                'isFullAccess' => true,
+                'guruStaf' => null,
+                'namaJabatan' => 'Admin'
+            ];
 
-        $import = new MapelImport($access);
-        Excel::import($import, $request->file('file'));
-        
-        $conflicts = $import->getMessages();
+            $import = new MapelImport($access);
+            Excel::import($import, $request->file('file'));
+            
+            $conflicts = $import->getMessages();
 
-        return response()->json([
-            'success' => true,
-            'message' => empty($conflicts) ? 'Data mata pelajaran berhasil diimpor.' : 'Import selesai dengan catatan.',
-            'conflicts' => $conflicts
-        ], Response::HTTP_OK);
+            return response()->json([
+                'success' => true,
+                'message' => empty($conflicts) ? 'Data mata pelajaran berhasil diimpor.' : 'Import selesai dengan catatan.',
+                'conflicts' => $conflicts
+            ], Response::HTTP_OK);
 
-    } catch (Throwable $e) {
-        Log::error('Import Mapel Error', ['error' => $e->getMessage()]);
-        return response()->json([
-            'success' => false,
-            'message' => 'Gagal mengimpor data mata pelajaran.',
-            'errors'  => ['exception' => [$e->getMessage()]]
-        ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        } catch (Throwable $e) {
+            Log::error('Import Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengimpor data mata pelajaran.',
+                'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
-}
+
     public function store(StoreMapelRequest $request): JsonResponse
     {
         $validated = $request->validated();

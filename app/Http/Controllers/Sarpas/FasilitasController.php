@@ -7,7 +7,6 @@ use App\Models\Fasilitas;
 use App\Http\Resources\FasilitasResource;
 use App\Http\Requests\StoreFasilitasRequest;
 use App\Http\Requests\UpdateFasilitasRequest;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Throwable;
@@ -77,10 +76,14 @@ class FasilitasController extends Controller
     public function store(StoreFasilitasRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/fasilitas');
 
         try {
             if ($request->hasFile('foto')) {
-                $validated['foto'] = $request->file('foto')->store('uploads/fasilitas', 'public');
+                $file = $request->file('foto');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['foto'] = $fileName;
             }
 
             $fasilitas = Fasilitas::create($validated);
@@ -91,8 +94,9 @@ class FasilitasController extends Controller
                 'data'    => new FasilitasResource($fasilitas),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
-            if (!empty($validated['foto'] ?? null)) {
-                Storage::disk('public')->delete($validated['foto']);
+            if (!empty($validated['foto'])) {
+                $filePath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($filePath)) unlink($filePath);
             }
             Log::error('Failed to create fasilitas', ['payload' => $validated, 'error' => $e->getMessage()]);
             return response()->json([
@@ -106,13 +110,20 @@ class FasilitasController extends Controller
     public function update(UpdateFasilitasRequest $request, Fasilitas $fasilitas): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/fasilitas');
+        $oldFoto = $fasilitas->foto;
 
         try {
             if ($request->hasFile('foto')) {
-                if ($fasilitas->foto) {
-                    Storage::disk('public')->delete($fasilitas->foto);
+                if ($oldFoto) {
+                    $oldPath = $targetPath . '/' . str_replace('uploads/fasilitas/', '', $oldFoto);
+                    if (file_exists($oldPath)) unlink($oldPath);
                 }
-                $validated['foto'] = $request->file('foto')->store('uploads/fasilitas', 'public');
+
+                $file = $request->file('foto');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['foto'] = $fileName;
             }
 
             $fasilitas->update($validated);
@@ -123,8 +134,9 @@ class FasilitasController extends Controller
                 'data'    => new FasilitasResource($fasilitas),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            if (!empty($validated['foto'] ?? null)) {
-                Storage::disk('public')->delete($validated['foto']);
+            if (!empty($validated['foto']) && $validated['foto'] !== $oldFoto) {
+                $tempPath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($tempPath)) unlink($tempPath);
             }
             Log::error('Failed to update fasilitas', [
                 'fasilitas_id' => (string) $fasilitas->id,
@@ -143,7 +155,8 @@ class FasilitasController extends Controller
     {
         try {
             if ($fasilitas->foto) {
-                Storage::disk('public')->delete($fasilitas->foto);
+                $filePath = public_path('uploads/fasilitas/') . str_replace('uploads/fasilitas/', '', $fasilitas->foto);
+                if (file_exists($filePath)) unlink($filePath);
             }
 
             $fasilitas->delete();

@@ -254,6 +254,10 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::get('poin-siswa/export', [AdminPoin::class, 'export']);
     Route::apiResource('poin_siswa', AdminPoin::class); 
     
+    Route::patch('pesan/{pesan}/status', [PesanController::class, 'updateStatus']);
+    Route::post('pesan/mark-all-read', [PesanController::class, 'markAllAsRead']);
+    Route::apiResource('pesan', PesanController::class)->except(['store']);
+
     Route::apiResource('tahun_ajaran', TahunAjaranController::class);
     Route::apiResource('semester', SemesterController::class);
     Route::apiResource('portal', PortalController::class);
@@ -267,7 +271,7 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::apiResource('media', MediaController::class);
     Route::apiResource('jabatan', JabatanController::class);
     Route::apiResource('struktur_jabatan', StrukturJabatanController::class);
-    Route::apiResource('pesan', PesanController::class)->except(['store']);
+    
 });
 
 /*
@@ -336,6 +340,7 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         Route::get('poin-siswa/export', action: [KesiswaanPoin::class, 'export']);
         Route::apiResource('poin_siswa', KesiswaanPoin::class); 
         Route::get('kenaikan-kelas', [KesiswaanKenaikan::class, 'index']);
+        Route::post('kelas/generate', [KesiswaanKenaikan::class, 'generateFromPreviousYear']);
         Route::post('kenaikan-kelas/proses', [KesiswaanKenaikan::class, 'prosesMassal']);
     });
 
@@ -353,6 +358,9 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         Route::apiResource('prestasi', HumasPrestasi::class);
         Route::apiResource('banner', HumasBanner::class);
         Route::apiResource('portal', HumasPortal::class);
+
+        Route::post('pesan/mark-all-read', [PesanController::class, 'markAllAsRead']);
+        Route::patch('pesan/{pesan}/status', [HumasPesan::class, 'updateStatus']);
         Route::apiResource('pesan', HumasPesan::class)->except(['store']);
         Route::put('ppdb-link', [HumasPpdb::class, 'update']);
     });

@@ -5,6 +5,7 @@ namespace App\Imports;
 use App\Models\Siswa;
 use App\Models\User;
 use App\Models\Kelas;
+use App\Models\OrangTua;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Illuminate\Support\Facades\Hash;
@@ -35,8 +36,11 @@ class SiswaImport implements ToModel, WithHeadingRow
         $kelasId = null;
 
         if (!empty($namaKelasInput)) {
-            $kelas = Kelas::where('nama_kelas', $namaKelasInput)
-                ->where('is_active', 1)
+            $kelas = Kelas::where('is_active', 1)
+                ->where(function($query) use ($namaKelasInput) {
+                    $query->where('nama_kelas', $namaKelasInput)
+                          ->orWhere('id', $namaKelasInput);
+                })
                 ->first();
 
             if ($kelas) {
@@ -53,7 +57,9 @@ class SiswaImport implements ToModel, WithHeadingRow
         $existingSiswa = Siswa::where('nis', $row['nis'])->first();
 
         return DB::transaction(function () use ($row, $kelasId, $semesterAktif, $existingSiswa) {
-            if ($existingSiswa) {
+            if ($existingSiswa instanceof Siswa) {
+                $oldIsActive = $existingSiswa->is_active;
+
                 $existingSiswa->update([
                     'nisn'           => $row['nisn'] ?? $existingSiswa->nisn,
                     'nama_lengkap'   => $row['nama_lengkap'],
@@ -67,23 +73,53 @@ class SiswaImport implements ToModel, WithHeadingRow
 
                 if ($existingSiswa->user_id) {
                     User::where('id', $existingSiswa->user_id)->update([
+                        'username'  => $row['nis'],
                         'is_active' => 1,
                         'password'  => Hash::make($row['nis'])
                     ]);
                 }
 
-                DB::table('siswa_kelas')->where('siswa_id', $existingSiswa->id)->update(['is_active' => 0]);
+                if ($oldIsActive == 0) {
+                    $orangTuaIds = DB::table('orangtua_siswa')
+                        ->where('siswa_id', $existingSiswa->id)
+                        ->pluck('orangtua_id');
 
-                DB::table('siswa_kelas')->insert([
-                    'siswa_id'    => $existingSiswa->id,
-                    'kelas_id'    => $kelasId,
-                    'semester_id' => $semesterAktif->id, 
-                    'is_active'   => 1, 
-                    'created_at'  => now(),
-                    'updated_at'  => now(),
-                ]);
+                    if ($orangTuaIds->isNotEmpty()) {
+                        $orangtuaList = OrangTua::whereIn('id', $orangTuaIds)->get();
+                        
+                        foreach ($orangtuaList as $ot) {
+                            if ($ot instanceof OrangTua) {
+                                $ot->update(['is_active' => 1]);
+                                
+                                if ($ot->user_id) {
+                                    User::where('id', $ot->user_id)->update([
+                                        'is_active' => 1,
+                                        'password'  => Hash::make((string)$ot->telepon)
+                                    ]);
+                                }
+                            }
+                        }
+                    }
+                }
 
-                $this->importMessages[] = "Baris {$this->rows}: Siswa dengan NIS {$row['nis']} ditemukan dan telah diaktifkan kembali.";
+                DB::table('siswa_kelas')
+                    ->where('siswa_id', $existingSiswa->id)
+                    ->update(['is_active' => 0]);
+
+                DB::table('siswa_kelas')->updateOrInsert(
+                    [
+                        'siswa_id'    => $existingSiswa->id, 
+                        'semester_id' => $semesterAktif->id
+                    ],
+                    [
+                        'kelas_id'    => $kelasId, 
+                        'is_active'   => 1,
+                        'updated_at'  => now(),
+                        'created_at'  => DB::raw('IFNULL(created_at, NOW())')
+                    ]
+                );
+
+                $this->importMessages[] = "Baris {$this->rows}: Siswa {$row['nis']} diaktifkan kembali.";
                 return $existingSiswa;
 
             } else {

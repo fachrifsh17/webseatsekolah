@@ -7,7 +7,6 @@ use App\Models\Berita;
 use App\Http\Resources\BeritaResource;
 use App\Http\Requests\StoreBeritaRequest;
 use App\Http\Requests\UpdateBeritaRequest;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Throwable;
@@ -77,10 +76,14 @@ class BeritaController extends Controller
     public function store(StoreBeritaRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $targetPath = public_path('uploads/berita');
 
         try {
             if ($request->hasFile('foto')) {
-                $data['foto'] = $request->file('foto')->store('uploads/berita', 'public');
+                $file = $request->file('foto');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $data['foto'] = $fileName;
             }
 
             $berita = Berita::create($data)->fresh();
@@ -92,7 +95,10 @@ class BeritaController extends Controller
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             if (!empty($data['foto'] ?? null)) {
-                Storage::disk('public')->delete($data['foto']);
+                $filePath = $targetPath . '/' . $data['foto'];
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
             }
             Log::error('Failed to create berita', ['payload' => $data, 'error' => $e->getMessage()]);
             return response()->json([
@@ -106,6 +112,7 @@ class BeritaController extends Controller
     public function update(UpdateBeritaRequest $request, Berita $berita): JsonResponse
     {
         $data = $request->validated();
+        $targetPath = public_path('uploads/berita');
 
         if (! $berita->exists) {
             return response()->json([
@@ -116,10 +123,18 @@ class BeritaController extends Controller
 
         try {
             if ($request->hasFile('foto')) {
-                if ($berita->foto) {
-                    Storage::disk('public')->delete($berita->foto);
+                $oldFoto = $berita->foto;
+                if ($oldFoto) {
+                    $oldFilePath = $targetPath . '/' . str_replace('uploads/berita/', '', $oldFoto);
+                    if (file_exists($oldFilePath)) {
+                        unlink($oldFilePath);
+                    }
                 }
-                $data['foto'] = $request->file('foto')->store('uploads/berita', 'public');
+
+                $file = $request->file('foto');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $data['foto'] = $fileName;
             }
 
             unset($data['id']);
@@ -140,7 +155,10 @@ class BeritaController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             if (!empty($data['foto'] ?? null)) {
-                Storage::disk('public')->delete($data['foto']);
+                $tempPath = $targetPath . '/' . $data['foto'];
+                if (file_exists($tempPath)) {
+                    unlink($tempPath);
+                }
             }
             Log::error('Failed to update berita', [
                 'berita_id' => (string) $berita->id,
@@ -159,7 +177,10 @@ class BeritaController extends Controller
     {
         try {
             if ($berita->foto) {
-                Storage::disk('public')->delete($berita->foto);
+                $filePath = public_path('uploads/berita/') . str_replace('uploads/berita/', '', $berita->foto);
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
             }
 
             $berita->delete();

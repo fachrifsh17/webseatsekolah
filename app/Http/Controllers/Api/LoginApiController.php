@@ -30,6 +30,13 @@ class LoginApiController extends Controller
                 ], Response::HTTP_UNAUTHORIZED);
             }
 
+            if (!$user->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akun anda tidak aktif'
+                ], Response::HTTP_FORBIDDEN);
+            }
+
             AuthToken::where('user_id', $user->id)->delete();
 
             $plainAccessToken = Str::random(80);

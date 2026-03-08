@@ -7,7 +7,6 @@ use App\Models\Banner;
 use App\Http\Resources\BannerResource;
 use App\Http\Requests\StoreBannerRequest;
 use App\Http\Requests\UpdateBannerRequest;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Throwable;
@@ -77,10 +76,14 @@ class BannerController extends Controller
     public function store(StoreBannerRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/banner');
 
         try {
             if ($request->hasFile('foto')) {
-                $validated['foto'] = $request->file('foto')->store('uploads/banner', 'public');
+                $file = $request->file('foto');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['foto'] = $fileName;
             }
 
             $banner = Banner::create($validated);
@@ -92,7 +95,10 @@ class BannerController extends Controller
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             if (!empty($validated['foto'] ?? null)) {
-                Storage::disk('public')->delete($validated['foto']);
+                $filePath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
             }
             Log::error('Failed to create banner', ['payload' => $validated, 'error' => $e->getMessage()]);
             return response()->json([
@@ -106,13 +112,22 @@ class BannerController extends Controller
     public function update(UpdateBannerRequest $request, Banner $banner): JsonResponse
     {
         $validated = $request->validated();
+        $targetPath = public_path('uploads/banner');
 
         try {
             if ($request->hasFile('foto')) {
-                if ($banner->foto) {
-                    Storage::disk('public')->delete($banner->foto);
+                $oldFoto = $banner->foto;
+                if ($oldFoto) {
+                    $oldFilePath = $targetPath . '/' . str_replace('uploads/banner/', '', $oldFoto);
+                    if (file_exists($oldFilePath)) {
+                        unlink($oldFilePath);
+                    }
                 }
-                $validated['foto'] = $request->file('foto')->store('uploads/banner', 'public');
+
+                $file = $request->file('foto');
+                $fileName = time() . '_' . $file->getClientOriginalName();
+                $file->move($targetPath, $fileName);
+                $validated['foto'] = $fileName;
             }
 
             $banner->update($validated);
@@ -124,7 +139,10 @@ class BannerController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             if (!empty($validated['foto'] ?? null)) {
-                Storage::disk('public')->delete($validated['foto']);
+                $tempPath = $targetPath . '/' . $validated['foto'];
+                if (file_exists($tempPath)) {
+                    unlink($tempPath);
+                }
             }
             Log::error('Failed to update banner', [
                 'banner_id' => (string) $banner->id,
@@ -143,7 +161,10 @@ class BannerController extends Controller
     {
         try {
             if ($banner->foto) {
-                Storage::disk('public')->delete($banner->foto);
+                $filePath = public_path('uploads/banner/') . str_replace('uploads/banner/', '', $banner->foto);
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
             }
 
             $banner->delete();

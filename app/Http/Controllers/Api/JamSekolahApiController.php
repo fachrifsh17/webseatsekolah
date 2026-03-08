@@ -14,9 +14,13 @@ class JamSekolahApiController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $data = JamSekolah::with('tahunAjaran')
-                ->whereHas('tahunAjaran', function ($query) {
-                    $query->where('is_active', true);
+            // Filter berdasarkan Semester Aktif yang terhubung ke Tahun Ajaran Aktif
+            $data = JamSekolah::with(['semester.tahunAjaran'])
+                ->whereHas('semester', function ($query) {
+                    $query->where('is_active', true)
+                          ->whereHas('tahunAjaran', function ($q) {
+                              $q->where('is_active', true);
+                          });
                 })
                 ->orderBy('hari')
                 ->orderBy('jam_ke')
@@ -24,7 +28,7 @@ class JamSekolahApiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Data jam sekolah aktif berhasil diambil',
+                'message' => 'Data jam sekolah semester aktif berhasil diambil',
                 'data'    => JamSekolahResource::collection($data)
             ], Response::HTTP_OK);
 
@@ -40,7 +44,15 @@ class JamSekolahApiController extends Controller
     public function show($id): JsonResponse
     {
         try {
-            $jamSekolah = JamSekolah::with('tahunAjaran')->findOrFail($id);
+            // Memastikan data yang dicari juga berada dalam lingkup semester aktif
+            $jamSekolah = JamSekolah::with(['semester.tahunAjaran'])
+                ->whereHas('semester', function ($query) {
+                    $query->where('is_active', true)
+                          ->whereHas('tahunAjaran', function ($q) {
+                              $q->where('is_active', true);
+                          });
+                })
+                ->findOrFail($id);
 
             return response()->json([
                 'success' => true,
@@ -51,7 +63,7 @@ class JamSekolahApiController extends Controller
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Data jam sekolah tidak ditemukan',
+                'message' => 'Data jam sekolah tidak ditemukan atau tidak aktif pada periode ini',
             ], Response::HTTP_NOT_FOUND);
         }
     }

@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Humas;
 use App\Http\Controllers\Controller;
 use App\Models\Pesan;
 use App\Http\Resources\PesanResource;
-use Illuminate\Http\Request; // Pastikan Request diimport
+use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -17,9 +17,7 @@ class PesanController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.aktivitas')->only(['updateStatus', 'destroy']);
-
-        // Menambahkan proteksi Policy
+        $this->middleware('log.aktivitas')->only(['updateStatus', 'destroy', 'markAllAsRead']);
         $this->authorizeResource(Pesan::class, 'pesan');
     }
 
@@ -29,9 +27,6 @@ class PesanController extends Controller
             $perPage = min((int) $request->get('per_page', 10), 100);
             $pesan   = Pesan::latest()->paginate($perPage);
             
-            // Konversi ke array untuk mengambil metadata pagination tambahan
-            $paginationData = $pesan->toArray();
-
             return response()->json([
                 'success' => true,
                 'data'    => PesanResource::collection($pesan),
@@ -40,12 +35,8 @@ class PesanController extends Controller
                     'last_page'     => $pesan->lastPage(),
                     'per_page'      => $pesan->perPage(),
                     'total'         => $pesan->total(),
-                    'from'          => $pesan->firstItem(),
-                    'to'            => $pesan->lastItem(),
-                    'next_page_url' => $pesan->nextPageUrl(),
-                    'prev_page_url' => $pesan->previousPageUrl(),
-                    'path'          => $paginationData['path'],
-                    'links'         => $paginationData['links'],
+                    // Menghitung jumlah pesan yang statusnya masih 'belum_dibaca'
+                    'unread_count'  => Pesan::where('status', 'belum_dibaca')->count(), 
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
@@ -53,37 +44,68 @@ class PesanController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil daftar pesan',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function show(Pesan $pesan): JsonResponse
     {
+        // LOGIKA OTOMATIS: Tandai 'sudah_dibaca' saat pesan dibuka
+        if ($pesan->status === 'belum_dibaca') {
+            try {
+                $pesan->update(['status' => 'sudah_dibaca']);
+            } catch (Throwable $e) {
+                Log::warning('Gagal update status secara otomatis', ['id' => $pesan->id]);
+            }
+        }
+
         return response()->json([
             'success' => true,
             'data'    => new PesanResource($pesan),
         ], Response::HTTP_OK);
     }
 
-    public function updateStatus(Pesan $pesan): JsonResponse
+    public function markAllAsRead(): JsonResponse
     {
+        $this->authorize('markAllAsRead', Pesan::class);
+
         DB::beginTransaction();
         try {
-            $pesan->update(['is_read' => true]);
+            // Update semua yang 'belum_dibaca' menjadi 'sudah_dibaca'
+            Pesan::where('status', 'belum_dibaca')->update(['status' => 'sudah_dibaca']);
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Semua pesan telah ditandai sebagai terbaca'
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('Gagal mark all as read', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui status semua pesan',
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function updateStatus(Pesan $pesan): JsonResponse
+    {
+        $this->authorize('update', $pesan);
+
+        DB::beginTransaction();
+        try {
+            $pesan->update(['status' => 'sudah_dibaca']);
             DB::commit();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Status pesan berhasil diperbarui',
+                // fresh() memastikan data yang dikembalikan adalah data terbaru dari DB
                 'data'    => new PesanResource($pesan->fresh())
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to update pesan status', [
-                'pesan_id' => $pesan->id,
-                'error'    => $e->getMessage()
-            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui status pesan',
@@ -104,10 +126,6 @@ class PesanController extends Controller
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to delete pesan', [
-                'pesan_id' => $pesan->id,
-                'error'    => $e->getMessage()
-            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus pesan',

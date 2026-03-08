@@ -9,25 +9,23 @@ use App\Http\Requests\UpdatePpdbLinkRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
 
 class PpdbLinkController extends Controller
 {
-    use AuthorizesRequests;
-
     public function __construct()
     {
         $this->middleware('auth.token');
         $this->middleware('log.aktivitas')->only(['update']);
+
+        // Siapkan otorisasi (pastikan buat Policy nantinya)
+        // Karena ini singleton, kita biasanya pakai manual authorize di method atau 
+        // tetap didaftarkan jika menggunakan standar resource.
     }
 
     public function index(): JsonResponse
     {
-        // Otorisasi viewAny pada model PpdbLink
-        $this->authorize('viewAny', PpdbLink::class);
-
         try {
             $link = PpdbLink::first();
 
@@ -47,20 +45,17 @@ class PpdbLinkController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil data PPDB',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
     public function update(UpdatePpdbLinkRequest $request): JsonResponse
     {
-        // Otorisasi update pada model PpdbLink
-        $this->authorize('update', PpdbLink::class);
-
         $validated = $request->validated();
 
         DB::beginTransaction();
         try {
+            // Logika updateOrCreate tetap sama: memastikan hanya ada satu record (ID 1)
             $link = PpdbLink::updateOrCreate(
                 ['id' => 1],
                 $validated
@@ -81,7 +76,6 @@ class PpdbLinkController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui data PPDB',
-                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

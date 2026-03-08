@@ -24,31 +24,37 @@ class AuthController extends Controller
         $user = $request->user();
         $this->authorize('view', $user);
 
+        // Memuat relasi riwayatKelas untuk siswa dan kelas aktif untuk guru
         $user->load([
             'roles',
             'guruStaf.strukturJabatan.jabatan',
             'guruStaf.kelas' => function($q) {
                 $q->wherePivot('is_active', 1);
             },
-            'siswa',
+            'siswa.riwayatKelas' => function($q) {
+                $q->where('is_active', 1)->with('kelas');
+            },
             'orangtua'
         ]);
 
         $fotoPath = null;
         if ($user->guruStaf && $user->guruStaf->foto) {
-            // PERBAIKAN: Pastikan path diawali folder guru/
             $rawFoto = $user->guruStaf->foto;
-            $fotoPath = str_starts_with($rawFoto, 'guru/') ? $rawFoto : 'guru/' . $rawFoto;
+            // Menyeragamkan path guru ke folder guru/
+            $rawFoto = str_replace('uploads/guru/', '', $rawFoto);
+            $fotoPath = 'guru/' . ltrim($rawFoto, '/');
         } elseif ($user->siswa && $user->siswa->foto) {
-            // PERBAIKAN: Pastikan path diawali folder siswa/
             $rawFoto = $user->siswa->foto;
-            $fotoPath = str_starts_with($rawFoto, 'siswa/') ? $rawFoto : 'siswa/' . $rawFoto;
+            // Menyeragamkan path siswa langsung ke folder siswa/ (tanpa subfolder foto/)
+            $rawFoto = str_replace(['uploads/siswa/', 'foto/'], '', $rawFoto);
+            $fotoPath = 'siswa/' . ltrim($rawFoto, '/');
         }
 
-        // Membersihkan jika ada double 'uploads/' dari database
+        // Generate URL Foto berdasarkan folder uploads/
         if ($fotoPath) {
-            $fotoPath = str_replace('uploads/', '', $fotoPath);
-            $user->foto_url = asset('uploads/' . $fotoPath);
+            // Menghapus prefix 'uploads/' jika ada di DB untuk mencegah double path
+            $cleanPath = str_replace('uploads/', '', $fotoPath);
+            $user->foto_url = asset('uploads/' . $cleanPath);
         } else {
             $user->foto_url = asset('images/default-avatar.png');
         }

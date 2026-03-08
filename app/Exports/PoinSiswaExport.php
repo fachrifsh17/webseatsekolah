@@ -90,12 +90,17 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
         $sheet->getStyle("A13:D{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER); 
         $sheet->getStyle("F13:G{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER); 
 
-        foreach (range('B', 'I') as $col) { 
+        foreach (range('B', 'G') as $col) { 
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
-        
+        $sheet->getColumnDimension('I')->setAutoSize(true);
+
         $sheet->getColumnDimension('A')->setAutoSize(false);
         $sheet->getColumnDimension('A')->setWidth(3);
+
+        $sheet->getColumnDimension('H')->setAutoSize(false);
+        $sheet->getColumnDimension('H')->setWidth(25);
+        $sheet->getStyle("H13:H{$lastRow}")->getAlignment()->setWrapText(true);
     }
 
     public function registerEvents(): array
@@ -144,9 +149,9 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $sheet->getStyle('A8')->getFont()->setBold(true)->setSize(12);
                 $sheet->getStyle("A8")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $taClean = preg_replace('/[^0-9\/]/', '', $this->namaTA ?? '2025/2026');
+                $taClean = preg_replace('/[^0-9\/]/', '', $this->namaTA);
                 $sheet->mergeCells("A9:{$lastCol}9"); 
-                $sheet->setCellValue('A9', "TAHUN PELAJARAN " . $taClean . " - SEMESTER " . strtoupper($this->namaSemester ?? 'GANJIL'));
+                $sheet->setCellValue('A9', "TAHUN PELAJARAN " . $taClean . " - SEMESTER " . strtoupper($this->namaSemester));
                 $sheet->getStyle("A9")->getFont()->setBold(true);
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
@@ -154,7 +159,12 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $sheet->mergeCells("A11:{$lastCol}11");
                 $periodeTampil = !empty($this->labelWaktu) ? strtoupper(Carbon::parse($this->labelWaktu)->translatedFormat('F Y')) : 'KESELURUHAN';
                 $sheet->setCellValue('A11', "PERIODE : " . $periodeTampil);
-                $sheet->getStyle("A10:A11")->getFont()->setBold(false);
+                
+                $sheet->mergeCells("A12:{$lastCol}12");
+                $pencarianTampil = request()->filled('search') ? strtoupper(request()->search) : '-';
+                $sheet->setCellValue('A12', "PENCARIAN : " . $pencarianTampil);
+
+                $sheet->getStyle("A10:A12")->getFont()->setBold(false);
 
                 $summaryHeaderRow = $dataLastRow + 2; 
                 $sheet->setCellValue("A{$summaryHeaderRow}", "RINGKASAN POIN: PERIODE INI VS KUMULATIF");
@@ -196,16 +206,12 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $sheet->setCellValue("A{$labelRow}", "Mengetahui,");
                 $sheet->mergeCells("G{$labelRow}:I{$labelRow}");
                 $sheet->setCellValue("G{$labelRow}", "Menyetujui,");
-                $sheet->getStyle("A{$labelRow}:I{$labelRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle("A{$labelRow}:I{$labelRow}")->getFont()->setBold(true);
-
+                
                 $jabatanRow = $labelRow + 1;
                 $sheet->mergeCells("A{$jabatanRow}:C{$jabatanRow}");
                 $sheet->setCellValue("A{$jabatanRow}", "Waka Kesiswaan,");
                 $sheet->mergeCells("G{$jabatanRow}:I{$jabatanRow}");
                 $sheet->setCellValue("G{$jabatanRow}", "Kepala Sekolah,");
-                $sheet->getStyle("A{$jabatanRow}:I{$jabatanRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle("A{$jabatanRow}:I{$jabatanRow}")->getFont()->setBold(true);
 
                 if ($waka && $waka->file_ttd) {
                     $this->insertTtd($sheet, $waka->file_ttd, 'B' . ($jabatanRow + 1));
@@ -219,13 +225,17 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $sheet->setCellValue("A{$namaRow}", "( " . strtoupper($waka->nama ?? '____________________') . " )");
                 $sheet->mergeCells("G{$namaRow}:I{$namaRow}");
                 $sheet->setCellValue("G{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
-                $sheet->getStyle("A{$namaRow}:I{$namaRow}")->getFont()->setBold(true);
-
+                
                 $nipRow = $namaRow + 1;
                 $sheet->mergeCells("A{$nipRow}:C{$nipRow}");
                 $sheet->setCellValue("A{$nipRow}", "NIP. " . ($waka->nip ?? '...........................'));
                 $sheet->mergeCells("G{$nipRow}:I{$nipRow}");
                 $sheet->setCellValue("G{$nipRow}", "NIP. " . ($kepsek->nip ?? '...........................'));
+
+                $sheet->getStyle("A{$ttdRow}:I{$jabatanRow}")->getFont()->setBold(false);
+                $sheet->getStyle("A{$namaRow}:I{$namaRow}")->getFont()->setBold(true);
+                $sheet->getStyle("A{$nipRow}:I{$nipRow}")->getFont()->setBold(false);
+
                 $sheet->getStyle("A{$ttdRow}:I{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
@@ -239,7 +249,7 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
             $drawing->setPath($path);
             $drawing->setHeight(55);
             $drawing->setCoordinates($coordinates);
-            $drawing->setOffsetX($offsetX);
+            $drawing->setOffsetX(50);
             $drawing->setOffsetY(2);
             $drawing->setWorksheet($sheet->getDelegate());
         }

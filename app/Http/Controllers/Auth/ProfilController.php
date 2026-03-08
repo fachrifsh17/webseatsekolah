@@ -1,13 +1,15 @@
 <?php
 
 namespace App\Http\Controllers\Auth;
+
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\{Hash, Storage};
+use Illuminate\Support\Facades\{Hash, File};
+use Illuminate\Support\Str; // Tambahkan ini untuk Str::random
 use App\Http\Requests\{UpdateProfileRequest, ChangePasswordRequest};
 use Symfony\Component\HttpFoundation\Response;
-use App\Models\User; 
+use App\Models\User;
 
 class ProfilController extends Controller
 {
@@ -37,15 +39,20 @@ class ProfilController extends Controller
     public function updateFoto(UpdateProfileRequest $request): JsonResponse
     {
         $user = $request->user();
-   
         $this->authorize('updateSelf', $user);
 
         if ($request->hasFile('foto')) {
             $model = null;
+            $folder = '';
+
+            // Tentukan folder tujuan berdasarkan role
             if ($user->roles->contains('role_name', 'Siswa')) {
                 $model = $user->siswa;
-            } elseif ($user->roles->contains('role_name', 'Guru')) {
+                $folder = 'siswa';
+            } elseif ($user->roles->contains('role_name', 'Guru') || $user->roles->contains('role_name', 'Admin')) {
+                // Diseragamkan untuk Guru/Staff menggunakan folder guru
                 $model = $user->guruStaf;
+                $folder = 'guru';
             }
 
             if (!$model) {
@@ -55,12 +62,35 @@ class ProfilController extends Controller
                 ], Response::HTTP_FORBIDDEN);
             }
 
-            if ($model->foto) {
-                Storage::disk('public')->delete($model->foto);
+            // Path fisik ke public/uploads/
+            $destinationPath = public_path('uploads/' . $folder);
+
+            // Pastikan folder exist
+            if (!File::exists($destinationPath)) {
+                File::makeDirectory($destinationPath, 0755, true);
             }
 
-            $path = $request->file('foto')->store('foto', 'public');
-            $model->update(['foto' => $path]);
+            // Hapus foto lama agar tidak menumpuk di public/uploads
+            if ($model->foto) {
+                // Kita ambil nama filenya saja
+                $oldFileName = basename($model->foto);
+                $oldFilePath = $destinationPath . '/' . $oldFileName;
+                
+                if (File::exists($oldFilePath)) {
+                    File::delete($oldFilePath);
+                }
+            }
+
+            // Proses simpan file menggunakan move()
+            $file = $request->file('foto');
+            $fileName = time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
+            
+            // File akan masuk ke public/uploads/siswa atau public/uploads/guru
+            $file->move($destinationPath, $fileName);
+
+            // Simpan ke database dengan format: 'siswa/namafile.jpg' atau 'guru/namafile.jpg'
+            // Ini akan sinkron dengan logic di UserResource dan AuthController
+            $model->update(['foto' => $folder . '/' . $fileName]);
         }
 
         return response()->json([
@@ -72,7 +102,6 @@ class ProfilController extends Controller
     public function changePassword(ChangePasswordRequest $request): JsonResponse
     {
         $user = $request->user();
-
         $this->authorize('updateSelf', $user);
 
         if (!Hash::check($request->current_password, $user->password)) {

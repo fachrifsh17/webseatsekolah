@@ -21,6 +21,7 @@
         .uppercase { text-transform: uppercase; }
         .underline { text-decoration: underline; }
         
+        /* Kop Surat */
         .kop { 
             border-bottom: 3px double #000; 
             margin-bottom: 12px; 
@@ -28,14 +29,31 @@
             width: 100%;
         }
 
-        /* Container Kop dengan Logo */
-        .kop-table { width: 100%; border: none !important; }
+        .kop-table { width: 100%; border: none !important; border-collapse: collapse; }
         .kop-table td { border: none !important; padding: 0; vertical-align: middle; }
-        .logo-prov { width: 65px; height: auto; }
+        
+        .logo-column { width: 95px; text-align: left; }
+        .logo-prov { width: 85px; height: auto; } 
+        
+        .right-spacer { width: 95px; }
 
-        .kop .instansi { font-size: 10pt; font-weight: bold; margin: 0; line-height: 1.2; }
-        .kop .sekolah { font-size: 14pt; font-weight: bold; margin: 2px 0; line-height: 1.2; }
-        .kop .alamat { font-size: 8pt; margin: 1px 0; font-weight: normal; }
+        .kop .instansi { font-size: 10.5pt; font-weight: bold; margin: 0; line-height: 1.1; }
+        .kop .sekolah { font-size: 14.5pt; font-weight: bold; margin: 2px 0; line-height: 1.1; }
+        
+        /* Alamat Jalan dibuat memanjang tanpa putus baris */
+        .kop .alamat-jalan { 
+            font-size: 8pt; 
+            margin: 1px 0; 
+            font-weight: normal; 
+            white-space: nowrap; 
+        }
+
+        /* Detail Kontak di baris tersendiri */
+        .kop .detail-kontak {
+            font-size: 8pt;
+            margin: 1px 0;
+            font-weight: normal;
+        }
         
         .judul { margin-bottom: 12px; font-weight: bold; font-size: 10pt; }
 
@@ -47,16 +65,13 @@
 
         th, td { 
             border: 1px solid #000;
-            padding: 5px 2px; 
+            padding: 4px 2px; 
             text-align: center;
             vertical-align: middle;
             word-wrap: break-word;
         }
 
-        th { 
-            background-color: transparent; 
-            font-weight: bold;
-        }
+        th { background-color: #f2f2f2; font-weight: bold; }
         
         .istirahat { background-color: #FFFF00 !important; font-weight: bold; }
         .kegiatan { background-color: #C6E0B4 !important; }
@@ -64,14 +79,8 @@
         .col-pukul { width: 8%; }
         .col-hari { width: 12%; }
 
-        .ttd-container {
-            margin-top: 25px;
-            width: 100%;
-        }
-        .ttd-table {
-            border: none !important;
-            width: 100%;
-        }
+        .ttd-container { margin-top: 20px; width: 100%; }
+        .ttd-table { border: none !important; width: 100%; }
         .ttd-table td {
             border: none !important;
             width: 50%;
@@ -79,36 +88,39 @@
             vertical-align: top;
             padding: 0;
             font-size: 9pt;
-            line-height: 1.4;
         }
-        .spacer-ttd { height: 60px; position: relative; }
+        .spacer-ttd { height: 65px; position: relative; }
     </style>
 </head>
 <body>
     <div class="kop">
         <table class="kop-table">
             <tr>
-                <td width="70">
+                <td class="logo-column">
                     @php
-                        $cleanLogoProv = str_replace(['uploads/profil/', 'public/', 'storage/'], '', $profil->logo_provinsi);
-                        $pathLogoProv = public_path('uploads/profil/' . $cleanLogoProv);
+                        $pathLogoProv = null;
+                        if($profil->logo_provinsi) {
+                            $cleanLogoProv = str_replace(['uploads/profil/', 'public/', 'storage/'], '', $profil->logo_provinsi);
+                            $pathLogoProv = public_path('uploads/profil/' . $cleanLogoProv);
+                        }
                     @endphp
-                    @if($profil->logo_provinsi && file_exists($pathLogoProv))
+                    @if($pathLogoProv && file_exists($pathLogoProv))
                         <img src="{{ $pathLogoProv }}" class="logo-prov">
-                    @else
-                        <div style="width: 65px;"></div>
                     @endif
                 </td>
-                <td class="text-center" style="padding-right: 70px;">
+                <td class="text-center">
                     <div class="instansi">PEMERINTAH PROVINSI {{ strtoupper($kontak->provinsi ?? 'JAWA BARAT') }}</div>
                     <div class="instansi">DINAS PENDIDIKAN</div>
                     <div class="instansi">{{ strtoupper($profil->cadis ?? 'CABANG DINAS PENDIDIKAN') }}</div>
                     <div class="sekolah">{{ strtoupper($profil->nama_sekolah ?? 'NAMA SEKOLAH') }}</div>
-                    <div class="alamat">{{ $alamat_lengkap }}</div>
-                    <div class="alamat">
+                    
+                    <div class="alamat-jalan">{{ $alamat_lengkap }}</div>
+                    
+                    <div class="detail-kontak">
                         Telp: {{ $kontak->telepon ?? '-' }} | Email: {{ $kontak->email_resmi ?? '-' }} | NPSN: {{ $profil->npsn ?? '-' }}
                     </div>
                 </td>
+                <td class="right-spacer"></td> 
             </tr>
         </table>
     </div>
@@ -143,33 +155,19 @@
                 @foreach($hariList as $hari)
                     @php 
                         $jam = $dataPerHari[$hari][$i] ?? null; 
-                        $class = '';
-                        $label = '';
-                        
+                        $class = ''; $label = '';
                         if ($jam) {
                             $jenisTrim = strtolower(trim($jam->jenis));
-                            if ($jenisTrim === 'pelajaran') {
-                                $label = $jam->jam_ke;
-                            } elseif ($jenisTrim === 'istirahat') {
-                                $label = 'ISTIRAHAT';
-                                $class = 'istirahat';
-                            } else {
-                                $label = strtoupper($jam->keterangan ?? 'KEGIATAN');
-                                $class = 'kegiatan';
-                            }
+                            if ($jenisTrim === 'pelajaran') { $label = $jam->jam_ke; }
+                            elseif ($jenisTrim === 'istirahat') { $label = 'ISTIRAHAT'; $class = 'istirahat'; }
+                            else { $label = strtoupper($jam->keterangan ?? 'KEGIATAN'); $class = 'kegiatan'; }
                         }
                     @endphp
-
                     @if($jam)
-                        <td class="{{ $class }} col-pukul">
-                            {{ date('H.i', strtotime($jam->waktu_mulai)) }} - {{ date('H.i', strtotime($jam->waktu_selesai)) }}
-                        </td>
-                        <td class="{{ $class }} col-hari">
-                            {{ $label }}
-                        </td>
+                        <td class="{{ $class }} col-pukul">{{ date('H.i', strtotime($jam->waktu_mulai)) }} - {{ date('H.i', strtotime($jam->waktu_selesai)) }}</td>
+                        <td class="{{ $class }} col-hari">{{ $label }}</td>
                     @else
-                        <td></td>
-                        <td></td>
+                        <td></td><td></td>
                     @endif
                 @endforeach
             </tr>
@@ -181,19 +179,18 @@
         <table class="ttd-table">
             <tr>
                 <td>
-                    <br>
-                    Mengetahui,<br>
-                    Waka Kurikulum
+                    <br>Mengetahui,<br>Waka Kurikulum
                     <div class="spacer-ttd">
                         @php
                             $pathWaka = null;
-                            if($waka && isset($waka->file_ttd) && $waka->file_ttd) {
-                                $cleanWaka = str_replace(['storage/', 'public/'], '', $waka->file_ttd);
-                                $pathWaka = storage_path('app/' . $cleanWaka);
+                            if($waka && !empty($waka->file_ttd)) {
+                                $cleanWaka = str_replace(['private/', 'storage/', 'public/'], '', $waka->file_ttd);
+                                $pathWaka = storage_path('app/private/' . $cleanWaka);
+                                if(!file_exists($pathWaka)) { $pathWaka = storage_path('app/' . $cleanWaka); }
                             }
                         @endphp
                         @if($pathWaka && file_exists($pathWaka))
-                            <img src="{{ $pathWaka }}" style="max-height: 70px; max-width: 100%; position: absolute; left: 50%; transform: translateX(-50%); top: -5px;">
+                            <img src="{{ $pathWaka }}" style="max-height: 60px; position: absolute; left: 50%; transform: translateX(-50%); bottom: 5px;">
                         @endif
                     </div>
                     <div class="text-bold underline">( {{ strtoupper($waka->nama ?? '____________________') }} )</div>
@@ -201,18 +198,18 @@
                 </td>
                 <td>
                     {{ strtoupper($kontak->kabupaten_kota ?? 'TASIKMALAYA') }}, {{ $tanggal_cetak }}<br>
-                    Menyetujui,<br>
-                    Kepala Sekolah
+                    Menyetujui,<br>Kepala Sekolah
                     <div class="spacer-ttd">
                         @php
                             $pathKs = null;
-                            if($ks && isset($ks->file_ttd) && $ks->file_ttd) {
-                                $cleanKs = str_replace(['storage/', 'public/'], '', $ks->file_ttd);
-                                $pathKs = storage_path('app/' . $cleanKs);
+                            if($ks && !empty($ks->file_ttd)) {
+                                $cleanKs = str_replace(['private/', 'storage/', 'public/'], '', $ks->file_ttd);
+                                $pathKs = storage_path('app/private/' . $cleanKs);
+                                if(!file_exists($pathKs)) { $pathKs = storage_path('app/' . $cleanKs); }
                             }
                         @endphp
                         @if($pathKs && file_exists($pathKs))
-                            <img src="{{ $pathKs }}" style="max-height: 70px; max-width: 100%; position: absolute; left: 50%; transform: translateX(-50%); top: -5px;">
+                            <img src="{{ $pathKs }}" style="max-height: 60px; position: absolute; left: 50%; transform: translateX(-50%); bottom: 5px;">
                         @endif
                     </div>
                     <div class="text-bold underline">( {{ strtoupper($ks->nama ?? '____________________') }} )</div>
@@ -222,7 +219,7 @@
         </table>
     </div>
 
-    <div style="margin-top: 15px; font-size: 6pt; font-style: italic; color: #555;">
+    <div style="margin-top: 10px; font-size: 6pt; font-style: italic; color: #555;">
         Dicetak pada: {{ date('d/m/Y H:i:s') }}
     </div>
 </body>
