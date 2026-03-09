@@ -46,7 +46,7 @@ class AuthController extends Controller
         } elseif ($user->siswa && $user->siswa->foto) {
             $rawFoto = $user->siswa->foto;
             // Menyeragamkan path siswa langsung ke folder siswa/ (tanpa subfolder foto/)
-            $rawFoto = str_replace(['uploads/siswa/', 'foto/'], '', $rawFoto);
+            $rawFoto = str_replace(['uploads/siswa/',''], '', $rawFoto);
             $fotoPath = 'siswa/' . ltrim($rawFoto, '/');
         }
 

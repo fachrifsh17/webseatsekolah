@@ -8,17 +8,19 @@ class UserResource extends JsonResource
 {
     public function toArray($request)
     {
-        // PERUBAHAN DISINI: Default diset null, bukan path gambar
         $fotoUrl = null; 
         
         $guruData = $this->relationLoaded('guruStaf') ? $this->guruStaf : ($this->relationLoaded('guru') ? $this->guru : null);
         
         if ($guruData && $guruData->foto) {
-            $path = str_replace('uploads/guru/', '', $guruData->foto);
-            $fotoUrl = asset('uploads/guru/' . $path);
+            // basename() memastikan kita hanya mengambil "namafile.jpg" 
+            // meskipun di DB isinya "uploads/guru/guru/namafile.jpg"
+            $fileName = basename($guruData->foto);
+            $fotoUrl = asset('uploads/guru/' . $fileName);
         } elseif ($this->relationLoaded('siswa') && $this->siswa && $this->siswa->foto) {
-            $path = str_replace('uploads/siswa/foto/', '', $this->siswa->foto);
-            $fotoUrl = asset('uploads/siswa/foto/' . $path);
+            // Hal yang sama untuk siswa
+            $fileName = basename($this->siswa->foto);
+            $fotoUrl = asset('uploads/siswa/' . $fileName);
         }
 
         return [
@@ -27,7 +29,7 @@ class UserResource extends JsonResource
             'is_active'    => (int) $this->is_active,
             'current_role' => $this->current_role, 
 
-            'foto' => $fotoUrl, // Akan bernilai null jika tidak ada di DB
+            'foto' => $fotoUrl, 
 
             'roles' => $this->whenLoaded('roles', function () {
                 return $this->roles->map(fn($role) => [

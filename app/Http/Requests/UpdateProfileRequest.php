@@ -14,15 +14,16 @@ class UpdateProfileRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'foto' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
+            // Ganti 'image' menjadi 'file' agar deteksi lebih fleksibel bagi API/Axios
+            'foto' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'foto.image' => 'File harus berupa gambar.',
-            'foto.mimes' => 'Format foto harus jpg, jpeg, atau png.',
+            'foto.file'  => 'Data yang dikirim harus berupa file valid.',
+            'foto.mimes' => 'Format foto harus jpg, jpeg, png, atau webp.',
             'foto.max'   => 'Ukuran foto maksimal 2MB.',
         ];
     }
