@@ -36,7 +36,7 @@ class PresensiController extends Controller
             }
 
             $semesterAktif = Semester::where('is_active', 1)->first();
-            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+            $semesterId = $request->query('semester_id', $semesterAktif?->id);
 
             $query = $this->buildQuery($siswaId, $semesterId, $request);
             $summary = $this->getSummary($query);

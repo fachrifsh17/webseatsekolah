@@ -22,7 +22,7 @@ class LogAktivitasController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $perPage = min((int) request()->get('per_page', 20), 100);
+            $perPage = min((int) request()->query('per_page', 20), 100);
             $data = LogAktivitas::with('user')->orderByDesc('created_at')->paginate($perPage);
             
             // Mengonversi data paginasi ke array untuk mengambil path dan links

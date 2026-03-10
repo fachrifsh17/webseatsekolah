@@ -27,7 +27,7 @@ class MediaController extends Controller
     {
         try {
             $albumId = $request->query('album_id');
-            $perPage = min((int) $request->get('per_page', 20), 100);
+            $perPage = min((int) $request->query('per_page', 20), 100);
 
             $query = Media::query();
             

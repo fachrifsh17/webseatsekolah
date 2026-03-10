@@ -28,7 +28,7 @@ class AlbumController extends Controller
     {
         try {
             $search = $request->query('search');
-            $perPage = min((int) $request->get('per_page', 12), 100);
+            $perPage = min((int) $request->query('per_page', 12), 100);
 
             $query = Album::withCount('media');
 

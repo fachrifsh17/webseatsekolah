@@ -86,7 +86,7 @@ class SiswaController extends Controller
         $query = Siswa::with(['user', 'riwayatKelas.kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
 
-        $perPage = $request->get('per_page', $request->filled('search') ? 10 : 20);
+        $perPage = $request->query('per_page', $request->filled('search') ? 10 : 20);
         
         $items = $query->orderByRaw('LOWER(nama_lengkap) ASC')->paginate($perPage);
         $paginationData = $items->toArray();

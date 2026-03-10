@@ -182,8 +182,8 @@ class PresensiController extends Controller
         $guruId = $this->getGuruId();
 
         try {
-            $tanggal = $request->get('tanggal', date('Y-m-d'));
-            $semesterId = $request->get('semester_id');
+            $tanggal = $request->query('tanggal', date('Y-m-d'));
+            $semesterId = $request->query('semester_id');
             $semester = $semesterId ? Semester::find($semesterId) : Semester::where('is_active', true)->first();
 
             if (!$semester) {
@@ -319,7 +319,7 @@ class PresensiController extends Controller
             }
 
             $semesterActive = Semester::where('is_active', true)->firstOrFail();
-            $tanggalInput = $request->get('tanggal', date('Y-m-d'));
+            $tanggalInput = $request->query('tanggal', date('Y-m-d'));
             $requestKelasId = (string) $request->input('kelas_id');
             $carbonDate = Carbon::parse($tanggalInput);
 

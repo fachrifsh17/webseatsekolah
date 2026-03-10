@@ -50,7 +50,7 @@ class SiswaController extends Controller
 
     private function applyFilters(Request $request, $query, $kelasId, $semesterId)
     {
-        $isActive = $request->get('is_active', 1);
+        $isActive = $request->query('is_active', 1);
 
         $query->where('is_active', $isActive);
 
@@ -87,7 +87,7 @@ class SiswaController extends Controller
             $query = Siswa::with(['user', 'orangtua']);
             $query = $this->applyFilters($request, $query, $kelas->id, $semesterAktif->id);
 
-            $perPage = min((int) $request->get('per_page', 20), 100);
+            $perPage = min((int) $request->query('per_page', 20), 100);
             $paginatedData = $query->orderBy('nama_lengkap', 'asc')->paginate($perPage);
 
             $transformedData = collect($paginatedData->items())->map(function($siswa) {
@@ -188,7 +188,7 @@ class SiswaController extends Controller
             $namaSemester = strtoupper(str_replace(' ', '_', $semesterAktif->nama));
             
             // 4. Status Aktif
-            $isActive = $request->get('is_active', 1);
+            $isActive = $request->query('is_active', 1);
             $statusStr = $isActive ? 'AKTIF' : 'TIDAK_AKTIF';
 
             // Hasil Akhir: DATA_SISWA_X_RPL_1_2025_2026_GENAP_AKTIF.xlsx

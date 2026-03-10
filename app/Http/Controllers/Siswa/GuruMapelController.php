@@ -59,7 +59,7 @@ class GuruMapelController extends Controller
 
         // Pencarian global
         if ($request->filled('q')) {
-            $search = $request->get('q');
+            $search = $request->query('q');
             $query->where(function ($q) use ($search) {
                 $q->whereHas('guru', fn($g) => $g->where('nama', 'LIKE', "%{$search}%"))
                   ->orWhereHas('mapel', fn($m) => $m->where('nama_mapel', 'LIKE', "%{$search}%"));

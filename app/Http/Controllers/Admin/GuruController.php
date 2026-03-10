@@ -34,13 +34,13 @@ class GuruController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $search = $request->get('q');
-        $jabatan = $request->get('jabatan_fungsional');
-        $status = $request->get('status_kepegawaian');
-        $jurusan = $request->get('jurusan_id');
-        $jk = $request->get('jenis_kelamin');
-        $agama = $request->get('agama');
-        $active = $request->has('is_active') ? $request->get('is_active') : 1;
+        $search = $request->query('q');
+        $jabatan = $request->query('jabatan_fungsional');
+        $status = $request->query('status_kepegawaian');
+        $jurusan = $request->query('jurusan_id');
+        $jk = $request->query('jenis_kelamin');
+        $agama = $request->query('agama');
+        $active = $request->has('is_active') ? $request->query('is_active') : 1;
 
         $data = GuruStaf::with(['jurusan', 'user'])
             ->when($search, function ($query, $search) {
@@ -57,7 +57,7 @@ class GuruController extends Controller
             ->when($agama, fn($q) => $q->where('agama', $agama))
             ->where('is_active', $active)
             ->latest()
-            ->paginate($request->get('per_page', 12));
+            ->paginate($request->query('per_page', 12));
 
         return response()->json([
             'success' => true,
@@ -189,7 +189,7 @@ class GuruController extends Controller
     {
         $this->authorize('viewAny', GuruStaf::class);
 
-        $search = $request->get('q');
+        $search = $request->query('q');
 
         $gurus = GuruStaf::query()
             ->where('is_active', 1)

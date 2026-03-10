@@ -24,7 +24,7 @@ class PresensiController extends Controller
         try {
             $user = Auth::user();
             $semesterAktif = Semester::where('is_active', true)->first();
-            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+            $semesterId = $request->query('semester_id', $semesterAktif?->id);
 
             // 1. Ambil ID anak-anak yang aktif saja
             $siswaIds = $this->getSiswaIds($user, $semesterId);
@@ -162,7 +162,7 @@ class PresensiController extends Controller
         try {
             $user = Auth::user();
             $semesterAktif = Semester::where('is_active', true)->first();
-            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+            $semesterId = $request->query('semester_id', $semesterAktif?->id);
 
             // Pastikan hanya anak yang aktif yang muncul di daftar dropdown
             $anak = Siswa::where('is_active', true) 

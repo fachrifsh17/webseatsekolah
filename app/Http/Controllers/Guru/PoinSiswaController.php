@@ -101,7 +101,7 @@ class PoinSiswaController extends Controller
                       ->orWhere('nis', 'like', "%{$search}%"));
             }
 
-            $perPage = min((int) $request->get('per_page', 20), 100);
+            $perPage = min((int) $request->query('per_page', 20), 100);
             $data = $query->orderByDesc('tanggal')->paginate($perPage);
             
             return response()->json([

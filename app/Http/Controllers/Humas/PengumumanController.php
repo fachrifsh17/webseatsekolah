@@ -29,7 +29,7 @@ class PengumumanController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $perPage = min((int) $request->get('per_page', 10), 100);
+            $perPage = min((int) $request->query('per_page', 10), 100);
             $query = Pengumuman::query();
 
             if ($request->filled('tanggal')) {

@@ -63,10 +63,10 @@ class GuruMapelController extends Controller
         });
 
         $semesterAktif = Semester::where('is_active', 1)->first();
-        $semesterId = $request->get('semester_id', optional($semesterAktif)->id);
+        $semesterId = $request->query('semester_id', optional($semesterAktif)->id);
 
         if ($request->filled('q')) {
-            $search = $request->get('q');
+            $search = $request->query('q');
             $query->where(function ($q) use ($search) {
                 $q->whereHas('guru', fn($g) => $g->where('nama', 'LIKE', "%{$search}%")->orWhere('nip', 'LIKE', "%{$search}%"))
                   ->orWhereHas('mapel', fn($m) => $m->where('nama_mapel', 'LIKE', "%{$search}%"))
@@ -88,7 +88,7 @@ class GuruMapelController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = $this->applyFilters($request);
-        $perPage = $request->get('per_page', 10);
+        $perPage = $request->query('per_page', 10);
         $assignments = $query->paginate($perPage);
         $paginationData = $assignments->toArray();
 
@@ -117,9 +117,9 @@ class GuruMapelController extends Controller
         try {
             $query = $this->applyFilters($request);
             
-            $kelasId = $request->get('kelas_id') ?? $request->get('klas_id');
-            $guruId = $request->get('guru_staf_id') ?? $request->get('guru_id');
-            $jurusanId = $request->get('jurusan_id');
+            $kelasId = $request->query('kelas_id') ?? $request->query('klas_id');
+            $guruId = $request->query('guru_staf_id') ?? $request->query('guru_id');
+            $jurusanId = $request->query('jurusan_id');
 
             if ($request->filled('semester_id')) {
                 $semester = Semester::with('tahunAjaran')->find($request->semester_id);
@@ -129,9 +129,9 @@ class GuruMapelController extends Controller
 
             // PERUBAHAN: tipe_mapel -> kategori_mapel
             $filters = [
-                'q'             => $request->get('q'),
-                'hari'          => $request->get('hari'),
-                'kategori_mapel'=> $request->get('kategori_mapel', 'Semua Kategori'),
+                'q'             => $request->query('q'),
+                'hari'          => $request->query('hari'),
+                'kategori_mapel'=> $request->query('kategori_mapel', 'Semua Kategori'),
                 'status_mapel'  => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Aktif'
             ];
 

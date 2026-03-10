@@ -24,7 +24,7 @@ class BeritaController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $perPage = min((int) request()->get('per_page', 10), 100);
+            $perPage = min((int) request()->query('per_page', 10), 100);
             $berita  = Berita::orderByDesc('tanggal_publikasi')->paginate($perPage);
 
             return response()->json([

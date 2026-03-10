@@ -27,7 +27,7 @@ class KurikulumController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $perPage = min((int) request()->get('per_page', 12), 100);
+            $perPage = min((int) request()->query('per_page', 12), 100);
             $items = Kurikulum::orderBy('is_active', 'desc')
                                ->orderBy('created_at', 'desc')
                                ->paginate($perPage);

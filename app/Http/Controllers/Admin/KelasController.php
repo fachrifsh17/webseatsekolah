@@ -29,7 +29,7 @@ class KelasController extends Controller
     {
         try {
             $semesterAktif = Semester::where('is_active', true)->first();
-            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+            $semesterId = $request->query('semester_id', $semesterAktif?->id);
 
             $query = Kelas::with(['jurusan', 'tingkatan'])
                 ->withCount(['siswa as siswa_count' => function($q) use ($semesterId) {
@@ -56,7 +56,7 @@ class KelasController extends Controller
                 $query->where('is_active', true);
             }
 
-            $perPage = $request->get('per_page', 10);
+            $perPage = $request->query('per_page', 10);
             $kelas = $query->orderBy('nama_kelas', 'asc')->paginate($perPage);
             $paginationData = $kelas->toArray();
 

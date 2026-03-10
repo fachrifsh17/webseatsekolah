@@ -25,7 +25,7 @@ class BannerController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $perPage = min((int) request()->get('per_page', 12), 100);
+            $perPage = min((int) request()->query('per_page', 12), 100);
             $data = Banner::orderByDesc('aktif_sampai')->paginate($perPage);
 
             return response()->json([

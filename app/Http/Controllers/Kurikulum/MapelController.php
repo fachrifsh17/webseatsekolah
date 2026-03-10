@@ -29,7 +29,7 @@ class MapelController extends Controller
         try {
             $query = MataPelajaran::with('jurusan');
 
-            $isActive = $request->get('is_active', 1);
+            $isActive = $request->query('is_active', 1);
             $query->where('is_active', $isActive);
 
             if ($request->filled('jurusan_id')) {
@@ -48,7 +48,7 @@ class MapelController extends Controller
                 $query->where('nama_mapel', 'like', "%{$request->search}%");
             }
 
-            $perPage = $request->get('per_page', 12);
+            $perPage = $request->query('per_page', 12);
             $data = $query->latest()->paginate($perPage);
             $paginationData = $data->toArray();
 
@@ -84,7 +84,7 @@ class MapelController extends Controller
 
         try {
             $filters = $request->only(['search', 'jurusan_id', 'tipe_mapel', 'kategori_mapel']);
-            $filters['is_active'] = $request->get('is_active', 1);
+            $filters['is_active'] = $request->query('is_active', 1);
             
             $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 
             $kontak = DataKontak::first() ?? new DataKontak(); 

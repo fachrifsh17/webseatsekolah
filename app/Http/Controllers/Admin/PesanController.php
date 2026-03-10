@@ -27,7 +27,7 @@ class PesanController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $perPage = min((int) $request->get('per_page', 10), 100);
+            $perPage = min((int) $request->query('per_page', 10), 100);
             $pesan   = Pesan::latest()->paginate($perPage);
             
             return response()->json([

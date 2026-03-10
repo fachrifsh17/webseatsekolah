@@ -161,7 +161,7 @@ class PresensiGuruMapelController extends Controller
 
         $query = $this->applyPresensiFilters($request, $query);
 
-        $perHalaman = min((int) $request->get('per_page', 20), 100);
+        $perHalaman = min((int) $request->query('per_page', 20), 100);
         $paginasi = $query->latest('tanggal')->latest('id')->paginate($perHalaman);
 
         $data = $paginasi->getCollection()->map(function ($item) {
@@ -471,7 +471,7 @@ class PresensiGuruMapelController extends Controller
                 $dataMapped = $dataMapped->filter(fn($item) => $item['status'] == $request->status)->values();
             }
 
-            $perPage = min((int) $request->get('per_page', 20), 100);
+            $perPage = min((int) $request->query('per_page', 20), 100);
             $currentPage = LengthAwarePaginator::resolveCurrentPage();
             $pagedData = $dataMapped->slice(($currentPage - 1) * $perPage, $perPage)->values();
 

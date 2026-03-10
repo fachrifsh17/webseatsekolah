@@ -29,7 +29,7 @@ class PoinSiswaController extends Controller
             
             // 1. Ambil semester aktif sebagai default, tapi tetap terima semester_id dari request
             $semesterAktif = Semester::where('is_active', true)->first();
-            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+            $semesterId = $request->query('semester_id', $semesterAktif?->id);
 
             // 2. Ambil data anak (menggunakan semesterId untuk menentukan kelas/riwayat mereka)
             $children = $this->getChildren($user, $semesterId);
@@ -50,7 +50,7 @@ class PoinSiswaController extends Controller
             $summaryData = $this->getSummaryKeseluruhan($childrenIds, $request);
             
             $semesterTampil = $semesterId ? Semester::with('tahunAjaran')->find($semesterId) : $semesterAktif;
-            $perPage = min((int) $request->get('per_page', 10), 100);
+            $perPage = min((int) $request->query('per_page', 10), 100);
             
             $data = $query->with([
                 'siswa.riwayatKelas' => fn($q) => $q->where('semester_id', $semesterId)->with('kelas'),

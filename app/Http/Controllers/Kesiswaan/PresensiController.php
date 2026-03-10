@@ -223,8 +223,8 @@ class PresensiController extends Controller
         $this->authorize('viewAny', Siswa::class);
 
         try {
-            $tanggal = $request->get('tanggal', date('Y-m-d'));
-            $semesterId = $request->get('semester_id');
+            $tanggal = $request->query('tanggal', date('Y-m-d'));
+            $semesterId = $request->query('semester_id');
             $semester = $semesterId ? Semester::find($semesterId) : Semester::where('is_active', true)->first();
 
             if (!$semester) {
@@ -317,7 +317,7 @@ class PresensiController extends Controller
 
         try {
             $semesterActive = Semester::where('is_active', true)->firstOrFail();
-            $tanggalInput = $request->get('tanggal', date('Y-m-d'));
+            $tanggalInput = $request->query('tanggal', date('Y-m-d'));
             $requestKelasId = (string) $request->input('kelas_id');
 
             $this->validateTanggalPresensi($tanggalInput, $semesterActive->id);
@@ -556,14 +556,14 @@ class PresensiController extends Controller
     private function applyContext(Request $request): array
     {
         $semester = Semester::where('is_active', true)->first();
-        $tanggal = $request->get('tanggal', date('Y-m-d'));
+        $tanggal = $request->query('tanggal', date('Y-m-d'));
         return ['semester' => $semester, 'tanggal' => $tanggal, 'hari' => Carbon::parse($tanggal)->locale('id')->dayName];
     }
 
     private function applyPaginationResponse($collection, Request $request, array $context): JsonResponse
     {
-        $perPage = (int) $request->get('per_page', 20);
-        $currentPage = (int) $request->get('page', 1);
+        $perPage = (int) $request->query('per_page', 20);
+        $currentPage = (int) $request->query('page', 1);
         $paginator = new LengthAwarePaginator(
             $collection->forPage($currentPage, $perPage)->values(),
             $collection->count(), $perPage, $currentPage,

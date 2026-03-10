@@ -38,7 +38,7 @@ class OrangtuaController extends Controller
 
     private function applyFilters(Request $request, $query, $kelas, $semesterId)
     {
-        $isActive = $request->get('is_active', 1);
+        $isActive = $request->query('is_active', 1);
 
         $query->where('is_active', $isActive)
             ->whereHas('anak.riwayatKelas', function ($q) use ($kelas, $semesterId) {
@@ -97,7 +97,7 @@ class OrangtuaController extends Controller
 
             $query = $this->applyFilters($request, $query, $kelas, $semesterId);
 
-            $perPage = min((int) $request->get('per_page', 20), 100);
+            $perPage = min((int) $request->query('per_page', 20), 100);
             
             $paginatedData = $query->orderBy('nama_lengkap', 'ASC')->paginate($perPage);
 
@@ -175,7 +175,7 @@ class OrangtuaController extends Controller
                 $nameParts[] = strtoupper(str_replace(' ', '_', $semesterAktif->nama));
             }
             
-            $isActive = $request->get('is_active', 1);
+            $isActive = $request->query('is_active', 1);
             $nameParts[] = $isActive ? 'AKTIF' : 'TIDAK_AKTIF';
 
             $filename = implode('_', $nameParts) . '.xlsx';

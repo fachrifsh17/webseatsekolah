@@ -42,7 +42,7 @@ class SiswaController extends Controller
 
     private function applyFilters(Request $request, $query, $jurusanId, $semesterId)
     {
-        $isActive = $request->get('is_active', 1);
+        $isActive = $request->query('is_active', 1);
 
         $query->where('is_active', $isActive)
         ->whereHas('riwayatKelas', function ($q) use ($jurusanId, $semesterId) {
@@ -97,7 +97,7 @@ class SiswaController extends Controller
                 ], Response::HTTP_FORBIDDEN);
             }
 
-            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+            $semesterId = $request->query('semester_id', $semesterAktif?->id);
 
             $query = Siswa::where('is_active', 1)->with(['user', 'orangtua', 'riwayatKelas' => function($q) use ($semesterId) {
                 $q->where('semester_id', $semesterId)
@@ -107,7 +107,7 @@ class SiswaController extends Controller
 
             $query = $this->applyFilters($request, $query, $jurusan->id, $semesterId);
 
-            $perPage = min((int) $request->get('per_page', 20), 100);
+            $perPage = min((int) $request->query('per_page', 20), 100);
             $paginatedData = $query->orderByRaw('LOWER(nama_lengkap) ASC')->paginate($perPage);
 
             $transformedData = collect($paginatedData->items())->map(function($siswa) {
@@ -215,7 +215,7 @@ class SiswaController extends Controller
                 return response()->json(['success' => false, 'message' => 'Jurusan tidak ditemukan.'], Response::HTTP_FORBIDDEN);
             }
 
-            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+            $semesterId = $request->query('semester_id', $semesterAktif?->id);
 
             $query = Siswa::where('is_active', 1)->with(['user', 'orangtua', 'riwayatKelas.kelas.jurusan', 'riwayatKelas.kelas.tingkatan']);
             $query = $this->applyFilters($request, $query, $jurusan->id, $semesterId);
@@ -226,7 +226,7 @@ class SiswaController extends Controller
                 $kelasObj = Kelas::where('is_active', 1)->with(['tingkatan', 'jurusan'])->find($request->kelas_id);
             }
 
-            $statusStr = $request->get('is_active', 1) ? 'AKTIF' : 'TIDAK_AKTIF';
+            $statusStr = $request->query('is_active', 1) ? 'AKTIF' : 'TIDAK_AKTIF';
             
             $filterInfo = [
                 'jurusan' => $jurusan->nama_jurusan,

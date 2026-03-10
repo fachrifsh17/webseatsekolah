@@ -105,7 +105,7 @@ class PoinSiswaController extends Controller
                 });
             }
 
-            $perPage = min((int) $request->get('per_page', 20), 100);
+            $perPage = min((int) $request->query('per_page', 20), 100);
             $data = $query->orderByDesc('total_kumulatif_negatif')
                           ->orderByDesc('tanggal')
                           ->paginate($perPage);

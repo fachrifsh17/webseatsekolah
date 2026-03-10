@@ -33,7 +33,7 @@ class SemesterController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $perPage = min((int) request()->get('per_page', 10), 100);
+            $perPage = min((int) request()->query('per_page', 10), 100);
             $items = Semester::with('tahunAjaran')
                 ->orderBy('created_at', 'desc')
                 ->paginate($perPage);

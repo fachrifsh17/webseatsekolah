@@ -32,7 +32,7 @@ class PoinSiswaController extends Controller
 
             // 2. Tentukan Semester ID
             $semesterAktif = Semester::where('is_active', true)->first();
-            $semesterId = $request->get('semester_id', $semesterAktif?->id);
+            $semesterId = $request->query('semester_id', $semesterAktif?->id);
 
             // 3. Ambil data pendukung (Header & Summary)
             $semesterTampil = $semesterId ? Semester::with('tahunAjaran')->find($semesterId) : $semesterAktif;
@@ -105,7 +105,7 @@ class PoinSiswaController extends Controller
 
     private function getPaginator($query, $semesterId, Request $request)
     {
-        $perPage = min((int) $request->get('per_page', 10), 100);
+        $perPage = min((int) $request->query('per_page', 10), 100);
         return $query->with([
             'guruStaf', 
             'semester.tahunAjaran', 
