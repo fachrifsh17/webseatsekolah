@@ -21,22 +21,35 @@ class StrukturJabatanController extends Controller
 
     public function __construct()
     {
-        $this->middleware('auth.token');
-        $this->middleware('role:Admin');
+        $this->middleware('auth.token')->except(['showTtd']);
+        $this->middleware('role:Admin')->except(['showTtd']);
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
 
-        $this->authorizeResource(StrukturJabatan::class, 'struktur_jabatan');
+        $this->authorizeResource(StrukturJabatan::class, 'struktur_jabatan', [
+            'except' => ['showTtd']
+        ]);
     }
 
     public function showTtd($id)
     {
         $item = StrukturJabatan::findOrFail($id);
         
-        if (!$item->file_ttd || !Storage::disk('local')->exists($item->file_ttd)) {
+        if (!$item->file_ttd) {
             abort(404);
         }
 
-        return Storage::disk('local')->response($item->file_ttd);
+        $pathDefault = $item->file_ttd;
+        $pathPrivate = 'private/' . $item->file_ttd;
+
+        if (Storage::disk('local')->exists($pathPrivate)) {
+            return Storage::disk('local')->response($pathPrivate);
+        }
+
+        if (Storage::disk('local')->exists($pathDefault)) {
+            return Storage::disk('local')->response($pathDefault);
+        }
+
+        abort(404);
     }
 
     public function index(): JsonResponse
@@ -63,17 +76,6 @@ class StrukturJabatanController extends Controller
     public function store(StoreStrukturJabatanRequest $request): JsonResponse
     {
         $validated = $request->validated();
-
-        $conflict = StrukturJabatan::where('guru_staf_id', $validated['guru_staf_id'])
-            ->orWhere('jabatan_id', $validated['jabatan_id'])
-            ->exists();
-
-        if ($conflict) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Konflik Data: Guru sudah menjabat atau jabatan sudah terisi.',
-            ], Response::HTTP_CONFLICT);
-        }
 
         DB::beginTransaction();
         try {
@@ -105,26 +107,16 @@ class StrukturJabatanController extends Controller
     {
         $validated = $request->validated();
 
-        if (isset($validated['guru_staf_id']) || isset($validated['jabatan_id'])) {
-            $conflict = StrukturJabatan::where('id', '!=', $strukturJabatan->id)
-                ->where(function($q) use ($validated) {
-                    $q->where('guru_staf_id', $validated['guru_staf_id'] ?? null)
-                      ->orWhere('jabatan_id', $validated['jabatan_id'] ?? null);
-                })->exists();
-
-            if ($conflict) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Data baru bertabrakan dengan data jabatan lain yang sudah ada.',
-                ], Response::HTTP_CONFLICT);
-            }
-        }
-
         DB::beginTransaction();
         try {
             if ($request->hasFile('file_ttd')) {
                 if ($strukturJabatan->file_ttd) {
-                    Storage::disk('local')->delete($strukturJabatan->file_ttd);
+                    if (Storage::disk('local')->exists($strukturJabatan->file_ttd)) {
+                        Storage::disk('local')->delete($strukturJabatan->file_ttd);
+                    }
+                    if (Storage::disk('local')->exists('private/' . $strukturJabatan->file_ttd)) {
+                        Storage::disk('local')->delete('private/' . $strukturJabatan->file_ttd);
+                    }
                 }
                 
                 $file = $request->file('file_ttd');
@@ -153,7 +145,12 @@ class StrukturJabatanController extends Controller
     {
         try {
             if ($strukturJabatan->file_ttd) {
-                Storage::disk('local')->delete($strukturJabatan->file_ttd);
+                if (Storage::disk('local')->exists($strukturJabatan->file_ttd)) {
+                    Storage::disk('local')->delete($strukturJabatan->file_ttd);
+                }
+                if (Storage::disk('local')->exists('private/' . $strukturJabatan->file_ttd)) {
+                    Storage::disk('local')->delete('private/' . $strukturJabatan->file_ttd);
+                }
             }
 
             $strukturJabatan->delete();

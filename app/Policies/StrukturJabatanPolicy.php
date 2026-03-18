@@ -7,14 +7,14 @@ use App\Models\User;
 
 class StrukturJabatanPolicy
 {
-    public function viewAny(User $user): bool
+    public function viewAny(?User $user): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return true;
     }
 
-    public function view(User $user, StrukturJabatan $strukturJabatan): bool
+    public function view(?User $user, StrukturJabatan $strukturJabatan): bool
     {
-        return $this->authorize($user, ['Admin']);
+        return true;
     }
 
     public function create(User $user): bool
@@ -44,6 +44,8 @@ class StrukturJabatanPolicy
 
     protected function authorize(User $user, array $allowedRoles = []): bool
     {
-        return $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        return $user->roles->pluck('role_name')->contains(function ($roleName) use ($allowedRoles) {
+            return in_array($roleName, $allowedRoles);
+        });
     }
 }

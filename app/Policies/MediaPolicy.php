@@ -32,14 +32,17 @@ class MediaPolicy
         return $this->authorize($user, ['Admin'], ['Waka Sarpras']);
     }
 
+    public function deleteAny(User $user): bool
+    {
+        return $this->authorize($user, ['Admin'], ['Waka Sarpras']);
+    }
+
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        // Cek Role menggunakan contains
         $hasRole = $user->roles->contains(function ($role) use ($allowedRoles) {
             return in_array($role->role_name, $allowedRoles);
         });
 
-        // Cek Jabatan melalui relasi guruStaf
         $hasJabatan = false;
         if ($user->guruStaf && $user->guruStaf->strukturJabatan) {
             $hasJabatan = $user->guruStaf->strukturJabatan->contains(function ($sj) use ($allowedJabatans) {

@@ -46,7 +46,7 @@ class DashboardController extends Controller
                     'semester'     => $semesterAktif->nama ?? '-',
                 ],
                 'sekolah' => [
-                    'buku_poin'    => ($setting && isset($setting->buku_poin_path)) ? asset('uploads/setting/' . str_replace('uploads/setting/', '', $setting->buku_poin_path)) : null,
+                    'buku_poin'    => ($setting && isset($setting->buku_poin_path)) ? asset('uploads/buku_poin/' . str_replace('uploads/buku_poin/', '', $setting->buku_poin_path)) : null,
                     'wa_kesiswaan' => $setting->no_wa_kesiswaan ?? null,
                 ],
                 'anak_statistics' => $this->getDataAnak($user->id, $semesterAktif->id),
@@ -106,17 +106,15 @@ class DashboardController extends Controller
             ->with(['riwayatKelas' => function($q) use ($semesterId) {
                 $q->where('semester_id', $semesterId)
                   ->where('is_active', 1)
-                  ->with(['kelas' => function($qk) use ($semesterId) {
-                      $qk->with(['waliKelas' => function($qw) use ($semesterId) {
-                          $qw->where('kelas_wali_kelas.semester_id', $semesterId)
-                             ->where('kelas_wali_kelas.is_active', 1);
-                      }]);
-                  }]);
+                  ->with(['kelas.waliKelas']);
             }])
             ->get();
 
         return $anakList->map(function ($siswa) use ($semesterId) {
             $riwayat = $siswa->riwayatKelas->first();
+            $kelas = $riwayat?->kelas;
+            
+            $waliKelasObj = $kelas?->waliKelas->where('pivot.semester_id', $semesterId)->first();
             
             $statsPresensi = DB::table('presensi_detail')
                 ->join('presensi', 'presensi_detail.presensi_id', '=', 'presensi.id')
@@ -136,8 +134,8 @@ class DashboardController extends Controller
             return [
                 'id_siswa'   => $siswa->id,
                 'nama_anak'  => $siswa->nama_lengkap,
-                'kelas'      => $riwayat?->kelas?->nama_kelas ?? '-',
-                'wali_kelas' => $riwayat?->kelas?->waliKelas->first()->nama ?? '-',
+                'kelas'      => $kelas?->nama_kelas ?? '-',
+                'wali_kelas' => $waliKelasObj?->nama ?? '-',
                 'statistics' => [
                     'presensi' => [
                         'hadir' => (int)($statsPresensi['Hadir'] ?? 0),

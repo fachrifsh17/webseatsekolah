@@ -6,6 +6,8 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class UpdateJabatanRequest extends FormRequest
 {
@@ -14,9 +16,18 @@ class UpdateJabatanRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation()
+    {
+        if ($this->has('nama_jabatan')) {
+            $this->merge([
+                'slug' => Str::slug($this->nama_jabatan),
+            ]);
+        }
+    }
+
     public function rules(): array
     {
-        $jabatanId = $this->route('jabatan')?->id;
+        $jabatanId = $this->route('jabatan');
 
         return [
             'nama_jabatan' => [
@@ -24,7 +35,13 @@ class UpdateJabatanRequest extends FormRequest
                 'required', 
                 'string', 
                 'max:100', 
-                'unique:jabatans,nama_jabatan,' . $jabatanId
+                Rule::unique('jabatans', 'nama_jabatan')->ignore($jabatanId)
+            ],
+            'slug' => [
+                'sometimes',
+                'required',
+                'string',
+                Rule::unique('jabatans', 'slug')->ignore($jabatanId)
             ],
             'keterangan' => ['nullable', 'string'],
         ];
@@ -36,14 +53,7 @@ class UpdateJabatanRequest extends FormRequest
             'nama_jabatan.required' => 'Nama jabatan wajib diisi.',
             'nama_jabatan.unique'   => 'Nama jabatan sudah digunakan.',
             'nama_jabatan.max'      => 'Nama jabatan maksimal 100 karakter.',
-        ];
-    }
-
-    public function attributes(): array
-    {
-        return [
-            'nama_jabatan' => 'Nama Jabatan',
-            'keterangan'   => 'Keterangan',
+            'slug.unique'           => 'Slug sudah digunakan, silakan gunakan nama lain.',
         ];
     }
 

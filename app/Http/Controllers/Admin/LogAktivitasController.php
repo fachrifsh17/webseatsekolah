@@ -23,9 +23,34 @@ class LogAktivitasController extends Controller
     {
         try {
             $perPage = min((int) request()->query('per_page', 20), 100);
-            $data = LogAktivitas::with('user')->orderByDesc('created_at')->paginate($perPage);
-            
-            // Mengonversi data paginasi ke array untuk mengambil path dan links
+            $search = request()->query('search');
+            $date = request()->query('date'); // Tangkap parameter tanggal khusus
+
+            $query = LogAktivitas::with(['user.guruStaf'])->orderByDesc('log_aktivitas.created_at');
+
+            // 1. Filter jika ada input tanggal khusus
+            if ($date) {
+                $query->whereDate('log_aktivitas.created_at', $date);
+            }
+
+            // 2. Filter pencarian umum
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('log_aktivitas.aksi', 'like', "%{$search}%")
+                      ->orWhere('log_aktivitas.ip_address', 'like', "%{$search}%")
+                      ->orWhere('log_aktivitas.user_agent', 'like', "%{$search}%")
+                      // Tambahkan ini: Pencarian tanggal melalui kotak search
+                      ->orWhereDate('log_aktivitas.created_at', $search) 
+                      ->orWhereHas('user', function ($u) use ($search) {
+                          $u->where('username', 'like', "%{$search}%")
+                            ->orWhereHas('guruStaf', function ($g) use ($search) {
+                                $g->where('nama', 'like', "%{$search}%");
+                            });
+                      });
+                });
+            }
+
+            $data = $query->paginate($perPage);
             $paginationData = $data->toArray();
 
             return response()->json([
@@ -40,15 +65,17 @@ class LogAktivitasController extends Controller
                     'to'            => $data->lastItem(),
                     'next_page_url' => $data->nextPageUrl(),
                     'prev_page_url' => $data->previousPageUrl(),
-                    'path'          => $paginationData['path'],
-                    'links'         => $paginationData['links'],
+                    'path'          => $paginationData['path'] ?? null,
+                    'links'         => $paginationData['links'] ?? [],
                 ],
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch activity logs: ' . $e->getMessage());
+            Log::error('LogAktivitas Index Error: ' . $e->getMessage());
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil log aktivitas.',
+                'debug'   => $e->getMessage() 
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -56,14 +83,14 @@ class LogAktivitasController extends Controller
     public function show(LogAktivitas $log): JsonResponse
     {
         try {
-            $log->load('user');
+            $log->load('user.guruStaf');
 
             return response()->json([
                 'success' => true,
                 'data'    => new LogAktivitasResource($log),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
-            Log::error('Failed to fetch activity log detail: ' . $e->getMessage());
+            Log::error('LogAktivitas Show Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil detail log aktivitas.',

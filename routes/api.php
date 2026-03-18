@@ -184,17 +184,24 @@ Route::middleware(['auth.token'])->group(function () {
 | 4. ADMIN ROUTES
 |--------------------------------------------------------------------------
 */
+Route::prefix('admin')->group(function () {
+    Route::get('struktur-jabatan/ttd/{id}', [StrukturJabatanController::class, 'showTtd']);
+});
 
-Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth.token', 'role:Admin'])->group(function () {
     // Profil Self-Service Admin
      
 
     Route::get('dashboard',[AdminDashboard::class,'index']);
     Route::get('log', [LogAktivitasController::class, 'index']);
-    Route::put('setting/general', [SettingController::class, 'updateGeneral']);
-    Route::put('profil-sekolah', [ProfilSekolahController::class, 'update']);
+    Route::get('setting/general', [SettingController::class, 'index']);
+    Route::post('setting/general', [SettingController::class, 'updateGeneral']);
+    Route::get('profil-sekolah', [ProfilSekolahController::class, 'index']);
+    Route::post('profil-sekolah', [ProfilSekolahController::class, 'update']);
     Route::get('api-setting-list', [SettingApiController::class, 'index']);
+    Route::get('data-kontak', [DataKontakController::class, 'index']);
     Route::put('data-kontak', [DataKontakController::class, 'update']);
+    Route::get('ppdb-link', [PpdbLinkController::class, 'index']);
     Route::put('ppdb-link', [PpdbLinkController::class, 'update']);
     Route::get('kenaikan-kelas', [KenaikanKelasController::class, 'index']);
     Route::post('kelas/generate', [KenaikanKelasController::class, 'generateFromPreviousYear']);
@@ -202,6 +209,7 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::post('walikelas/kelas-copy', [KelasWaliKelasController::class, 'cloneToNewYear']);
     Route::post('walikelas/naik-tingkat-kelas', [KelasWaliKelasController::class, 'bulkUpdateTingkat']);
     Route::post('walikelas/kelas-create', [KelasWaliKelasController::class, 'prepareNewYear']);
+    Route::post('media/mass-destroy', [MediaController::class, 'massDestroy']);
     Route::apiResource('kelaswalikelas', KelasWaliKelasController::class,);
     Route::apiResource('tingkatan', TingkatanController::class,);
     
@@ -254,8 +262,8 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
     Route::get('poin-siswa/export', [AdminPoin::class, 'export']);
     Route::apiResource('poin_siswa', AdminPoin::class); 
     
-    Route::patch('pesan/{pesan}/status', [PesanController::class, 'updateStatus']);
     Route::post('pesan/mark-all-read', [PesanController::class, 'markAllAsRead']);
+    Route::patch('pesan/{pesan}/status', [PesanController::class, 'updateStatus']);
     Route::apiResource('pesan', PesanController::class)->except(['store']);
 
     Route::apiResource('tahun_ajaran', TahunAjaranController::class);
@@ -280,18 +288,19 @@ Route::prefix('admin')->middleware(['auth.token', 'role:Admin'])->group(function
 |--------------------------------------------------------------------------
 */
 
-Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function () {
+Route::prefix('guru')->name('guru.')->middleware(['auth.token', 'role:guru'])->group(function () {
     
     // --- Guru General ---
      
     Route::get('dashboard', [GuruDashboard::class, 'index']);
-    Route::get('poin-siswa', [GuruPoin::class, 'index']); 
+    
     Route::get('jam-sekolah/export', [GuruJamSekolah::class, 'export']);
     Route::apiResource('jam_sekolah', GuruJamSekolah::class);
+
     Route::apiResource('poin_siswa', GuruPoin::class); 
 
     // --- Jabatan: Waka Kurikulum ---
-    Route::middleware(['jabatan:Waka Kurikulum'])->prefix('kurikulum')->group(function () {
+    Route::middleware(['jabatan:Waka Kurikulum'])->prefix('kurikulum')->name('kurikulum.')->group(function () {
         // Mapel
         Route::post('mapel/import', [KurikulumMapel::class, 'import']);
         Route::get('mapel/export', [KurikulumMapel::class, 'export']);
@@ -313,7 +322,7 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
     });
 
     // --- Jabatan: Waka Kesiswaan ---
-    Route::middleware(['jabatan:Waka Kesiswaan'])->prefix('kesiswaan')->group(function () {
+    Route::middleware(['jabatan:Waka Kesiswaan'])->prefix('kesiswaan')->name('kesiswaan.')->group(function () {
         // Siswa
         Route::get('siswa/export', [KesiswaanSiswa::class, 'export']); 
         Route::apiResource('siswa', KesiswaanSiswa::class);
@@ -346,6 +355,7 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
 
     // --- Jabatan: Waka Sarpras ---
     Route::middleware(['jabatan:Waka Sarpras'])->prefix('sarpras')->group(function () {
+        Route::post('media/mass-destroy', [SarprasMedia::class, 'massDestroy']);
         Route::apiResource('fasilitas', SarprasFasilitas::class);
         Route::apiResource('album', SarprasAlbum::class);
         Route::apiResource('media', SarprasMedia::class);
@@ -362,14 +372,18 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
         Route::post('pesan/mark-all-read', [PesanController::class, 'markAllAsRead']);
         Route::patch('pesan/{pesan}/status', [HumasPesan::class, 'updateStatus']);
         Route::apiResource('pesan', HumasPesan::class)->except(['store']);
+
+        Route::get('ppdb-link', [HumasPpdb::class, 'index']);
         Route::put('ppdb-link', [HumasPpdb::class, 'update']);
     });
 
     // --- Jabatan: Kepala Sekolah ---
-    Route::middleware(['jabatan:Kepala Sekolah'])->prefix('kepsek')->group(function () {
-        Route::put('profil-sekolah', [KepsekProfil::class, 'update']);
+    Route::middleware(['jabatan:Kepala Sekolah'])->prefix('kepsek')->name('kepsek.')->group(function () {
+        Route::post('profil-sekolah', [KepsekProfil::class, 'update']);
+        Route::get('profil-sekolah', [KepsekProfil::class, 'index']);
         Route::get('log', [KepsekLog::class, 'index']);
-        Route::put('setting/general', [KepsekSetting::class, 'updateGeneral']);
+        Route::get('setting/general', [KepsekSetting::class, 'index']);
+        Route::post('setting/general', [KepsekSetting::class, 'updateGeneral']);
         Route::get('list-kelas', [KepsekPresensi::class, 'listKelas']);
         Route::get('list-siswa', [KepsekPresensi::class, 'listSiswaPresensi']);
         Route::get('jadwal-hari-ini', [KepsekPresensiMapel::class, 'listJadwalHariIni']);
@@ -408,7 +422,7 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
     });
 
     // --- Guru Mapel General ---
-    Route::prefix('mapel')->group(function () {
+    Route::prefix('mapel')->name('mapel.')->group(function () {
         Route::get('jadwal-hari-ini', [GuruPresensiMapel::class, 'listJadwalHariIni']);
         Route::get('siswa-by-jadwal/{id}', [GuruPresensiMapel::class, 'getSiswaByJadwal']);
         Route::get('presensi/export', [GuruPresensiMapel::class, 'export']);
@@ -423,7 +437,7 @@ Route::prefix('guru')->middleware(['auth.token', 'role:guru'])->group(function (
 */
 
 // --- Role: Siswa ---
-Route::prefix('siswa')->middleware(['auth.token', 'role:siswa'])->group(function () {
+Route::prefix('siswa')->name('siswa.')->middleware(['auth.token', 'role:siswa'])->group(function () {
     Route::get('dashboard', [SiswaDashboard::class, 'index']);
     Route::get('presensi-saya', [SiswaPresensi::class, 'index']);
     Route::get('poin-saya', [SiswaPoin::class, 'index']); 
@@ -436,7 +450,7 @@ Route::prefix('siswa')->middleware(['auth.token', 'role:siswa'])->group(function
 });
 
 // --- Role: Orang Tua ---
-Route::prefix('ortu')->middleware(['auth.token', 'role:orangtua'])->group(function () {
+Route::prefix('ortu')->name('ortu.')->middleware(['auth.token', 'role:orangtua'])->group(function () {
     Route::get('dashboard', [OrtuDashboard::class, 'index']);
     Route::get('list-anak', [OrtuPresensi::class, 'listAnak']);
     Route::get('presensi-anak', [OrtuPresensi::class, 'index']);

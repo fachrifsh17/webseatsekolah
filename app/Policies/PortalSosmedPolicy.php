@@ -42,18 +42,30 @@ class PortalSosmedPolicy
         return $this->authorize($user, ['Admin'], ['Waka Humas']);
     }
 
+    /**
+     * Logika otorisasi kustom menggunakan contains.
+     */
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // 1. Cek apakah user memiliki salah satu Role yang diizinkan
+        $userRoles = $user->roles->pluck('role_name'); // Mengambil semua nama role user
+        $hasRole = collect($allowedRoles)->contains(function ($role) use ($userRoles) {
+            return $userRoles->contains($role);
+        });
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
+        // 2. Cek apakah user memiliki salah satu Jabatan yang diizinkan (Hanya jika guruStaf ada)
+        $hasJabatan = false;
+        if ($user->guruStaf && $user->guruStaf->strukturJabatan) {
+            $userJabatans = $user->guruStaf->strukturJabatan
                 ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
-                ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+                ->filter();
 
+            $hasJabatan = collect($allowedJabatans)->contains(function ($jabatan) use ($userJabatans) {
+                return $userJabatans->contains($jabatan);
+            });
+        }
+
+        // Return true jika salah satu kondisi terpenuhi
         return $hasRole || $hasJabatan;
     }
 }

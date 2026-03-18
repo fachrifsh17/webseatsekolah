@@ -20,8 +20,11 @@ class MediaController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
-        $this->authorizeResource(Media::class, 'media');
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'massDestroy']);
+        
+        $this->authorizeResource(Media::class, 'media', [
+            'except' => ['massDestroy']
+        ]);
     }
 
     public function index(Request $request): JsonResponse
@@ -150,7 +153,8 @@ class MediaController extends Controller
         try {
             if ($request->hasFile('media') && $request->file('media')->isValid()) {
                 if ($oldPath) {
-                    $fullOldPath = $targetPath . '/' . str_replace('uploads/media/', '', $oldPath);
+                    $oldFileName = basename($oldPath);
+                    $fullOldPath = $targetPath . '/' . $oldFileName;
                     if (file_exists($fullOldPath)) unlink($fullOldPath);
                 }
                 
@@ -187,11 +191,11 @@ class MediaController extends Controller
 
     public function destroy(Media $media): JsonResponse
     {
-        $oldPath = $media->media_path;
         DB::beginTransaction();
         try {
-            if ($oldPath) {
-                $filePath = public_path('uploads/media/') . str_replace('uploads/media/', '', $oldPath);
+            if ($media->media_path) {
+                $fileName = basename($media->media_path);
+                $filePath = public_path('uploads/media/' . $fileName);
                 if (file_exists($filePath)) unlink($filePath);
             }
             
@@ -208,6 +212,55 @@ class MediaController extends Controller
             return response()->json([
                 'success' => false, 
                 'message' => 'Gagal menghapus media'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function massDestroy(Request $request): JsonResponse
+    {
+        $this->authorize('deleteAny', Media::class);
+
+        $ids = $request->input('ids');
+
+        if (!$ids || !is_array($ids)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pilih data media yang ingin dihapus terlebih dahulu.'
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        DB::beginTransaction();
+        try {
+            $mediaItems = Media::whereIn('id', $ids)->get();
+            $count = 0;
+
+            foreach ($mediaItems as $item) {
+                /** @var Media $item */
+                if ($item->media_path) {
+                    $fileName = basename($item->media_path);
+                    $filePath = public_path('uploads/media/' . $fileName);
+                    if (file_exists($filePath)) {
+                        unlink($filePath);
+                    }
+                }
+                $item->delete();
+                $count++;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => $count . ' Media berhasil dihapus secara massal.',
+            ], Response::HTTP_OK);
+
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('Media Mass Delete Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus data secara massal',
+                'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

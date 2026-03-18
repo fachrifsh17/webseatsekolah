@@ -30,7 +30,7 @@ class RoleController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $roles = Role::orderBy('nama_role')->get();
+            $roles = Role::orderBy('role_name')->get();
 
             return response()->json([
                 'success' => true,

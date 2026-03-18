@@ -87,7 +87,7 @@ class DashboardController extends Controller
                     'total_jadwal_hari_ini' => $jadwalHariIniCount
                 ],
                 'sekolah' => [
-                    'buku_poin'    => ($setting && isset($setting->buku_poin_path)) ? asset('uploads/setting/' . str_replace('uploads/setting/', '', $setting->buku_poin_path)) : null,
+                    'buku_poin'    => ($setting && isset($setting->buku_poin_path)) ? asset('uploads/buku_poin/' . str_replace('uploads/buku_poin/', '', $setting->buku_poin_path)) : null,
                     'wa_kesiswaan' => $setting->no_wa_kesiswaan ?? null,
                 ],
                 'akademik' => $akademik

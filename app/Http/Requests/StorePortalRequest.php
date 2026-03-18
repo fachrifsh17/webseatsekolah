@@ -16,7 +16,8 @@ class StorePortalRequest extends FormRequest
         return [
             'nama_platform' => 'required|string|max:255',
             'url_link'      => 'required|url|max:255',
-            'tipe'          => 'required|in:Sosial Media,Website,Portal Lain',
+            'tipe'          => 'required|in:Sosial Media,Portal Khusus',
+            // icon_class dihapus dari sini
         ];
     }
 
@@ -24,23 +25,10 @@ class StorePortalRequest extends FormRequest
     {
         return [
             'nama_platform.required' => 'Nama platform wajib diisi.',
-            'nama_platform.string'   => 'Nama platform harus berupa teks.',
-            'nama_platform.max'      => 'Nama platform tidak boleh lebih dari 255 karakter.',
-            'nama_platform.unique'   => 'Nama platform sudah terdaftar, silakan gunakan nama lain.',
             'url_link.required'      => 'URL link wajib diisi.',
-            'url_link.url'           => 'Format URL tidak valid.',
-            'url_link.max'           => 'URL link tidak boleh lebih dari 255 karakter.',
-            'tipe.required'          => 'Tipe platform wajib dipilih.',
-            'tipe.in'                => 'Tipe platform harus salah satu dari: Sosial Media, Website, atau Portal Lain.',
-        ];
-    }
-
-    public function attributes(): array
-    {
-        return [
-            'nama_platform' => 'Nama platform',
-            'url_link'      => 'URL link',
-            'tipe'          => 'Tipe platform',
+            'url_link.url'           => 'Format URL tidak valid. Sertakan https://',
+            'tipe.required'          => 'Tipe wajib dipilih.',
+            'tipe.in'                => 'Tipe tidak valid.',
         ];
     }
 }

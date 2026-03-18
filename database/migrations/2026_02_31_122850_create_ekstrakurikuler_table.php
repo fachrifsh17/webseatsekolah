@@ -17,9 +17,9 @@ return new class extends Migration
             
             $table->string('nama_ekskul', 100)->nullable();
             $table->text('deskripsi')->nullable();
-            $table->string('hari', 50)->nullable();
-            $table->time('jam_mulai')->nullable();
-            $table->time('jam_selesai')->nullable();
+            
+            // Kolom hari untuk menyimpan range atau list hari (misal: Senin - Rabu)
+            $table->string('hari', 100)->nullable();
             
             // Kolom Foreign Key: Harus string(10) karena merujuk ke guru_staf.id
             $table->string('pembina_id', 10)->nullable();
@@ -29,7 +29,6 @@ return new class extends Migration
             $table->timestamps();
 
             // SETTING FOREIGN KEY
-            // Jika guru dihapus, pembina di ekskul jadi NULL (tidak ikut terhapus ekskulnya)
             $table->foreign('pembina_id')
                   ->references('id')
                   ->on('guru_staf')

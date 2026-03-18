@@ -20,7 +20,7 @@ class ProfilSekolahController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.aktivitas')->only(['update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['update']);
     }
 
     public function index(): JsonResponse
@@ -52,7 +52,6 @@ class ProfilSekolahController extends Controller
         $this->authorize('update', ProfilSekolah::class);
 
         $validated = $request->validated();
-        // Disesuaikan ke uploads/profil sesuai Resource sebelumnya
         $targetPath = public_path('uploads/profil');
 
         $kepsekOtomatis = DB::table('struktur_jabatan')
@@ -65,7 +64,6 @@ class ProfilSekolahController extends Controller
         try {
             $profil = ProfilSekolah::find(1) ?? new ProfilSekolah();
 
-            // Logika Upload Logo Sekolah
             if ($request->hasFile('logo')) {
                 if ($profil->logo) {
                     $oldPath = $targetPath . '/' . str_replace('uploads/profil/', '', $profil->logo);
@@ -78,7 +76,6 @@ class ProfilSekolahController extends Controller
                 $validated['logo'] = $fileName;
             }
 
-            // Logika Upload Logo Provinsi
             if ($request->hasFile('logo_provinsi')) {
                 if ($profil->logo_provinsi) {
                     $oldProvPath = $targetPath . '/' . str_replace('uploads/profil/', '', $profil->logo_provinsi);
@@ -120,7 +117,6 @@ class ProfilSekolahController extends Controller
             DB::rollBack();
             Log::error('Admin Update Profil Error: ' . $e->getMessage());
 
-            // Hapus file baru jika gagal simpan ke DB
             if (isset($validated['logo'])) {
                 @unlink($targetPath . '/' . $validated['logo']);
             }
@@ -132,51 +128,6 @@ class ProfilSekolahController extends Controller
                 'success'      => false,
                 'message'      => 'Gagal menyimpan profil sekolah',
                 'notification' => 'Gagal menyimpan',
-                'errors'       => ['exception' => [$e->getMessage()]],
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    public function destroy(): JsonResponse
-    {
-        $this->authorize('delete', ProfilSekolah::class);
-
-        DB::beginTransaction();
-        try {
-            $profil = ProfilSekolah::find(1);
-            if ($profil) {
-                $targetPath = public_path('uploads/profil');
-                
-                // Hapus Logo Sekolah
-                if ($profil->logo) {
-                    $filePath = $targetPath . '/' . str_replace('uploads/profil/', '', $profil->logo);
-                    if (file_exists($filePath)) @unlink($filePath);
-                }
-
-                // Hapus Logo Provinsi
-                if ($profil->logo_provinsi) {
-                    $fileProvPath = $targetPath . '/' . str_replace('uploads/profil/', '', $profil->logo_provinsi);
-                    if (file_exists($fileProvPath)) @unlink($fileProvPath);
-                }
-
-                $profil->delete();
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'success'      => true,
-                'message'      => 'Profil sekolah berhasil dihapus',
-                'notification' => 'Berhasil dihapus',
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('Admin Delete Profil Error: ' . $e->getMessage());
-
-            return response()->json([
-                'success'      => false,
-                'message'      => 'Gagal menghapus profil sekolah',
-                'notification' => 'Gagal dihapus',
                 'errors'       => ['exception' => [$e->getMessage()]],
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }

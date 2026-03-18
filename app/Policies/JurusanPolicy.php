@@ -42,8 +42,13 @@ class JurusanPolicy
         return $this->authorize($user, ['Admin']);
     }
 
+    /**
+     * Menggunakan contains untuk otorisasi yang lebih aman pada tipe data string
+     */
     protected function authorize(User $user, array $allowedRoles = []): bool
     {
-        return $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        return $user->roles->pluck('role_name')->contains(function ($roleName) use ($allowedRoles) {
+            return in_array($roleName, $allowedRoles);
+        });
     }
 }

@@ -42,17 +42,26 @@ class PpdbLinkPolicy
         return false;
     }
 
+    /**
+     * Menggunakan contains untuk otorisasi berbasis nama role dan nama jabatan
+     */
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        $hasRole = $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // 1. Cek Role (Admin)
+        $hasRole = $user->roles->pluck('role_name')->contains(function ($role) use ($allowedRoles) {
+            return in_array($role, $allowedRoles);
+        });
 
-        $hasJabatan = $user->guruStaf
-            ? $user->guruStaf->strukturJabatan
+        // 2. Cek Jabatan (Waka Humas)
+        $hasJabatan = false;
+        if ($user->guruStaf && $user->guruStaf->strukturJabatan) {
+            $hasJabatan = $user->guruStaf->strukturJabatan
                 ->map(fn($sj) => $sj->jabatan?->nama_jabatan)
                 ->filter()
-                ->intersect($allowedJabatans)
-                ->isNotEmpty()
-            : false;
+                ->contains(function ($namaJabatan) use ($allowedJabatans) {
+                    return in_array($namaJabatan, $allowedJabatans);
+                });
+        }
 
         return $hasRole || $hasJabatan;
     }

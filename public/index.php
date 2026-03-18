@@ -1,5 +1,5 @@
 <?php
-
+putenv('PHP_CLI_SERVER_WORKERS=8');
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 

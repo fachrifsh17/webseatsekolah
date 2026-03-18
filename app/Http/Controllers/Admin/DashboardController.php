@@ -13,6 +13,7 @@ use App\Http\Resources\{
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response;
 use Carbon\Carbon;
 use Throwable;
@@ -31,16 +32,22 @@ class DashboardController extends Controller
             $user = $request->user();
             $hariIni = today();
             $tigaHariLagi = today()->addDays(3);
-            $activeSemesterIds = Semester::where('is_active', 1)->pluck('id');
+            
+            // Ambil active semester ID dengan cache singkat (10 menit)
+            $activeSemesterIds = Cache::remember('active_semester_ids', 600, function() {
+                return Semester::where('is_active', 1)->pluck('id');
+            });
 
             $data = [
                 'user_info' => [
                     'name' => $user->nama_lengkap ?? $user->username ?? $user->name,
                     'role' => 'Admin',
                 ],
+                // Statistik menggunakan cache agar loading instan
                 'statistics' => $this->getStats($activeSemesterIds),
                 'common' => [
                     'kalender_akademik' => $this->getKalenderData($activeSemesterIds, $hariIni, $tigaHariLagi),
+                    // Optimasi: Langsung ambil 5 terbaru tanpa map manual yang berat
                     'recent_pengumuman' => Pengumuman::latest()->take(5)->get()->map(function($item) {
                         return [
                             'id' => $item->id,
@@ -52,7 +59,7 @@ class DashboardController extends Controller
                             'updated_at' => $item->updated_at->format('Y-m-d H:i:s'),
                         ];
                     }),
-                    'recent_berita'     => BeritaResource::collection(Berita::latest()->take(5)->get()),
+                    'recent_berita' => BeritaResource::collection(Berita::latest()->take(5)->get()),
                 ],
                 'recent_logs' => LogAktivitasResource::collection(
                     LogAktivitas::with('user')->latest()->take(5)->get()
@@ -67,7 +74,6 @@ class DashboardController extends Controller
         } catch (Throwable $e) {
             Log::error('Dashboard error', [
                 'error' => $e->getMessage(),
-                'file'  => $e->getFile(),
                 'line'  => $e->getLine()
             ]);
 
@@ -81,30 +87,34 @@ class DashboardController extends Controller
 
     private function getStats($activeSemesterIds): array
     {
-        return [
-            'total_berita'         => Berita::count(),
-            'total_pengumuman'     => Pengumuman::count(),
-            'guru_aktif'           => GuruStaf::where('is_active', 1)->count(),
-            'siswa_aktif'          => Siswa::where('is_active', 1)
-                ->whereHas('riwayatKelas', function($q) use ($activeSemesterIds) {
-                    $q->whereIn('semester_id', $activeSemesterIds)
-                      ->where('is_active', 1);
-                })->count(),
-            'orangtua_aktif'       => Orangtua::where('is_active', 1)
-                ->whereHas('siswa', function($q) use ($activeSemesterIds) {
-                    $q->where('is_active', 1)
-                      ->whereHas('riwayatKelas', function($sq) use ($activeSemesterIds) {
-                        $sq->whereIn('semester_id', $activeSemesterIds)
-                           ->where('is_active', 1);
-                    });
-                })->count(),
-            'total_kelas'           => Kelas::where('is_active', 1)->count(),
-            'total_jurusan'         => Jurusan::count(),
-            'semester_aktif'        => $activeSemesterIds->count(),
-            'total_ekstrakurikuler' => Ekstrakurikuler::count(),
-            'total_fasilitas'       => Fasilitas::count(),
-            'pesan_baru'            => Pesan::where('status', 'belum_dibaca')->count(),
-        ];
+        // KUNCI KECEPATAN: Simpan hasil hitung selama 30 menit.
+        // Data statistik tidak perlu real-time per detik.
+        return Cache::remember('admin_dashboard_stats', 1800, function () use ($activeSemesterIds) {
+            return [
+                'total_berita'         => Berita::count(),
+                'total_pengumuman'     => Pengumuman::count(),
+                'guru_aktif'           => GuruStaf::where('is_active', 1)->count(),
+                'siswa_aktif'          => Siswa::where('is_active', 1)
+                    ->whereHas('riwayatKelas', function($q) use ($activeSemesterIds) {
+                        $q->whereIn('semester_id', $activeSemesterIds)
+                          ->where('is_active', 1);
+                    })->count(),
+                'orangtua_aktif'       => Orangtua::where('is_active', 1)
+                    ->whereHas('siswa', function($q) use ($activeSemesterIds) {
+                        $q->where('is_active', 1)
+                          ->whereHas('riwayatKelas', function($sq) use ($activeSemesterIds) {
+                            $sq->whereIn('semester_id', $activeSemesterIds)
+                               ->where('is_active', 1);
+                        });
+                    })->count(),
+                'total_kelas'           => Kelas::where('is_active', 1)->count(),
+                'total_jurusan'         => Jurusan::count(),
+                'semester_aktif'        => $activeSemesterIds->count(),
+                'total_ekstrakurikuler' => Ekstrakurikuler::count(),
+                'total_fasilitas'       => Fasilitas::count(),
+                'pesan_baru'            => Pesan::where('status', 'belum_dibaca')->count(),
+            ];
+        });
     }
 
     private function getKalenderData($semesterIds, $hariIni, $tigaHariLagi)

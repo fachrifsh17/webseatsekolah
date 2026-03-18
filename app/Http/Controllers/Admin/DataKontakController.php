@@ -19,22 +19,27 @@ class DataKontakController extends Controller
         $this->middleware('log.aktivitas')->only(['update']);
     }
 
+    private function getOrCreateKontak()
+    {
+        return DataKontak::firstOrCreate(
+            ['id' => 1],
+            [
+                'alamat_jalan'    => '-',
+                'desa_kelurahan'  => '-',
+                'kecamatan'       => '-',
+                'kabupaten_kota'  => '-',
+                'provinsi'        => '-',
+                'telepon'         => '-',
+                'email_resmi'     => '-',
+                'peta_embed_code' => null,
+            ]
+        );
+    }
+
     public function index(): JsonResponse
     {
         try {
-            $dataKontak = DataKontak::firstOrCreate(
-                ['id' => 1],
-                [
-                    'alamat_jalan'    => '-',
-                    'desa_kelurahan'  => '-',
-                    'kecamatan'       => '-',
-                    'kabupaten_kota'  => '-',
-                    'provinsi'        => '-',
-                    'telepon'         => '-',
-                    'email_resmi'     => '-',
-                    'peta_embed_code' => null,
-                ]
-            );
+            $dataKontak = $this->getOrCreateKontak();
 
             return response()->json([
                 'success' => true,
@@ -55,22 +60,7 @@ class DataKontakController extends Controller
         $this->authorize('update', DataKontak::class);
 
         try {
-            $dataKontak = DataKontak::firstOrCreate(
-                ['id' => 1],
-                [
-                    'alamat_jalan'    => '-',
-                    'desa_kelurahan'  => '-',
-                    'kecamatan'       => '-',
-                    'kabupaten_kota'  => '-',
-                    'provinsi'        => '-',
-                    'telepon'         => '-',
-                    'email_resmi'     => '-',
-                    'peta_embed_code' => null,
-                ]
-            );
-
-            // Karena kita menggunakan UpdateDataKontakRequest yang baru, 
-            // $request->validated() sudah berisi alamat_jalan, kecamatan, dll.
+            $dataKontak = $this->getOrCreateKontak();
             $dataKontak->update($request->validated());
 
             return response()->json([

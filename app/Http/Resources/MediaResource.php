@@ -14,7 +14,7 @@ class MediaResource extends JsonResource
             
             // Mengarahkan langsung ke folder uploads/album/media di public
             'media_url'   => $this->media_path 
-                             ? asset('uploads/album/media/' . str_replace('uploads/album/media/', '', $this->media_path)) 
+                             ? asset('uploads/media/' . str_replace('uploads/album/media/', '', $this->media_path)) 
                              : null,
             
             'jenis_media' => $this->jenis_media,

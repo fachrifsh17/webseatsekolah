@@ -19,9 +19,8 @@ class StoreEkstrakurikulerRequest extends FormRequest
         return [
             'nama_ekskul' => ['required', 'string', 'max:100', 'unique:ekstrakurikuler,nama_ekskul'],
             'deskripsi'   => ['nullable', 'string'],
-            'hari'        => ['required', 'string', 'max:50'],
-            'jam_mulai'   => ['required', 'date_format:H:i'],
-            'jam_selesai' => ['required', 'date_format:H:i', 'after:jam_mulai'],
+            // Diperpanjang ke 100 agar bisa menampung teks seperti "Senin - Kamis"
+            'hari'        => ['required', 'string', 'max:100'], 
             'pembina_id'  => ['required', 'string', 'exists:guru_staf,id'],
             'foto'        => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'keterangan'  => ['nullable', 'string', 'max:255'],
@@ -35,20 +34,19 @@ class StoreEkstrakurikulerRequest extends FormRequest
             'nama_ekskul.unique'   => 'Ekstrakurikuler dengan nama ini sudah terdaftar.',
             'nama_ekskul.string'   => 'Nama ekstrakurikuler harus berupa teks.',
             'nama_ekskul.max'      => 'Nama ekstrakurikuler tidak boleh lebih dari 100 karakter.',
+            
             'hari.required'        => 'Hari pelaksanaan wajib diisi.',
             'hari.string'          => 'Hari harus berupa teks.',
-            'hari.max'             => 'Hari tidak boleh lebih dari 50 karakter.',
-            'jam_mulai.required'   => 'Jam mulai wajib diisi.',
-            'jam_mulai.date_format'=> 'Format jam mulai harus HH:mm (contoh 15:00).',
-            'jam_selesai.required' => 'Jam selesai wajib diisi.',
-            'jam_selesai.date_format' => 'Format jam selesai harus HH:mm (contoh 17:00).',
-            'jam_selesai.after'    => 'Jam selesai harus setelah jam mulai.',
+            'hari.max'             => 'Hari tidak boleh lebih dari 100 karakter.',
+
             'pembina_id.required'  => 'Pembina wajib dipilih.',
             'pembina_id.string'    => 'ID Pembina tidak valid.',
             'pembina_id.exists'    => 'Pembina tidak terdaftar di sistem.',
+
             'foto.image'           => 'File harus berupa gambar.',
             'foto.mimes'           => 'Format didukung: JPG, JPEG, PNG, WEBP.',
             'foto.max'             => 'Ukuran foto maksimal 2MB.',
+
             'keterangan.string'    => 'Keterangan harus berupa teks.',
             'keterangan.max'       => 'Keterangan maksimal 255 karakter.',
         ];
@@ -60,8 +58,6 @@ class StoreEkstrakurikulerRequest extends FormRequest
             'nama_ekskul' => 'Nama ekstrakurikuler',
             'deskripsi'   => 'Deskripsi',
             'hari'        => 'Hari',
-            'jam_mulai'   => 'Jam mulai',
-            'jam_selesai' => 'Jam selesai',
             'pembina_id'  => 'Pembina',
             'foto'        => 'Foto',
             'keterangan'  => 'Keterangan',

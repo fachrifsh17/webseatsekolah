@@ -42,8 +42,14 @@ class RolePolicy
         return $this->authorize($user, ['Admin']);
     }
 
+    /**
+     * Memastikan pengecekan role menggunakan contains agar tidak error
+     */
     protected function authorize(User $user, array $allowedRoles = []): bool
     {
-        return $user->roles->pluck('role_name')->intersect($allowedRoles)->isNotEmpty();
+        // Mengambil semua role_name dan mengecek keberadaan role yang diizinkan
+        return $user->roles->pluck('role_name')->contains(function ($roleName) use ($allowedRoles) {
+            return in_array($roleName, $allowedRoles);
+        });
     }
 }

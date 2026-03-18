@@ -16,6 +16,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Throwable;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Http\Request;
 
 class UserController extends Controller
 {
@@ -30,9 +31,25 @@ class UserController extends Controller
         $this->authorizeResource(User::class, 'user');
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $users = User::with(['roles', 'guruStaf', 'siswa'])->paginate(15);
+        $query = User::with(['roles', 'guruStaf', 'siswa']);
+
+        if ($request->filled('search')) {
+            $search = $request->input('search');
+            $query->where('username', 'like', "%{$search}%");
+        }
+
+        if ($request->filled('role')) {
+            $role = $request->input('role');
+            $query->whereHas('roles', function($q) use ($role) {
+                $q->where('role_name', $role)
+                  ->orWhere('nama', $role)
+                  ->orWhere('slug', $role);
+            });
+        }
+
+        $users = $query->orderBy('username', 'asc')->paginate(15);
         
         return response()->json([
             'success' => true,

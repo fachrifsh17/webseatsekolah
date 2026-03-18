@@ -71,22 +71,27 @@ class TahunAjaranController extends Controller
     public function store(StoreTahunAjaranRequest $request): JsonResponse
     {
         try {
-            $exists = TahunAjaran::where('nama', $request->nama)
-                ->exists();
+            $exists = TahunAjaran::where('nama', $request->nama)->exists();
 
             if ($exists) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tahun ajaran ' . $request->nama . ' sudah terdaftar.',
+                    'message' => 'Gagal menambahkan data.',
+                    'errors'  => [
+                        'nama' => ['Tahun ajaran ' . $request->nama . ' sudah terdaftar.']
+                    ]
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
             $activeKurikulum = Kurikulum::where('is_active', true)->first();
 
-            if (!$activeKurikulum) {
+            if (!$activeKurikulum && empty($request->kurikulum_id)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Kurikulum aktif tidak ditemukan. Wajib membuat kurikulum aktif terlebih dahulu.',
+                    'message' => 'Gagal menambahkan data.',
+                    'errors'  => [
+                        'kurikulum_id' => ['Kurikulum aktif tidak ditemukan. Wajib memilih atau membuat kurikulum aktif terlebih dahulu.']
+                    ]
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
@@ -137,23 +142,29 @@ class TahunAjaranController extends Controller
             if ($exists) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tahun ajaran ' . $request->nama . ' sudah digunakan data lain.',
+                    'message' => 'Gagal memperbarui data.',
+                    'errors'  => [
+                        'nama' => ['Tahun ajaran ' . $request->nama . ' sudah digunakan data lain.']
+                    ]
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
             $activeKurikulum = Kurikulum::where('is_active', true)->first();
 
-            if (!$activeKurikulum) {
+            if (!$activeKurikulum && empty($request->kurikulum_id)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Kurikulum aktif tidak ditemukan. Wajib membuat kurikulum aktif terlebih dahulu.',
+                    'message' => 'Gagal memperbarui data.',
+                    'errors'  => [
+                        'kurikulum_id' => ['Kurikulum aktif tidak ditemukan. Wajib memilih kurikulum.']
+                    ]
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
             DB::transaction(function () use ($request, $tahunAjaran, $activeKurikulum) {
                 $data = $request->validated();
 
-                if (empty($data['kurikulum_id'])) {
+                if (empty($data['kurikulum_id']) && $activeKurikulum) {
                     $data['kurikulum_id'] = $activeKurikulum->id;
                 }
 
@@ -184,6 +195,7 @@ class TahunAjaranController extends Controller
     public function destroy(TahunAjaran $tahunAjaran): JsonResponse
     {
         $relations = [
+            'semesters' => 'Data Semester',
             'kelas' => 'Data Kelas',
             'presensi' => 'Data Presensi',
             'presensiGuruMapel' => 'Data Presensi Guru',
@@ -192,10 +204,13 @@ class TahunAjaranController extends Controller
         ];
 
         foreach ($relations as $method => $label) {
-            if ($tahunAjaran->$method()->exists()) {
+            if (method_exists($tahunAjaran, $method) && $tahunAjaran->$method()->exists()) {
                 return response()->json([
                     'success' => false,
-                    'message' => "Tidak dapat menghapus tahun ajaran karena masih memiliki relasi dengan {$label}."
+                    'message' => "Gagal menghapus data.",
+                    'errors'  => [
+                        'relasi' => ["Tidak dapat menghapus tahun ajaran karena masih memiliki relasi dengan {$label}."]
+                    ]
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
         }

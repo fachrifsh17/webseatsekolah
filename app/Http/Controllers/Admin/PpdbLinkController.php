@@ -19,10 +19,6 @@ class PpdbLinkController extends Controller
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['update']);
-
-        // Siapkan otorisasi (pastikan buat Policy nantinya)
-        // Karena ini singleton, kita biasanya pakai manual authorize di method atau 
-        // tetap didaftarkan jika menggunakan standar resource.
     }
 
     public function index(): JsonResponse
@@ -30,16 +26,9 @@ class PpdbLinkController extends Controller
         try {
             $link = PpdbLink::first();
 
-            if (!$link) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Data PPDB belum tersedia'
-                ], Response::HTTP_NOT_FOUND);
-            }
-
             return response()->json([
                 'success' => true,
-                'data'    => new PpdbLinkResource($link),
+                'data'    => $link ? new PpdbLinkResource($link) : null,
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Failed to fetch PPDB link', ['error' => $e->getMessage()]);
@@ -56,7 +45,6 @@ class PpdbLinkController extends Controller
 
         DB::beginTransaction();
         try {
-            // Logika updateOrCreate tetap sama: memastikan hanya ada satu record (ID 1)
             $link = PpdbLink::updateOrCreate(
                 ['id' => 1],
                 $validated

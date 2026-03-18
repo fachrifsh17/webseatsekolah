@@ -88,25 +88,6 @@ class EkstrakurikulerController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
-        $isConflict = Ekstrakurikuler::where('pembina_id', $validated['pembina_id'])
-            ->where('hari', $validated['hari'])
-            ->where(function ($query) use ($validated) {
-                $query->whereBetween('jam_mulai', [$validated['jam_mulai'], $validated['jam_selesai']])
-                    ->orWhereBetween('jam_selesai', [$validated['jam_mulai'], $validated['jam_selesai']])
-                    ->orWhere(function ($q) use ($validated) {
-                        $q->where('jam_mulai', '<=', $validated['jam_mulai'])
-                          ->where('jam_selesai', '>=', $validated['jam_selesai']);
-                    });
-            })->exists();
-
-        if ($isConflict) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Jadwal pembina bentrok dengan ekstrakurikuler lain.',
-                'errors'  => ['conflict' => ['Pembina sudah memiliki jadwal di jam tersebut.']]
-            ], Response::HTTP_CONFLICT);
-        }
-
         if ($request->hasFile('foto')) {
             $file = $request->file('foto');
             $fileName = time() . '_' . $file->getClientOriginalName();
@@ -154,31 +135,6 @@ class EkstrakurikulerController extends Controller
                     'errors'  => ['nama_ekskul' => ['Nama ini sudah ada di database.']]
                 ], Response::HTTP_CONFLICT);
             }
-        }
-
-        $pembinaId = $validated['pembina_id'] ?? $ekstrakurikuler->pembina_id;
-        $hari = $validated['hari'] ?? $ekstrakurikuler->hari;
-        $jamMulai = $validated['jam_mulai'] ?? $ekstrakurikuler->jam_mulai;
-        $jamSelesai = $validated['jam_selesai'] ?? $ekstrakurikuler->jam_selesai;
-
-        $isConflict = Ekstrakurikuler::where('id', '!=', $ekstrakurikuler->id)
-            ->where('pembina_id', $pembinaId)
-            ->where('hari', $hari)
-            ->where(function ($query) use ($jamMulai, $jamSelesai) {
-                $query->whereBetween('jam_mulai', [$jamMulai, $jamSelesai])
-                    ->orWhereBetween('jam_selesai', [$jamMulai, $jamSelesai])
-                    ->orWhere(function ($q) use ($jamMulai, $jamSelesai) {
-                        $q->where('jam_mulai', '<=', $jamMulai)
-                          ->where('jam_selesai', '>=', $jamSelesai);
-                    });
-            })->exists();
-
-        if ($isConflict) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Jadwal pembina bentrok dengan ekstrakurikuler lain.',
-                'errors'  => ['conflict' => ['Pembina sudah memiliki jadwal di jam tersebut.']]
-            ], Response::HTTP_CONFLICT);
         }
 
         if ($request->hasFile('foto')) {

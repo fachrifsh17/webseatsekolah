@@ -16,8 +16,6 @@ class Ekstrakurikuler extends Model
         'nama_ekskul',
         'deskripsi',
         'hari',
-        'jam_mulai',
-        'jam_selesai',
         'pembina_id',
         'foto',
         'keterangan',
