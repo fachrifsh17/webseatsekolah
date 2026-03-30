@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Kesiswaan;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Orangtua, Siswa, User, Kelas, Jurusan};
+use App\Models\{Orangtua, Siswa, User, Kelas, Jurusan, Semester};
 use App\Http\Requests\{StoreOrangtuaRequest, UpdateOrangtuaRequest};
 use App\Http\Resources\OrangtuaResource;
 use App\Exports\OrangtuaExport;
@@ -20,22 +20,27 @@ class OrangtuaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import', 'bulkDelete']);
         $this->authorizeResource(Orangtua::class, 'orangtua');
     }
 
     private function applyFilters(Request $request, $query)
     {
         $query->distinct();
-
         $semesterAktif = DB::table('semesters')->where('is_active', 1)->first();
         $semesterId = $request->query('semester_id', $semesterAktif?->id);
 
         $query->whereHas('anak.riwayatKelas', function ($q) use ($semesterId, $request) {
             $q->where('is_active', 1);
-
+            
             if ($semesterId) {
                 $q->where('semester_id', $semesterId);
+            }
+
+            if ($request->filled('tingkatan_id')) {
+                $q->whereHas('kelas', function($qk) use ($request) {
+                    $qk->where('tingkatan_id', $request->tingkatan_id);
+                });
             }
 
             if ($request->filled('jurusan_id')) {
@@ -61,8 +66,9 @@ class OrangtuaController extends Controller
             });
         }
 
-        if ($request->filled('is_active')) {
-            $query->where('is_active', $request->is_active);
+        $isActive = $request->query('is_active', 'all');
+        if ($isActive !== 'all') {
+            $query->where('is_active', $isActive);
         }
 
         return $query;
@@ -90,7 +96,6 @@ class OrangtuaController extends Controller
             }]);
 
             $query = $this->applyFilters($request, $query);
-            
             $perPage = $request->query('per_page', 20);
             $orangtua = $query->latest()->paginate($perPage);
             $paginationData = $orangtua->toArray();
@@ -201,20 +206,16 @@ class OrangtuaController extends Controller
 
                 if ($orangtua->user) {
                     $userData = [];
-
                     if (isset($validated['telepon'])) {
                         $userData['username'] = $validated['telepon'];
                         $userData['password'] = Hash::make($validated['telepon']);
                     }
-
                     if (isset($validated['is_active'])) {
                         $userData['is_active'] = $validated['is_active'];
-                        
                         if ($isReactivating && !isset($validated['telepon'])) {
                             $userData['password'] = Hash::make($orangtua->telepon);
                         }
                     }
-
                     if (!empty($userData)) {
                         $orangtua->user->update($userData);
                     }
@@ -298,32 +299,56 @@ class OrangtuaController extends Controller
         }
     }
 
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $request->validate(['ids' => 'required|array', 'ids.*' => 'exists:orangtua,id']);
+        try {
+            DB::transaction(function () use ($request) {
+                $orangtuas = Orangtua::whereIn('id', $request->ids)->get();
+                foreach ($orangtuas as $ortua) {
+                    $user = $ortua->user;
+                    $ortua->anak()->detach();
+                    $ortua->delete();
+                    if ($user) {
+                        $user->roles()->detach();
+                        $user->delete();
+                    }
+                }
+            });
+            return response()->json(['success' => true, 'message' => 'Beberapa data orang tua berhasil dihapus'], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Bulk Delete Orangtua Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus data masal'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
     public function export(Request $request)
     {
         try {
             $this->authorize('viewAny', Orangtua::class);
-            
-            $query = Orangtua::query()->with(['anak.riwayatKelas' => fn($q) => $q->where('is_active', 1)->with('kelas.jurusan')]);
-            $query = $this->applyFilters($request, $query);
-            
+
             $semesterAktif = DB::table('semesters')->where('is_active', 1)->first();
             $semesterId = $request->query('semester_id', $semesterAktif?->id);
+
+            $query = Orangtua::query()->with(['anak.riwayatKelas' => function($q) use ($semesterId) {
+                $q->where('is_active', 1);
+                if ($semesterId) {
+                    $q->where('semester_id', $semesterId);
+                }
+                $q->with('kelas.jurusan');
+            }]);
+
+            $query = $this->applyFilters($request, $query);
             
-            $sem = DB::table('semesters')
-                ->join('tahun_ajaran', 'semesters.tahun_ajaran_id', '=', 'tahun_ajaran.id')
-                ->where('semesters.id', $semesterId)
-                ->select('semesters.nama as nama_semester', 'semesters.is_active', 'tahun_ajaran.nama as nama_tahun_ajaran')
-                ->first();
-            
+            $sem = DB::table('semesters')->join('tahun_ajaran', 'semesters.tahun_ajaran_id', '=', 'tahun_ajaran.id')->where('semesters.id', $semesterId)->select('semesters.nama as nama_semester', 'semesters.is_active', 'tahun_ajaran.nama as nama_tahun_ajaran')->first();
             $kelasData = $request->filled('kelas_id') ? Kelas::find($request->kelas_id) : null;
             $jurusanData = $request->filled('jurusan_id') ? Jurusan::find($request->jurusan_id) : null;
-
             $filenameParts = ['DATA_ORANGTUA'];
-
-            if ($kelasData) {
-                $filenameParts[] = strtoupper(str_replace([' ', '-'], '_', $kelasData->nama_kelas));
-            } elseif ($jurusanData) {
-                $filenameParts[] = strtoupper(str_replace([' ', '-'], '_', $jurusanData->nama_jurusan));
+            
+            if ($kelasData) { 
+                $filenameParts[] = strtoupper(str_replace([' ', '-'], '_', $kelasData->nama_kelas)); 
+            } elseif ($jurusanData) { 
+                $filenameParts[] = strtoupper(str_replace([' ', '-'], '_', $jurusanData->nama_jurusan)); 
             }
 
             if ($sem) {
@@ -335,26 +360,84 @@ class OrangtuaController extends Controller
             }
 
             $fileName = implode('_', $filenameParts) . '.xlsx';
-
             if (ob_get_contents()) ob_end_clean();
-
-            return Excel::download(
-                new OrangtuaExport(
-                    $query, 
-                    DB::table('profil_sekolah')->first(), 
-                    DB::table('data_kontak')->first(), 
-                    $kelasData, 
-                    $request->all(),
-                    $jurusanData
-                ), 
-                $fileName
-            );
+            return Excel::download(new OrangtuaExport($query, DB::table('profil_sekolah')->first(), DB::table('data_kontak')->first(), $kelasData, $request->all(), $jurusanData), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Orangtua Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false, 
-                'message' => 'Gagal mengunduh data: ' . $e->getMessage()
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json(['success' => false, 'message' => 'Gagal mengunduh data: ' . $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function importPreview(Request $request): JsonResponse
+    {
+        $this->authorize('create', Orangtua::class);
+        $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
+
+        try {
+            $rows = Excel::toArray(new \stdClass(), $request->file('file'))[0];
+            $preview = [];
+            $activeSemesterId = Semester::where('is_active', true)->value('id');
+            $tempTelephones = [];
+
+            foreach (array_slice($rows, 1) as $index => $row) {
+                $raw = array_combine($rows[0], $row);
+                $errors = [];
+                $warnings = [];
+                $line = $index + 2;
+
+                if (empty($raw['nama_lengkap'])) $errors[] = "Nama lengkap wajib diisi.";
+                
+                if (empty($raw['telepon'])) {
+                    $errors[] = "Telepon wajib diisi.";
+                } else {
+                    $telepon = preg_replace('/[^0-9]/', '', (string) $raw['telepon']);
+
+                    if (in_array($telepon, $tempTelephones)) {
+                        $errors[] = "Nomor telepon duplikat dengan baris sebelumnya di file ini.";
+                    }
+                    $tempTelephones[] = $telepon;
+
+                    $existingOrangtua = Orangtua::where('telepon', $telepon)->first();
+                    if ($existingOrangtua) {
+                        if ($existingOrangtua->is_active) {
+                            $errors[] = "Nomor telepon sudah digunakan oleh orang tua aktif ({$existingOrangtua->nama_lengkap}).";
+                        } else {
+                            $warnings[] = "Nomor telepon terdaftar sebagai data non-aktif. Akan diaktifkan kembali jika diimport.";
+                        }
+                    }
+                }
+
+                if (!empty($raw['nis_anak'])) {
+                    $nisList = explode(',', $raw['nis_anak']);
+                    foreach ($nisList as $nis) {
+                        $nisClean = trim($nis);
+                        $siswa = Siswa::where('nis', $nisClean)
+                            ->where('is_active', 1)
+                            ->whereHas('riwayatKelas', fn($q) => $q->where('semester_id', $activeSemesterId))
+                            ->first();
+                        
+                        if (!$siswa) {
+                            $errors[] = "Siswa NIS {$nisClean} tidak ditemukan/aktif di semester ini.";
+                        } else {
+                            if ($siswa->orangtua()->count() >= 2) {
+                                $errors[] = "Siswa {$nisClean} sudah memiliki maksimal 2 orang tua.";
+                            }
+                        }
+                    }
+                }
+
+                $preview[] = [
+                    'line' => $line,
+                    'data' => $raw,
+                    'errors' => $errors,
+                    'warnings' => $warnings,
+                    'is_valid' => empty($errors)
+                ];
+            }
+
+            return response()->json(['success' => true, 'data' => $preview]);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 

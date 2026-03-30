@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
 
 class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles, WithEvents, WithCustomStartCell
 {
-    protected $queryBuilder, $profil, $kontak, $kelasData, $jurusanData, $filters, $semesterText, $tahunAjaranText, $semesterId;
+    protected $queryBuilder, $profil, $kontak, $kelasData, $jurusanData, $filters, $semesterText, $tahunAjaranText, $semesterId, $tingkatanText;
 
     public function __construct($queryBuilder, $profil, $kontak, $kelasData = null, $filters = [], $jurusanData = null)
     {
@@ -52,6 +52,14 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles
             $this->tahunAjaranText = $sem ? strtoupper($sem->nama_tahun_ajaran) : '-';
             $this->semesterId = $sem?->id;
         }
+
+        $tingkatId = $filters['tingkatan_id'] ?? null;
+        if ($tingkatId) {
+            $tingkat = DB::table('tingkatan')->where('id', $tingkatId)->value('nama_tingkatan');
+            $this->tingkatanText = $tingkat ? strtoupper($tingkat) : 'SEMUA TINGKATAN';
+        } else {
+            $this->tingkatanText = $this->kelasData?->tingkatan?->nama_tingkatan ? strtoupper($this->kelasData->tingkatan->nama_tingkatan) : 'SEMUA TINGKATAN';
+        }
     }
 
     public function startCell(): string { return 'A13'; }
@@ -64,7 +72,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles
     public function headings(): array
     {
         return [
-            'ID', 'NAMA ORANG TUA', 'NO. TELEPON', 'NIS', 'NISN', 'NAMA ANAK', 'TKT', 'KELAS', 'HUBUNGAN', 'STATUS'
+            'ID', 'NAMA ORANG TUA', 'NO. TELEPON', 'NIS', 'NISN', 'NAMA ANAK', 'KELAS', 'HUBUNGAN', 'STATUS'
         ];
     }
 
@@ -74,25 +82,33 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles
         $anakFiltered = $orangtua->anak->filter(function($anak) {
             $riwayat = $anak->riwayatKelas->where('semester_id', $this->semesterId)->first();
             if (!$riwayat) return false;
+            
             if ($this->kelasData && $riwayat->kelas_id != $this->kelasData->id) return false;
+            
             if ($this->jurusanData && $riwayat->kelas?->jurusan_id != $this->jurusanData->id) return false;
+
+            if (!empty($this->filters['tingkatan_id'])) {
+                if ($riwayat->kelas?->tingkatan_id != $this->filters['tingkatan_id']) return false;
+            }
+
             return true;
         });
 
         if ($anakFiltered->isEmpty()) {
-            $rows[] = [
-                $orangtua->id, strtoupper($orangtua->nama_lengkap), "'" . $orangtua->telepon,
-                '-', '-', '-', '-', '-', '-', $orangtua->is_active ? 'AKTIF' : 'NON-AKTIF',
-            ];
+            return [];
         } else {
             foreach ($anakFiltered as $anak) {
                 $riwayat = $anak->riwayatKelas->where('semester_id', $this->semesterId)->first();
                 $hubungan = $anak->pivot->hubungan ?? '-';
                 $rows[] = [
-                    $orangtua->id, strtoupper($orangtua->nama_lengkap), "'" . $orangtua->telepon,
-                    "'" . $anak->nis, "'" . $anak->nisn, strtoupper($anak->nama_lengkap),
-                    strtoupper($riwayat->kelas?->tingkatan?->nama_tingkatan ?? '-'),
-                    strtoupper($riwayat->kelas->nama_kelas ?? '-'), strtoupper($hubungan),
+                    $orangtua->id, 
+                    strtoupper($orangtua->nama_lengkap), 
+                    "'" . $orangtua->telepon,
+                    "'" . $anak->nis, 
+                    "'" . $anak->nisn, 
+                    strtoupper($anak->nama_lengkap),
+                    strtoupper($riwayat->kelas->nama_kelas ?? '-'), 
+                    strtoupper($hubungan),
                     $orangtua->is_active ? 'AKTIF' : 'NON-AKTIF',
                 ];
             }
@@ -107,10 +123,10 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet->getDelegate(); 
-                $lastCol = 'J';
+                $lastCol = 'I';
                 $dataLastRow = $sheet->getHighestRow();
 
-                $columns = ['A'=>8, 'B'=>30, 'C'=>18, 'D'=>12, 'E'=>15, 'F'=>30, 'G'=>8, 'H'=>15, 'I'=>20, 'J'=>12];
+                $columns = ['A'=>8, 'B'=>30, 'C'=>18, 'D'=>12, 'E'=>15, 'F'=>30, 'G'=>15, 'H'=>20, 'I'=>12];
                 foreach ($columns as $col => $width) {
                     $sheet->getColumnDimension($col)->setWidth($width);
                 }
@@ -172,7 +188,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles
                 $sheet->getStyle('A9')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $sheet->setCellValue('A10', "JURUSAN : " . strtoupper($this->jurusanData ? $this->jurusanData->nama_jurusan : 'SEMUA JURUSAN'));
-                $sheet->setCellValue('A11', "TINGKAT : " . strtoupper($this->kelasData?->tingkatan?->nama_tingkatan ?? 'SEMUA TINGKATAN'));
+                $sheet->setCellValue('A11', "TINGKAT : " . $this->tingkatanText);
                 $sheet->setCellValue('A12', "KELAS   : " . strtoupper($this->kelasData ? $this->kelasData->nama_kelas : 'SEMUA KELAS'));
 
                 $sheet->getStyle("A13:{$lastCol}13")->applyFromArray([
@@ -191,10 +207,10 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles
                 $sheet->setCellValue("B" . $ttdRow, "Mengetahui,");
                 $sheet->setCellValue("B" . ($ttdRow + 1), "Waka Kesiswaan,");
                 
-                $sheet->setCellValue("I" . $ttdRow, $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
-                $sheet->setCellValue("I" . ($ttdRow + 1), "Kepala Sekolah,");
+                $sheet->setCellValue("H" . $ttdRow, $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
+                $sheet->setCellValue("H" . ($ttdRow + 1), "Kepala Sekolah,");
 
-                $sheet->getStyle("B{$ttdRow}:I" . ($ttdRow + 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("B{$ttdRow}:H" . ($ttdRow + 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $imageRow = $ttdRow + 2;
                 if ($wakaKes && $wakaKes->file_ttd) {
@@ -217,7 +233,7 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles
                         $drawKepsek = new Drawing();
                         $drawKepsek->setPath($pathKepsek);
                         $drawKepsek->setHeight(70);
-                        $drawKepsek->setCoordinates("I{$imageRow}"); 
+                        $drawKepsek->setCoordinates("H{$imageRow}"); 
                         $drawKepsek->setOffsetX(15); 
                         $drawKepsek->setOffsetY(0);
                         $drawKepsek->setEditAs('oneCell');
@@ -227,15 +243,15 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles
 
                 $namaRow = $ttdRow + 5;
                 $sheet->setCellValue("B" . $namaRow, "( " . strtoupper($wakaKes->nama ?? '____________________') . " )");
-                $sheet->setCellValue("I" . $namaRow, "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
+                $sheet->setCellValue("H" . $namaRow, "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
                 
-                $sheet->getStyle("B{$namaRow}:I{$namaRow}")->getFont()->setBold(true)->setUnderline(true);
-                $sheet->getStyle("B{$namaRow}:I{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("B{$namaRow}:H{$namaRow}")->getFont()->setBold(true)->setUnderline(true);
+                $sheet->getStyle("B{$namaRow}:H{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $nipRow = $namaRow + 1;
                 $sheet->setCellValue("B" . $nipRow, "NIP. " . ($wakaKes->nip ?? '........................'));
-                $sheet->setCellValue("I" . $nipRow, "NIP. " . ($kepsek->nip ?? '........................'));
-                $sheet->getStyle("B{$nipRow}:I{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->setCellValue("H" . $nipRow, "NIP. " . ($kepsek->nip ?? '........................'));
+                $sheet->getStyle("B{$nipRow}:H{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
     }

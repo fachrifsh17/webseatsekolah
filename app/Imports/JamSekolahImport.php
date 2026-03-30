@@ -3,7 +3,7 @@
 namespace App\Imports;
 
 use App\Models\JamSekolah;
-use App\Models\Semester; // --- PERUBAHAN: Gunakan Semester
+use App\Models\Semester;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithValidation;
@@ -16,45 +16,72 @@ class JamSekolahImport implements ToModel, WithHeadingRow, WithValidation, Skips
 {
     public array $importMessages = [];
     private int $rows = 0;
+    private $semesterId;
+    private array $processedInFile = [];
+
+    public function __construct($semesterId = null)
+    {
+        $this->semesterId = $semesterId;
+    }
 
     public function model(array $row)
     {
         $this->rows++;
-        // --- PERUBAHAN: Ambil semester yang aktif ---
-        $semesterAktif = Semester::where('is_active', true)->first();
 
-        if (!$semesterAktif) {
+        $semesterId = $this->semesterId;
+        if (!$semesterId) {
+            $semesterAktif = Semester::where('is_active', true)->first();
+            $semesterId = $semesterAktif ? $semesterAktif->id : null;
+        }
+
+        if (!$semesterId) {
             $this->importMessages[] = "Baris {$this->rows}: Tidak ada Semester yang aktif.";
             return null;
         }
 
-        // Format waktu agar seragam
-        $mulai = Carbon::parse($row['waktu_mulai'])->format('H:i:s');
-        $selesai = Carbon::parse($row['waktu_selesai'])->format('H:i:s');
+        try {
+            $mulai = Carbon::parse($row['waktu_mulai'])->format('H:i:s');
+            $selesai = Carbon::parse($row['waktu_selesai'])->format('H:i:s');
+        } catch (\Exception $e) {
+            $this->importMessages[] = "Baris {$this->rows}: Format waktu tidak valid.";
+            return null;
+        }
 
-        // 1. VALIDASI: Waktu Selesai harus lebih besar dari Waktu Mulai
         if ($selesai <= $mulai) {
             $this->importMessages[] = "Baris {$this->rows}: Waktu selesai ({$row['waktu_selesai']}) harus lebih besar dari waktu mulai.";
             return null;
         }
 
-        // 2. VALIDASI: Cek duplikasi Jam Ke (jika tidak null)
         if (!empty($row['jam_ke'])) {
+            $keyJamKe = $row['hari'] . '_jam_' . $row['jam_ke'];
+            if (isset($this->processedInFile[$keyJamKe])) {
+                $this->importMessages[] = "Baris {$this->rows}: Jam ke-{$row['jam_ke']} pada hari {$row['hari']} duplikat dalam file Excel.";
+                return null;
+            }
+
             $existsJamKe = JamSekolah::where([
-                'semester_id' => $semesterAktif->id, // --- PERUBAHAN: filter semester_id
+                'semester_id' => $semesterId,
                 'hari'        => $row['hari'],
                 'jam_ke'      => $row['jam_ke'],
             ])->exists();
 
             if ($existsJamKe) {
-                $this->importMessages[] = "Baris {$this->rows}: Jam ke-{$row['jam_ke']} pada hari {$row['hari']} sudah terdaftar di semester ini.";
+                $this->importMessages[] = "Baris {$this->rows}: Jam ke-{$row['jam_ke']} pada hari {$row['hari']} sudah terdaftar.";
                 return null;
+            }
+            $this->processedInFile[$keyJamKe] = true;
+        }
+
+        if (isset($this->processedInFile['waktu'][$row['hari']])) {
+            foreach ($this->processedInFile['waktu'][$row['hari']] as $time) {
+                if ($mulai < $time['selesai'] && $selesai > $time['mulai']) {
+                    $this->importMessages[] = "Baris {$this->rows}: Waktu bertabrakan dengan baris lain di hari yang sama dalam file.";
+                    return null;
+                }
             }
         }
 
-        // 3. VALIDASI: Cek Tabrakan Waktu (Overlap)
-        // Logika: (Mulai_Baru < Selesai_DB) DAN (Selesai_Baru > Mulai_DB)
-        $overlap = JamSekolah::where('semester_id', $semesterAktif->id) // --- PERUBAHAN: filter semester_id
+        $overlap = JamSekolah::where('semester_id', $semesterId)
             ->where('hari', $row['hari'])
             ->where(function ($query) use ($mulai, $selesai) {
                 $query->where('waktu_mulai', '<', $selesai)
@@ -62,12 +89,13 @@ class JamSekolahImport implements ToModel, WithHeadingRow, WithValidation, Skips
             })->exists();
 
         if ($overlap) {
-            $this->importMessages[] = "Baris {$this->rows}: Waktu ({$row['waktu_mulai']} - {$row['waktu_selesai']}) bertabrakan dengan jadwal lain di hari {$row['hari']} pada semester ini.";
+            $this->importMessages[] = "Baris {$this->rows}: Waktu ({$row['waktu_mulai']} - {$row['waktu_selesai']}) bertabrakan dengan jadwal lain di database.";
             return null;
         }
 
-        return DB::transaction(function () use ($row, $semesterAktif, $mulai, $selesai) {
-            // Logika Custom ID JM001
+        $this->processedInFile['waktu'][$row['hari']][] = ['mulai' => $mulai, 'selesai' => $selesai];
+
+        return DB::transaction(function () use ($row, $semesterId, $mulai, $selesai) {
             $lastJam = JamSekolah::where('id', 'like', 'JM%')
                 ->orderByRaw('CAST(SUBSTRING(id, 3) AS UNSIGNED) DESC')
                 ->lockForUpdate()
@@ -78,7 +106,7 @@ class JamSekolahImport implements ToModel, WithHeadingRow, WithValidation, Skips
 
             return new JamSekolah([
                 'id'              => $newId,
-                'semester_id'     => $semesterAktif->id, // --- PERUBAHAN: simpan semester_id
+                'semester_id'     => $semesterId,
                 'hari'            => $row['hari'],
                 'jam_ke'          => $row['jam_ke'] ?? null,
                 'waktu_mulai'     => $mulai,
@@ -96,7 +124,7 @@ class JamSekolahImport implements ToModel, WithHeadingRow, WithValidation, Skips
             'jam_ke'        => 'nullable',
             'waktu_mulai'   => 'required',
             'waktu_selesai' => 'required',
-            'jenis'         => ['required', Rule::in(['Pelajaran', 'Istirahat', 'Kegiatan', 'pelajaran', 'istirahat', 'kegiatan'])],
+            'jenis'         => ['required', Rule::in(['Pelajaran', 'Istirahat', 'Kegiatan', 'pelajaran', 'istirahat', 'kegiatan', 'Upacara', 'upacara'])],
         ];
     }
 

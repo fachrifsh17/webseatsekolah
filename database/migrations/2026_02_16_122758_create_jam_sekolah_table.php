@@ -20,7 +20,7 @@ return new class extends Migration
             $table->foreignId('semester_id')->nullable()->constrained('semesters')->onDelete('cascade');
             
             // Enum untuk hari
-            $table->enum('hari', ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat']);
+            $table->enum('hari', ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']);
             
             $table->integer('jam_ke')->nullable();
             $table->time('waktu_mulai');

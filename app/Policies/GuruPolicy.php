@@ -32,6 +32,14 @@ class GuruPolicy
         return $this->authorize($user, ['Admin']);
     }
 
+    /**
+     * Tambahan untuk Hapus Massal
+     */
+    public function deleteAny(User $user): bool
+    {
+        return $this->authorize($user, ['Admin']);
+    }
+
     public function restore(User $user, GuruStaf $guruStaf): bool
     {
         return $this->authorize($user, ['Admin']);
@@ -42,6 +50,9 @@ class GuruPolicy
         return $this->authorize($user, ['Admin']);
     }
 
+    /**
+     * Tambahan untuk Import & Preview
+     */
     public function import(User $user): bool
     {
         return $this->authorize($user, ['Admin']);

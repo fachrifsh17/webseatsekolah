@@ -32,7 +32,7 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         $this->filters = $filters;
     }
 
-    public function startCell(): string { return 'A16'; }
+    public function startCell(): string { return 'A17'; }
 
     public function query()
     {
@@ -43,8 +43,8 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
     {
         return [
             'NO',
-            'ID SISWA', 'NIS', 'NISN', 'NAMA LENGKAP', 'TEMPAT LAHIR', 
-            'TANGGAL LAHIR', 'JENIS KELAMIN', 'KELAS', 'NO TELP SISWA', 
+            'ID SISWA', 'NIS', 'NISN', 'NIK', 'NAMA LENGKAP', 'AGAMA', 'TEMPAT LAHIR', 
+            'TANGGAL LAHIR', 'JENIS KELAMIN', 'KELAS', 'TAHUN ANGKATAN', 'NO TELP SISWA', 
             'ALAMAT', 'STATUS AKTIF' 
         ];
     }
@@ -63,11 +63,14 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             $siswa->id, 
             $siswa->nis ? "'" . $siswa->nis : '-',
             $siswa->nisn ? "'" . $siswa->nisn : '-',
+            $siswa->nik ? "'" . $siswa->nik : '-',
             strtoupper($siswa->nama_lengkap),
+            strtoupper($siswa->agama ?? '-'),
             strtoupper($siswa->tempat_lahir),
             $siswa->tanggal_lahir ? date('d-m-Y', strtotime($siswa->tanggal_lahir)) : '-',
             $jkLengkap,
             $namaKelasSiswa,
+            $siswa->tahun_angkatan ?? '-',
             $siswa->no_telp_siswa, 
             $siswa->alamat,
             $siswa->is_active ? 'Aktif' : 'Tidak Aktif', 
@@ -95,7 +98,7 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             }
         }
 
-        $imageRow = 16 + $this->rowNumber + 4;
+        $imageRow = 17 + $this->rowNumber + 4;
 
         $waka = DB::table('struktur_jabatan')
             ->join('jabatans', 'struktur_jabatan.jabatan_id', '=', 'jabatans.id')
@@ -129,7 +132,7 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $drawing = new Drawing();
                 $drawing->setPath($path);
                 $drawing->setHeight(70);
-                $drawing->setCoordinates('K' . $imageRow);
+                $drawing->setCoordinates('N' . $imageRow);
                 $drawing->setOffsetX(50);
                 $drawing->setOffsetY(-5);
                 $drawing->setEditAs('oneCell'); 
@@ -145,14 +148,15 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet;
-                $lastCol = 'L'; 
-                $dataLastRow = 16 + $this->rowNumber;
+                $lastCol = 'O'; 
+                $dataLastRow = 17 + $this->rowNumber;
 
                 $sheet->getColumnDimension('A')->setAutoSize(false)->setWidth(5);
                 $sheet->getColumnDimension('B')->setAutoSize(false)->setWidth(10);
                 $sheet->getColumnDimension('C')->setAutoSize(false)->setWidth(15);
                 $sheet->getColumnDimension('D')->setAutoSize(false)->setWidth(15);
-                $sheet->getColumnDimension('E')->setAutoSize(false)->setWidth(40);
+                $sheet->getColumnDimension('E')->setAutoSize(false)->setWidth(20);
+                $sheet->getColumnDimension('F')->setAutoSize(false)->setWidth(40);
 
                 $provAsli = $this->kontak->provinsi ?? 'Jawa Barat';
                 $provKapital = strtoupper($provAsli);
@@ -197,35 +201,43 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->getStyle('A9')->getFont()->setBold(true);
                 $sheet->getStyle('A9')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $jurusan = $this->filters['nama_jurusan'] ?? ($this->filters['jurusan'] ?? '-');
-                $tingkat = $this->filters['nama_tingkat'] ?? ($this->filters['tingkat'] ?? '-');
-                $namaKelas = $this->filters['nama_kelas'] ?? ($this->filters['kelas'] ?? 'SEMUA KELAS');
-                $isActive = $this->filters['is_active'] ?? 1;
-                $statusText = $isActive == 0 ? 'TIDAK AKTIF' : 'AKTIF';
+                $jurusan = $this->filters['nama_jurusan'] ?? 'SEMUA';
+                $tingkat = $this->filters['nama_tingkatan'] ?? 'SEMUA';
+                $namaKelas = $this->filters['nama_kelas'] ?? 'SEMUA KELAS';
+                $agamaFilter = $this->filters['agama'] ?? 'SEMUA';
+                $angkatanFilter = $this->filters['tahun_angkatan'] ?? 'SEMUA';
                 $jkFilter = $this->filters['jenis_kelamin'] ?? 'SEMUA';
+                
+                $statusText = 'SEMUA';
+                if(isset($this->filters['is_active'])) {
+                    $statusText = $this->filters['is_active'] == 1 ? 'AKTIF' : 'TIDAK AKTIF';
+                }
 
                 $sheet->setCellValue('A10', "JURUSAN : " . strtoupper($jurusan));
                 $sheet->setCellValue('A11', "TINGKAT : " . strtoupper($tingkat));
                 $sheet->setCellValue('A12', "KELAS   : " . strtoupper($namaKelas));
-                $sheet->setCellValue('A13', "Jenis Kelamin: " . strtoupper($jkFilter));
-                $sheet->setCellValue('A14', "STATUS  : " . strtoupper($statusText));
+                $sheet->setCellValue('A13', "AGAMA   : " . strtoupper($agamaFilter));
+                $sheet->setCellValue('A14', "ANGKATAN: " . strtoupper($angkatanFilter));
+                $sheet->setCellValue('A15', "JENIS KELAMIN: " . strtoupper($jkFilter));
+                $sheet->setCellValue('A16', "STATUS  : " . strtoupper($statusText));
 
-                $sheet->getStyle("A16:{$lastCol}16")->applyFromArray([
+                $sheet->getStyle("A17:{$lastCol}17")->applyFromArray([
                     'font' => ['bold' => true],
                     'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
                 ]);
 
-                $sheet->getStyle("A16:{$lastCol}{$dataLastRow}")->applyFromArray([
+                $sheet->getStyle("A17:{$lastCol}{$dataLastRow}")->applyFromArray([
                     'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
                     'alignment' => ['vertical' => Alignment::VERTICAL_CENTER]
                 ]);
 
-                for ($row = 17; $row <= $dataLastRow; $row++) {
-                    $sheet->getStyle("A{$row}:D{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle("H{$row}:I{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle("L{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    if ($sheet->getCell("L{$row}")->getValue() === 'Tidak Aktif') {
-                        $sheet->getStyle("L{$row}")->getFont()->getColor()->setARGB('FFFF0000');
+                for ($row = 18; $row <= $dataLastRow; $row++) {
+                    $sheet->getStyle("A{$row}:E{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("G{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("I{$row}:L{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("O{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    if ($sheet->getCell("O{$row}")->getValue() === 'Tidak Aktif') {
+                        $sheet->getStyle("O{$row}")->getFont()->getColor()->setARGB('FFFF0000');
                     }
                 }
 
@@ -238,22 +250,22 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->setCellValue("C" . $ttdRow, "Mengetahui,");
                 $sheet->setCellValue("C" . ($ttdRow + 1), "Waka Kesiswaan,");
                 
-                $sheet->setCellValue("K" . $ttdRow, $lokasiTtd . ", " . strtoupper(Carbon::now()->translatedFormat('d F Y')));
-                $sheet->setCellValue("K" . ($ttdRow + 1), "Kepala Sekolah,");
+                $sheet->setCellValue("N" . $ttdRow, $lokasiTtd . ", " . strtoupper(Carbon::now()->translatedFormat('d F Y')));
+                $sheet->setCellValue("N" . ($ttdRow + 1), "Kepala Sekolah,");
 
-                $sheet->getStyle("C{$ttdRow}:K" . ($ttdRow + 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("C{$ttdRow}:N" . ($ttdRow + 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $namaRow = $ttdRow + 5;
                 $sheet->setCellValue("C" . $namaRow, "( " . strtoupper($waka->nama ?? '____________________') . " )");
-                $sheet->setCellValue("K" . $namaRow, "( " . strtoupper($ks->nama ?? '____________________') . " )");
+                $sheet->setCellValue("N" . $namaRow, "( " . strtoupper($ks->nama ?? '____________________') . " )");
                 
-                $sheet->getStyle("C{$namaRow}:K{$namaRow}")->getFont()->setBold(true)->setUnderline(true);
-                $sheet->getStyle("C{$namaRow}:K{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("C{$namaRow}:N{$namaRow}")->getFont()->setBold(true)->setUnderline(true);
+                $sheet->getStyle("C{$namaRow}:N{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $nipRow = $namaRow + 1;
                 $sheet->setCellValue("C" . $nipRow, "NIP. " . ($waka->nip ?? '........................'));
-                $sheet->setCellValue("K" . $nipRow, "NIP. " . ($ks->nip ?? '........................'));
-                $sheet->getStyle("C{$nipRow}:K{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->setCellValue("N" . $nipRow, "NIP. " . ($ks->nip ?? '........................'));
+                $sheet->getStyle("C{$nipRow}:N{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
     }

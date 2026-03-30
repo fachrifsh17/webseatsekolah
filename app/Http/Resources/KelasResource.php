@@ -27,8 +27,8 @@ class KelasResource extends JsonResource
                 
                 return $waliAktif ? [
                     'id'   => $waliAktif->id,
-                    'nama' => $waliAktif->nama,
-                    'semester_id' => $waliAktif->pivot->semester_id,
+                    'nama' => $waliAktif->nama, 
+                    'nip'  => $waliAktif->nip,
                 ] : null;
             }),
 

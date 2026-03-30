@@ -23,10 +23,13 @@ class Siswa extends Model
         'user_id',
         'nis',
         'nisn',
+        'nik',
         'nama_lengkap',
         'tempat_lahir',
         'tanggal_lahir',
         'jenis_kelamin',
+        'agama',
+        'tahun_angkatan',
         'foto',
         'no_telp_siswa',
         'alamat',
@@ -37,6 +40,7 @@ class Siswa extends Model
         'user_id'       => 'string',
         'is_active'     => 'boolean',
         'tanggal_lahir' => 'date',
+        'tahun_angkatan' => 'integer',
     ];
 
     protected static function boot()
@@ -88,18 +92,11 @@ class Siswa extends Model
          ->withTimestamps();
     }
 
-    /**
-     * Relasi untuk Presensi Harian (Wali Kelas)
-     */
     public function presensiDetail(): HasMany
     {
         return $this->hasMany(PresensiDetail::class, 'siswa_id');
     }
 
-    /**
-     * Relasi untuk Presensi Mata Pelajaran (Guru Mapel)
-     * Ditambahkan untuk sinkronisasi dengan Controller Guru Mapel
-     */
     public function presensiSiswaDetail(): HasMany
     {
         return $this->hasMany(PresensiSiswaDetail::class, 'siswa_id');

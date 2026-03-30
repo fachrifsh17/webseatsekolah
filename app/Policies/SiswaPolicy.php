@@ -9,18 +9,15 @@ class SiswaPolicy
 {
     public function viewAny(User $user): bool
     {
-        // Tambahkan 'Kepala Sekolah' di sini
         return $this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas', 'Kepala Sekolah']);
     }
 
     public function view(User $user, Siswa $siswa): bool
     {
-        // Tambahkan 'Kepala Sekolah' di sini
         if ($this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas', 'Kepala Sekolah'])) {
             return true;
         }
 
-        // Logic untuk Siswa melihat dirinya sendiri
         $userRoles = $user->roles->pluck('role_name');
         if ($userRoles->contains('Siswa')) {
             return $user->id === $siswa->user_id;
@@ -31,7 +28,6 @@ class SiswaPolicy
 
     public function create(User $user): bool
     {
-        // Admin bisa buat di mana saja, Waka Kesiswaan juga diberi izin (opsional)
         return $this->authorize($user, ['Admin'], ['Waka Kesiswaan']);
     }
 
@@ -57,7 +53,6 @@ class SiswaPolicy
 
     public function export(User $user): bool
     {
-        // Tambahkan 'Kepala Sekolah' agar bisa download laporan siswa
         return $this->authorize($user, ['Admin'], ['Waka Kesiswaan', 'Ketua Jurusan', 'Wali Kelas', 'Kepala Sekolah']);
     }
 
@@ -66,17 +61,22 @@ class SiswaPolicy
         return $this->authorize($user, ['Admin'], []);
     }
 
-    /**
-     * Helper authorize yang diseragamkan (contains)
-     */
+    public function importPreview(User $user): bool
+    {
+        return $this->authorize($user, ['Admin'], []);
+    }
+
+    public function bulkDestroy(User $user): bool
+    {
+        return $this->authorize($user, ['Admin'], []);
+    }
+
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
-        // 1. Cek Role
         $hasRole = $user->roles->pluck('role_name')->contains(function ($role) use ($allowedRoles) {
             return in_array($role, $allowedRoles);
         });
 
-        // 2. Cek Jabatan
         $hasJabatan = false;
         if ($user->guruStaf) {
             $hasJabatan = $user->guruStaf->strukturJabatan

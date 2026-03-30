@@ -26,7 +26,7 @@ class SiswaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import', 'bulkDestroy']);
         $this->authorizeResource(Siswa::class, 'siswa');
     }
 
@@ -48,21 +48,26 @@ class SiswaController extends Controller
             $query->where('jenis_kelamin', $request->jenis_kelamin);
         }
 
+        if ($request->filled('agama')) {
+            $query->where('agama', $request->agama);
+        }
+
+        if ($request->filled('tahun_angkatan')) {
+            $query->where('tahun_angkatan', $request->tahun_angkatan);
+        }
+
         if ($request->filled('semester_id')) {
             $query->whereHas('riwayatKelas', function($q) use ($request) {
                 $q->where('semester_id', $request->semester_id);
             });
         } else {
             $query->whereHas('riwayatKelas', function($q) {
-                $q->where('is_active', 1)
-                  ->whereHas('semester', fn($sem) => $sem->where('is_active', 1));
+                $q->whereHas('semester', fn($sem) => $sem->where('is_active', 1));
             });
         }
 
-        if ($request->has('is_active')) {
-            $query->where('is_active', $request->is_active);
-        } else {
-            $query->where('is_active', 1);
+        if ($request->has('is_active') && $request->is_active !== null && $request->is_active !== '') {
+            $query->where('siswa.is_active', $request->is_active);
         }
 
         if ($request->filled('search')) {
@@ -71,6 +76,7 @@ class SiswaController extends Controller
                 $q->where('nama_lengkap', 'like', "%{$search}%")
                   ->orWhere('nisn', 'like', "%{$search}%")
                   ->orWhere('nis', 'like', "%{$search}%")
+                  ->orWhere('nik', 'like', "%{$search}%")
                   ->orWhereHas('riwayatKelas.kelas', function ($qK) use ($search) {
                       $qK->where('nama_kelas', 'like', "%{$search}%");
                   });
@@ -124,8 +130,30 @@ class SiswaController extends Controller
 
         $query = Siswa::query()->with(['riwayatKelas.kelas.jurusan', 'orangtua']);
         $query = $this->applyFilters($request, $query);
-        
         $query->orderByRaw('LOWER(nama_lengkap) ASC');
+
+        $filters = $request->all();
+
+        if ($request->filled('jurusan_id')) {
+            $filters['nama_jurusan'] = DB::table('jurusan')->where('id', $request->jurusan_id)->value('nama_jurusan');
+        } else {
+            $filters['nama_jurusan'] = 'SEMUA';
+        }
+
+        if ($request->filled('tingkatan_id')) {
+            $tingkatData = DB::table('tingkatan')->where('id', $request->tingkatan_id)->first();
+            $filters['nama_tingkatan'] = $tingkatData ? $tingkatData->nama_tingkatan : 'SEMUA';
+        } else {
+            $filters['nama_tingkatan'] = 'SEMUA';
+        }
+
+        if ($request->filled('kelas_id')) {
+            $kelasDataObj = Kelas::find($request->kelas_id);
+            $filters['nama_kelas'] = $kelasDataObj ? $kelasDataObj->nama_kelas : 'SEMUA KELAS';
+        } else {
+            $filters['nama_kelas'] = 'SEMUA KELAS';
+            $kelasDataObj = null;
+        }
 
         if ($request->filled('semester_id')) {
             $semesterFocus = DB::table('semesters')->where('id', $request->semester_id)->first();
@@ -142,17 +170,24 @@ class SiswaController extends Controller
         }
 
         $filename = 'DATA_SISWA';
-        $kelasData = null;
 
         if ($request->filled('tingkatan_id')) {
-            $filename .= '_TINGKAT_' . $request->tingkatan_id;
+            $tingkatLabel = DB::table('tingkatan')->where('id', $request->tingkatan_id)->value('nama_tingkatan');
+            if ($tingkatLabel) {
+                $filename .= '_TINGKAT_' . strtoupper($tingkatLabel);
+            }
         }
 
-        if ($request->filled('kelas_id')) {
-            $kelasData = Kelas::find($request->kelas_id);
-            if ($kelasData) {
-                $filename .= '_' . strtoupper(Str::slug($kelasData->nama_kelas, '_'));
-            }
+        if ($kelasDataObj) {
+            $filename .= '_' . strtoupper(Str::slug($kelasDataObj->nama_kelas, '_'));
+        }
+
+        if ($request->filled('tahun_angkatan')) {
+            $filename .= '_ANGKATAN_' . $request->tahun_angkatan;
+        }
+
+        if ($request->filled('agama')) {
+            $filename .= '_' . strtoupper($request->agama);
         }
 
         if ($request->filled('jenis_kelamin')) {
@@ -160,8 +195,11 @@ class SiswaController extends Controller
         }
 
         $filename .= '_' . $labelTahun . '_' . $labelPeriode;
-        $is_active = $request->has('is_active') ? $request->is_active : 1;
-        $filename .= $is_active ? '_AKTIF' : '_TIDAK_AKTIF';
+        
+        if ($request->has('is_active') && $request->is_active !== null && $request->is_active !== '') {
+            $filename .= $request->is_active ? '_AKTIF' : '_TIDAK_AKTIF';
+        }
+
         $filename .= '.xlsx';
 
         $profil = ProfilSekolah::first() ?? new ProfilSekolah();
@@ -170,7 +208,7 @@ class SiswaController extends Controller
         if (ob_get_contents()) ob_end_clean();
 
         return Excel::download(
-            new SiswaExport($query, $profil, $contak, $kelasData, $request->all()), 
+            new SiswaExport($query, $profil, $contak, $kelasDataObj, $filters), 
             $filename
         );
     }
@@ -196,6 +234,213 @@ class SiswaController extends Controller
                 'success' => false,
                 'message' => 'Gagal mengimport data',
                 'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+ public function importPreview(Request $request): JsonResponse
+{
+    $this->authorize('create', Siswa::class);
+    $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
+
+    try {
+        $rows = Excel::toArray(new class implements \Maatwebsite\Excel\Concerns\WithHeadingRow {
+            public function headingRow(): int { return 1; }
+        }, $request->file('file'))[0] ?? [];
+
+        if (empty($rows)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File kosong atau format tidak sesuai.'
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        $semesterAktif = DB::table('semesters')->where('is_active', 1)->first();
+        
+        $existingStudents = Siswa::select('nis', 'nik', 'nisn', 'is_active')->get();
+        $existingNis = $existingStudents->pluck('is_active', 'nis')->toArray();
+        $existingNik = $existingStudents->whereNotNull('nik')->pluck('is_active', 'nik')->toArray();
+        $existingNisn = $existingStudents->whereNotNull('nisn')->pluck('is_active', 'nisn')->toArray();
+
+        $activeClasses = Kelas::where('is_active', 1)
+            ->get(['id', 'nama_kelas'])
+            ->flatMap(function ($item) {
+                return [
+                    strtolower($item->nama_kelas) => true,
+                    (string)$item->id => true
+                ];
+            })->toArray();
+
+        $previewData = [];
+        $processedNis = [];
+        $processedNik = [];
+        $processedNisn = [];
+
+        if (!$semesterAktif) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tidak ada semester aktif. Silakan aktifkan semester terlebih dahulu.'
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        foreach ($rows as $row) {
+            $nis = isset($row['nis']) ? trim((string)$row['nis']) : null;
+            $nik = isset($row['nik']) ? trim((string)$row['nik']) : null;
+            $nisn = isset($row['nisn']) ? trim((string)$row['nisn']) : null;
+            $nama = isset($row['nama_lengkap']) ? trim((string)$row['nama_lengkap']) : null;
+            $kelasInput = isset($row['kelas']) ? trim((string)$row['kelas']) : null;
+
+            $status = 'New';
+            $notes = [];
+            $isValid = true;
+            
+            $isNisError = false;
+            $isNikError = false;
+            $isNisnError = false;
+            $isKelasError = false;
+
+            if (!$nis || !$nama) {
+                $isValid = false;
+                $notes[] = 'NIS atau Nama kosong';
+                $isNisError = !$nis;
+            }
+
+            if ($nis) {
+                if (in_array($nis, $processedNis)) {
+                    $notes[] = 'NIS duplikat di file';
+                    $isValid = false;
+                    $isNisError = true;
+                } else {
+                    $processedNis[] = $nis;
+                }
+
+                if (isset($existingNis[$nis])) {
+                    $status = $existingNis[$nis] ? 'Update' : 'Reactivate';
+                }
+            }
+
+            if ($nik) {
+                if (in_array($nik, $processedNik)) {
+                    $notes[] = 'NIK duplikat di file';
+                    $isValid = false;
+                    $isNikError = true;
+                } else {
+                    $processedNik[] = $nik;
+                }
+
+                if (isset($existingNik[$nik]) && $status === 'New') {
+                    $notes[] = 'NIK sudah ada di database';
+                    $isValid = false;
+                    $isNikError = true;
+                }
+            }
+
+            if ($nisn) {
+                if (in_array($nisn, $processedNisn)) {
+                    $notes[] = 'NISN duplikat di file';
+                    $isValid = false;
+                    $isNisnError = true;
+                } else {
+                    $processedNisn[] = $nisn;
+                }
+
+                if (isset($existingNisn[$nisn]) && $status === 'New') {
+                    $notes[] = 'NISN sudah ada di database';
+                    $isValid = false;
+                    $isNisnError = true;
+                }
+            }
+
+            if ($kelasInput) {
+                if (!isset($activeClasses[strtolower($kelasInput)]) && !isset($activeClasses[$kelasInput])) {
+                    $notes[] = "Kelas '$kelasInput' tidak aktif/ditemukan";
+                    $isValid = false;
+                    $isKelasError = true;
+                }
+            } else {
+                $notes[] = 'Kelas kosong';
+                $isValid = false;
+                $isKelasError = true;
+            }
+
+            $row['import_status'] = $status;
+            $row['import_notes'] = implode(', ', $notes);
+            $row['is_valid'] = $isValid;
+            $row['is_nis_error'] = $isNisError;
+            $row['is_nik_error'] = $isNikError;
+            $row['is_nisn_error'] = $isNisnError;
+            $row['is_kelas_error'] = $isKelasError;
+            
+            $previewData[] = $row;
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $previewData
+        ], Response::HTTP_OK);
+
+    } catch (Throwable $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Gagal membaca preview: ' . $e->getMessage()
+        ], Response::HTTP_INTERNAL_SERVER_ERROR);
+    }
+}
+
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $this->authorize('bulkDestroy', Siswa::class);
+        $request->validate(['ids' => 'required|array', 'ids.*' => 'exists:siswa,id']);
+
+        try {
+            $results = DB::transaction(function() use ($request) {
+                $ids = $request->ids;
+                $students = Siswa::with(['orangtua', 'presensiDetail', 'presensiSiswaDetail'])->whereIn('id', $ids)->get();
+                $countDeleted = 0;
+                $countDeactivated = 0;
+
+                foreach ($students as $siswa) {
+                    $hasPresensi = $siswa->presensiDetail()->exists() || $siswa->presensiSiswaDetail()->exists();
+                    $oldFoto = $siswa->foto;
+                    $userId = $siswa->user_id;
+
+                    if ($hasPresensi) {
+                        SiswaKelas::where('siswa_id', $siswa->id)->update(['is_active' => 0]);
+                        foreach ($siswa->orangtua as $ot) {
+                            DB::table('orangtua')->where('id', $ot->id)->update(['is_active' => 0]);
+                            if ($ot->user_id) User::where('id', $ot->user_id)->update(['is_active' => 0]);
+                        }
+                        $siswa->update(['is_active' => 0]);
+                        if ($userId) User::where('id', $userId)->update(['is_active' => 0]);
+                        $countDeactivated++;
+                    } else {
+                        SiswaKelas::where('siswa_id', $siswa->id)->delete();
+                        $siswa->orangtua()->detach();
+                        if ($userId) {
+                            User::where('id', $userId)->delete();
+                        }
+                        $siswa->delete();
+                        
+                        if ($oldFoto) {
+                            $cleanName = str_replace(['uploads/siswa/', 'siswa/', 'foto/'], '', $oldFoto);
+                            $filePath = public_path('uploads/siswa/') . $cleanName;
+                            if (File::exists($filePath)) File::delete($filePath);
+                        }
+                        $countDeleted++;
+                    }
+                }
+                return ['deleted' => $countDeleted, 'deactivated' => $countDeactivated];
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => "Berhasil memproses data: {$results['deleted']} dihapus permanen, {$results['deactivated']} dinonaktifkan"
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error("Bulk Delete Siswa Error: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memproses data massal'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -369,7 +614,7 @@ class SiswaController extends Controller
                             ->first();
 
                         if ($lastHistory && $semesterAktif && $lastHistory->semester_id == $semesterAktif->id) {
-                            $lastHistory->update(['is_active' => 1]);
+                            DB::table('siswa_kelas')->where('id', $lastHistory->id)->update(['is_active' => 1]);
                         } elseif ($semesterAktif && isset($validated['kelas_id'])) {
                             SiswaKelas::create([
                                 'siswa_id'    => $siswa->id,
@@ -380,9 +625,9 @@ class SiswaController extends Controller
                         }
                     }
 
-                    $siswa->load('orangtua');
+                    $siswa->load(['orangtua']);
                     foreach ($siswa->orangtua as $ot) {
-                        $ot->update(['is_active' => $status]);
+                        DB::table('orangtua')->where('id', $ot->id)->update(['is_active' => $status]);
                         if ($ot->user_id) {
                             $otUser = User::find($ot->user_id);
                             if ($otUser) {
@@ -463,35 +708,39 @@ class SiswaController extends Controller
     public function destroy(Siswa $siswa): JsonResponse
     {
         try {
+            $hasPresensi = $siswa->presensiDetail()->exists() || $siswa->presensiSiswaDetail()->exists();
             $oldFoto = $siswa->foto;
             $userId = $siswa->user_id;
 
-            DB::transaction(function() use ($siswa, $userId) {
-                SiswaKelas::where('siswa_id', $siswa->id)->update(['is_active' => 0]);
-                
-                $siswa->load('orangtua');
-                foreach ($siswa->orangtua as $ot) {
-                    $ot->update(['is_active' => 0]);
-                    if ($ot->user_id) {
-                        User::where('id', $ot->user_id)->update(['is_active' => 0]);
+            DB::transaction(function() use ($siswa, $userId, $hasPresensi, $oldFoto) {
+                if ($hasPresensi) {
+                    SiswaKelas::where('siswa_id', $siswa->id)->update(['is_active' => 0]);
+                    $siswa->load(['orangtua']);
+                    foreach ($siswa->orangtua as $ot) {
+                        DB::table('orangtua')->where('id', $ot->id)->update(['is_active' => 0]);
+                        if ($ot->user_id) User::where('id', $ot->user_id)->update(['is_active' => 0]);
                     }
-                }
-
-                $siswa->update(['is_active' => 0]);
-                if ($userId) {
-                    User::where('id', $userId)->update(['is_active' => 0]);
+                    $siswa->update(['is_active' => 0]);
+                    if ($userId) User::where('id', $userId)->update(['is_active' => 0]);
+                } else {
+                    SiswaKelas::where('siswa_id', $siswa->id)->delete();
+                    $siswa->orangtua()->detach();
+                    if ($userId) User::where('id', $userId)->delete();
+                    $siswa->delete();
+                    
+                    if ($oldFoto) {
+                        $cleanOldName = str_replace(['uploads/siswa/', 'siswa/', 'foto/'], '', $oldFoto);
+                        $filePath = public_path('uploads/siswa/') . $cleanOldName;
+                        if (File::exists($filePath)) File::delete($filePath);
+                    }
                 }
             });
 
-            if ($oldFoto) {
-                $cleanOldName = str_replace(['uploads/siswa/', 'siswa/', 'foto/'], '', $oldFoto);
-                $filePath = public_path('uploads/siswa/') . $cleanOldName;
-                if (File::exists($filePath)) File::delete($filePath);
-            }
+            $msg = $hasPresensi ? 'Data siswa dinonaktifkan karena memiliki riwayat presensi' : 'Data siswa berhasil dihapus permanen';
 
             return response()->json([
                 'success' => true, 
-                'message' => 'Data siswa berhasil dinonaktifkan'
+                'message' => $msg
             ], Response::HTTP_OK);
 
         } catch (Throwable $e) {

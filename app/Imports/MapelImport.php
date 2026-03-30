@@ -22,6 +22,8 @@ class MapelImport implements ToCollection, WithHeadingRow, WithValidation
 
     public function collection(Collection $rows)
     {
+        $processedInThisImport = [];
+
         foreach ($rows as $index => $row) {
             $line = $index + 2;
             $namaMapel = trim($row['nama_mata_pelajaran']);
@@ -44,18 +46,25 @@ class MapelImport implements ToCollection, WithHeadingRow, WithValidation
                 $jurusanId = $jurusan->id;
             }
 
+            $identifier = strtolower($namaMapel) . '|' . ($jurusanId ?? 'umum');
+            if (isset($processedInThisImport[$identifier])) {
+                $originalLine = $processedInThisImport[$identifier];
+                $this->importMessages[] = "Baris {$line}: Mata Pelajaran '{$namaMapel}' duplikat dengan Baris {$originalLine} di dalam file ini.";
+                continue;
+            }
+
             $exists = MataPelajaran::where('nama_mapel', $namaMapel)
                 ->where(function($q) use ($jurusanId) {
                     return $jurusanId ? $q->where('jurusan_id', $jurusanId) : $q->whereNull('jurusan_id');
                 })->exists();
 
             if ($exists) {
-                $this->importMessages[] = "Baris {$line}: Mata Pelajaran '{$namaMapel}' sudah terdaftar.";
+                $this->importMessages[] = "Baris {$line}: Mata Pelajaran '{$namaMapel}' sudah terdaftar di database.";
                 continue;
             }
 
             try {
-                DB::transaction(function () use ($namaMapel, $jurusanId, $row) {
+                DB::transaction(function () use ($namaMapel, $jurusanId, $row, $identifier, &$processedInThisImport, $line) {
                     $lastMapel = MataPelajaran::where('id', 'like', 'M%')
                         ->orderByRaw('CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC')
                         ->lockForUpdate()
@@ -72,6 +81,8 @@ class MapelImport implements ToCollection, WithHeadingRow, WithValidation
                         'kategori_mapel' => strtolower(trim($row['kategori_mapel'] ?? $row['kategori'] ?? 'adaptif')),
                         'is_active'      => 1,
                     ]);
+
+                    $processedInThisImport[$identifier] = $line;
                 });
             } catch (\Exception $e) {
                 $this->importMessages[] = "Baris {$line}: Gagal menyimpan data. " . $e->getMessage();

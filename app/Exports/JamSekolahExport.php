@@ -3,7 +3,6 @@
 namespace App\Exports;
 
 use App\Models\JamSekolah;
-use App\Models\TahunAjaran;
 use App\Models\Semester;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -20,13 +19,13 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 
 class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, WithEvents, WithCustomStartCell
 {
-    protected $profil, $kontak, $tahunAjaranId;
+    protected $profil, $kontak, $semesterId;
 
-    public function __construct($profil, $kontak, $tahunAjaranId)
+    public function __construct($profil, $kontak, $semesterId)
     {
         $this->profil = is_array($profil) ? (object)$profil : $profil;
         $this->kontak = is_array($kontak) ? (object)$kontak : $kontak;
-        $this->tahunAjaranId = $tahunAjaranId;
+        $this->semesterId = $semesterId;
     }
 
     public function startCell(): string 
@@ -99,21 +98,30 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 $sheet->mergeCells("A8:{$lastCol}8"); 
                 $sheet->setCellValue('A8', 'PENYESUAIAN JAM PELAJARAN');
                 
-                $ta = TahunAjaran::find($this->tahunAjaranId);
-                $semesterAktif = Semester::where('tahun_ajaran_id', $this->tahunAjaranId)->where('is_active', true)->first();
+                $selectedSemester = Semester::with('tahunAjaran')->find($this->semesterId);
 
                 $sheet->mergeCells("A9:{$lastCol}9"); 
-                $textHeader = 'TAHUN PELAJARAN ' . ($ta->nama ?? '') . ' - SEMESTER ' . strtoupper($semesterAktif->nama ?? '');
+                $namaTA = $selectedSemester->tahunAjaran->nama ?? '';
+                $namaSem = strtoupper($selectedSemester->nama ?? '');
+                $textHeader = 'TAHUN PELAJARAN ' . $namaTA . ' - SEMESTER ' . $namaSem;
                 $sheet->setCellValue('A9', $textHeader);
                 
                 $sheet->getStyle("A8:A9")->getFont()->setBold(true);
                 $sheet->getStyle("A8:A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $hariMap = ['Senin' => ['t' => 'A', 'l' => 'B'], 'Selasa' => ['t' => 'C', 'l' => 'D'], 'Rabu' => ['t' => 'E', 'l' => 'F'], 'Kamis' => ['t' => 'G', 'l' => 'H'], 'Jumat' => ['t' => 'I', 'l' => 'J']];
+                $hariMap = [
+                    'Senin' => ['t' => 'A', 'l' => 'B'], 
+                    'Selasa' => ['t' => 'C', 'l' => 'D'], 
+                    'Rabu' => ['t' => 'E', 'l' => 'F'], 
+                    'Kamis' => ['t' => 'G', 'l' => 'H'], 
+                    'Jumat' => ['t' => 'I', 'l' => 'J']
+                ];
 
-                $dataPerHari = JamSekolah::whereHas('semester', function($query) { $query->where('tahun_ajaran_id', $this->tahunAjaranId); })
+                $dataPerHari = JamSekolah::where('semester_id', $this->semesterId)
                     ->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
-                    ->orderBy('waktu_mulai')->get()->groupBy('hari');
+                    ->orderBy('waktu_mulai')
+                    ->get()
+                    ->groupBy('hari');
 
                 $rowStart = 13;
                 foreach ($hariMap as $namaHari => $cols) {
@@ -122,14 +130,26 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                         foreach ($dataPerHari[$namaHari] as $jam) {
                             $waktu = Carbon::parse($jam->waktu_mulai)->format('H.i') . ' - ' . Carbon::parse($jam->waktu_selesai)->format('H.i');
                             $sheet->setCellValue($cols['t'] . $currentRow, $waktu);
+                            
                             $jenisTrim = ucfirst(strtolower(trim($jam->jenis)));
-                            $label = ($jenisTrim === 'Pelajaran') ? $jam->jam_ke : (($jenisTrim === 'Istirahat') ? 'ISTIRAHAT' : strtoupper($jam->keterangan ?? 'KEGIATAN'));
+                            if ($jenisTrim === 'Pelajaran') {
+                                $label = $jam->jam_ke;
+                            } elseif ($jenisTrim === 'Istirahat') {
+                                $label = 'ISTIRAHAT';
+                            } else {
+                                $label = strtoupper($jam->keterangan ?? 'KEGIATAN');
+                            }
+                            
                             $sheet->setCellValue($cols['l'] . $currentRow, $label);
 
                             if ($jenisTrim === 'Istirahat') {
-                                $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFFF00');
+                                $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)
+                                    ->getFill()->setFillType(Fill::FILL_SOLID)
+                                    ->getStartColor()->setARGB('FFFFFF00');
                             } elseif ($jenisTrim === 'Kegiatan') {
-                                $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFC6E0B4');
+                                $sheet->getStyle($cols['t'] . $currentRow . ':' . $cols['l'] . $currentRow)
+                                    ->getFill()->setFillType(Fill::FILL_SOLID)
+                                    ->getStartColor()->setARGB('FFC6E0B4');
                             }
                             $currentRow++;
                         }
@@ -137,13 +157,13 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 }
 
                 $maxRow = $sheet->getHighestRow();
-                if ($maxRow >= 12) {
-                    $sheet->getStyle("A12:J$maxRow")->applyFromArray([
-                        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
-                        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]
-                    ]);
-                    $sheet->getStyle("A12:J12")->getFont()->setBold(true);
-                }
+                if ($maxRow < 12) $maxRow = 12;
+
+                $sheet->getStyle("A12:J$maxRow")->applyFromArray([
+                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]
+                ]);
+                $sheet->getStyle("A12:J12")->getFont()->setBold(true);
 
                 $ttgRow = $maxRow + 2;
                 $sheet->mergeCells("G{$ttgRow}:J{$ttgRow}");
@@ -169,28 +189,26 @@ class JamSekolahExport implements FromCollection, WithHeadings, ShouldAutoSize, 
                 $sheet->getRowDimension($imageRow)->setRowHeight(50);
                 
                 if ($wakaKur && $wakaKur->file_ttd) {
-                    $fullPathWaka = storage_path('app/private/' . str_replace(['private/', 'app/private/'], '', $wakaKur->file_ttd));
-                    if (file_exists($fullPathWaka)) {
-                        $drawingWaka = new Drawing();
-                        $drawingWaka->setPath($fullPathWaka);
-                        $drawingWaka->setHeight(60);
-                        $drawingWaka->setCoordinates("B{$imageRow}");
-                        $drawingWaka->setOffsetX(-10);
-                        $drawingWaka->setEditAs('oneCell');
-                        $drawingWaka->setWorksheet($pSheet);
+                    $pathWaka = storage_path('app/private/' . str_replace(['private/', 'app/private/'], '', $wakaKur->file_ttd));
+                    if (file_exists($pathWaka)) {
+                        $drawWaka = new Drawing();
+                        $drawWaka->setPath($pathWaka);
+                        $drawWaka->setHeight(60);
+                        $drawWaka->setCoordinates("B{$imageRow}");
+                        $drawWaka->setOffsetX(-10);
+                        $drawWaka->setWorksheet($pSheet);
                     }
                 }
 
                 if ($kepsek && $kepsek->file_ttd) {
-                    $fullPathKepsek = storage_path('app/private/' . str_replace(['private/', 'app/private/'], '', $kepsek->file_ttd));
-                    if (file_exists($fullPathKepsek)) {
-                        $drawingKepsek = new Drawing();
-                        $drawingKepsek->setPath($fullPathKepsek);
-                        $drawingKepsek->setHeight(60);
-                        $drawingKepsek->setCoordinates("H{$imageRow}");
-                        $drawingKepsek->setOffsetX(40); 
-                        $drawingKepsek->setEditAs('oneCell');
-                        $drawingKepsek->setWorksheet($pSheet);
+                    $pathKepsek = storage_path('app/private/' . str_replace(['private/', 'app/private/'], '', $kepsek->file_ttd));
+                    if (file_exists($pathKepsek)) {
+                        $drawKepsek = new Drawing();
+                        $drawKepsek->setPath($pathKepsek);
+                        $drawKepsek->setHeight(60);
+                        $drawKepsek->setCoordinates("H{$imageRow}");
+                        $drawKepsek->setOffsetX(40); 
+                        $drawKepsek->setWorksheet($pSheet);
                     }
                 }
 

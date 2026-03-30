@@ -17,7 +17,7 @@ class UpdateJamSekolahRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'hari'          => ['sometimes', 'required', 'in:Senin,Selasa,Rabu,Kamis,Jumat'],
+            'hari'          => ['sometimes', 'required', 'in:Senin,Selasa,Rabu,Kamis,Jumat,Sabtu,Minggu'],
             'jam_ke'        => ['sometimes', 'required', 'integer'],
             'waktu_mulai'   => ['sometimes', 'required', 'date_format:H:i'],
             'waktu_selesai' => ['sometimes', 'required', 'date_format:H:i', 'after:waktu_mulai'],

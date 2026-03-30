@@ -27,7 +27,7 @@ class JamSekolahPolicy
         return $this->authorize($user, ['Admin'], ['Waka Kurikulum']);
     }
 
-    public function delete(User $user, JamSekolah $jamSekolah): bool
+    public function delete(User $user, ?JamSekolah $jamSekolah = null): bool
     {
         return $this->authorize($user, ['Admin'], ['Waka Kurikulum']);
     }

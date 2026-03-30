@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Kelas, Jurusan, Semester, ProfilSekolah, DataKontak};
+use App\Models\{Kelas, Jurusan, Semester, ProfilSekolah, DataKontak, Tingkatan};
 use App\Http\Requests\{StoreKelasRequest, UpdateKelasRequest};
 use App\Http\Resources\KelasResource;
 use Illuminate\Http\{Request, JsonResponse};
@@ -20,7 +20,7 @@ class KelasController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import', 'bulkDelete']);
         
         $this->authorizeResource(Kelas::class, 'kelas');
     }
@@ -31,13 +31,21 @@ class KelasController extends Controller
             $semesterAktif = Semester::where('is_active', true)->first();
             $semesterId = $request->query('semester_id', $semesterAktif?->id);
 
-            $query = Kelas::with(['jurusan', 'tingkatan'])
-                ->withCount(['siswa as siswa_count' => function($q) use ($semesterId) {
-                    $q->where('siswa_kelas.is_active', true);
+            $query = Kelas::with([
+                'jurusan', 
+                'tingkatan',
+                'waliKelas' => function($q) use ($semesterId) {
                     if ($semesterId) {
-                        $q->where('siswa_kelas.semester_id', $semesterId);
+                        $q->wherePivot('semester_id', $semesterId);
                     }
-                }]);
+                }
+            ])
+            ->withCount(['siswa as siswa_count' => function($q) use ($semesterId) {
+                $q->where('siswa_kelas.is_active', true);
+                if ($semesterId) {
+                    $q->where('siswa_kelas.semester_id', $semesterId);
+                }
+            }]);
 
             if ($request->filled('search')) {
                 $query->where('nama_kelas', 'like', '%' . $request->search . '%');
@@ -50,10 +58,8 @@ class KelasController extends Controller
                 }
             }
 
-            if ($request->has('is_active')) {
+            if ($request->filled('is_active')) {
                 $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN));
-            } else {
-                $query->where('is_active', true);
             }
 
             $perPage = $request->query('per_page', 10);
@@ -139,16 +145,73 @@ class KelasController extends Controller
         }
     }
 
+    public function importPreview(Request $request): JsonResponse
+    {
+        $this->authorize('create', Kelas::class);
+        $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
+
+        try {
+            $rows = Excel::toArray(new class implements \Maatwebsite\Excel\Concerns\WithHeadingRow {
+                public function headingRow(): int { return 1; }
+            }, $request->file('file'))[0];
+
+            $previewData = [];
+
+            foreach ($rows as $row) {
+                $namaKelas = isset($row['nama_kelas']) ? trim((string)$row['nama_kelas']) : null;
+                $inputJurusan = isset($row['jurusan']) ? trim((string)$row['jurusan']) : null;
+                $inputTingkatan = isset($row['tingkatan']) ? trim((string)$row['tingkatan']) : null;
+
+                $isDuplicate = false;
+                if ($namaKelas) {
+                    $isDuplicate = Kelas::where('nama_kelas', $namaKelas)->exists();
+                }
+
+                $jurusanFound = false;
+                if ($inputJurusan) {
+                    $jurusanFound = Jurusan::where(function($q) use ($inputJurusan) {
+                        $q->where('id', $inputJurusan)
+                          ->orWhere('nama_jurusan', 'LIKE', '%' . $inputJurusan . '%');
+                    })
+                    ->where('is_active', 1)
+                    ->exists();
+                }
+
+                $tingkatanFound = false;
+                if ($inputTingkatan) {
+                    $tingkatanFound = Tingkatan::where('nama_tingkatan', $inputTingkatan)->exists();
+                }
+
+                $row['is_duplicate'] = $isDuplicate;
+                $row['jurusan_found'] = $jurusanFound;
+                $row['tingkatan_found'] = $tingkatanFound;
+                $row['is_valid'] = !empty($namaKelas) && $jurusanFound && $tingkatanFound;
+                
+                $previewData[] = $row;
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $previewData
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Preview Import Kelas Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memproses preview file.',
+                'errors' => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
     public function import(Request $request): JsonResponse
     {
         $this->authorize('create', Kelas::class);
-
         $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
         try {
             $import = new KelasImport;
             Excel::import($import, $request->file('file'));
-            
             $skippedMessages = $import->getMessages();
 
             return response()->json([
@@ -189,7 +252,7 @@ class KelasController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Data kelas berhasil ditambahkan.',
-                'data'    => new KelasResource($kelas->load(['jurusan', 'tingkatan'])->loadCount(['siswa as siswa_count' => fn($q) => $q->where('siswa_kelas.is_active', true)])),
+                'data'    => new KelasResource($kelas->load(['jurusan', 'tingkatan', 'waliKelas'])->loadCount(['siswa as siswa_count' => fn($q) => $q->where('siswa_kelas.is_active', true)])),
             ], Response::HTTP_CREATED);
         } catch (Throwable $e) {
             Log::error('Failed to create kelas', ['payload' => $validated, 'error' => $e->getMessage()]);
@@ -199,9 +262,15 @@ class KelasController extends Controller
 
     public function show(Kelas $kelas): JsonResponse
     {
+        $semesterAktif = Semester::where('is_active', true)->first();
+
         return response()->json([
             'success' => true,
-            'data'    => new KelasResource($kelas->load(['jurusan', 'tingkatan'])->loadCount(['siswa as siswa_count' => fn($q) => $q->where('siswa_kelas.is_active', true)])),
+            'data'    => new KelasResource($kelas->load([
+                'jurusan', 
+                'tingkatan', 
+                'waliKelas' => fn($q) => $q->wherePivot('semester_id', $semesterAktif?->id)
+            ])->loadCount(['siswa as siswa_count' => fn($q) => $q->where('siswa_kelas.is_active', true)])),
         ], Response::HTTP_OK);
     }
 
@@ -222,7 +291,7 @@ class KelasController extends Controller
             }
         }
 
-        if ($request->has('is_active')) {
+        if ($request->filled('is_active')) {
             $validated['is_active'] = filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN);
         }
 
@@ -232,7 +301,7 @@ class KelasController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Data kelas berhasil diperbarui.',
-                'data'    => new KelasResource($kelas->load(['jurusan', 'tingkatan'])->loadCount(['siswa as siswa_count' => fn($q) => $q->where('siswa_kelas.is_active', true)])),
+                'data'    => new KelasResource($kelas->load(['jurusan', 'tingkatan', 'waliKelas'])->loadCount(['siswa as siswa_count' => fn($q) => $q->where('siswa_kelas.is_active', true)])),
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             return response()->json(['success' => false, 'message' => 'Gagal memperbarui data kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
@@ -242,8 +311,8 @@ class KelasController extends Controller
     public function destroy(Kelas $kelas): JsonResponse
     {
         try {
-            if (DB::table('siswa_kelas')->where('kelas_id', $kelas->id)->exists()) {
-                return response()->json(['success' => false, 'message' => 'Gagal: Kelas memiliki riwayat data siswa.'], Response::HTTP_CONFLICT);
+            if ($this->checkDependencies($kelas)) {
+                return response()->json(['success' => false, 'message' => 'Gagal: Kelas memiliki ketergantungan data.'], Response::HTTP_CONFLICT);
             }
 
             DB::transaction(fn() => $kelas->delete());
@@ -251,5 +320,45 @@ class KelasController extends Controller
         } catch (Throwable $e) {
             return response()->json(['success' => false, 'message' => 'Gagal menghapus data kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $this->authorize('delete', Kelas::class);
+        $ids = $request->validate(['ids' => 'required|array', 'ids.*' => 'string'])['ids'];
+
+        try {
+            $deletedCount = 0;
+            $skippedCount = 0;
+
+            DB::transaction(function () use ($ids, &$deletedCount, &$skippedCount) {
+                foreach ($ids as $id) {
+                    $kelas = Kelas::find($id);
+                    if ($kelas && !$this->checkDependencies($kelas)) {
+                        $kelas->delete();
+                        $deletedCount++;
+                    } else {
+                        $skippedCount++;
+                    }
+                }
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => "Berhasil menghapus $deletedCount data. $skippedCount data dilewati karena memiliki relasi.",
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus massal data kelas.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private function checkDependencies(Kelas $kelas): bool
+    {
+        return $kelas->siswa()->exists() || 
+               $kelas->presensiGuruMapel()->exists() || 
+               $kelas->guruMapel()->exists() || 
+               $kelas->riwayatKelas()->exists() ||
+               $kelas->presensi()->exists() ||
+               $kelas->waliKelas()->exists();
     }
 }

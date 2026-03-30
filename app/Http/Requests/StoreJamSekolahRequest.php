@@ -17,7 +17,7 @@ class StoreJamSekolahRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'hari'            => ['required', 'in:Senin,Selasa,Rabu,Kamis,Jumat'],
+            'hari'            => ['required', 'in:Senin,Selasa,Rabu,Kamis,Jumat,Sabtu,Minggu'],
             'jam_ke'          => ['required', 'integer'],
             'waktu_mulai'     => ['required', 'date_format:H:i'],
             'waktu_selesai'   => ['required', 'date_format:H:i', 'after:waktu_mulai'],

@@ -35,7 +35,7 @@ class CheckAuthToken
          */
         $limitKey = 'api-limit:' . ($token ? hash('sha256', $token) : $request->ip());
 
-        if (RateLimiter::tooManyAttempts($limitKey, 60)) {
+        if (RateLimiter::tooManyAttempts($limitKey, 120)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Terlalu banyak permintaan. Silakan tunggu sebentar.',

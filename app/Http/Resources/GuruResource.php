@@ -12,7 +12,7 @@ class GuruResource extends JsonResource
 
         // 1. Definisikan URL foto utama menggunakan asset() langsung ke folder public
         $fullFotoUrl = $this->foto 
-            ? asset('uploads/guru/' . str_replace('uploads/guru/', '', $this->foto)) 
+            ? asset('uploads/' . str_replace('uploads/', '', $this->foto)) 
             : asset('images/default-avatar.png');
 
         return [
@@ -40,7 +40,7 @@ class GuruResource extends JsonResource
                 'email'               => $this->email,
                 'alamat_lengkap'      => $this->alamat_lengkap,
                 'tempat_lahir'        => $this->tempat_lahir,
-                'tanggal_lahir'       => $this->tanggal_lahir,
+                'tanggal_lahir'       => $this->tanggal_lahir?->format('Y-m-d'),
                 'agama'               => $this->agama,
                 'pendidikan_terakhir' => $this->pendidikan_terakhir,
                 'is_active'           => (int) $this->is_active,

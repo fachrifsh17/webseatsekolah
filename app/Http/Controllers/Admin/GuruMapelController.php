@@ -31,7 +31,7 @@ class GuruMapelController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import', 'bulkDestroy']);
         $this->authorizeResource(GuruMapel::class, 'guru_mapel');
     }
 
@@ -53,7 +53,6 @@ class GuruMapelController extends Controller
             });
         }
 
-        // PERUBAHAN: tipe_mapel -> kategori_mapel
         $query->when($request->kategori_mapel, function ($q, $kategori) {
             return $q->whereHas('mapel', fn($m) => $m->where('kategori_mapel', $kategori));
         });
@@ -127,7 +126,6 @@ class GuruMapelController extends Controller
                 $semester = Semester::with('tahunAjaran')->where('is_active', 1)->first();
             }
 
-            // PERUBAHAN: tipe_mapel -> kategori_mapel
             $filters = [
                 'q'             => $request->query('q'),
                 'hari'          => $request->query('hari'),
@@ -135,7 +133,7 @@ class GuruMapelController extends Controller
                 'status_mapel'  => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Aktif'
             ];
 
-            $nameParts = []; // Inisialisasi agar tidak error
+            $nameParts = []; 
             if ($semester) {
                 $filters['semester'] = $semester->nama;
                 $filters['tahun_ajaran'] = $semester->tahunAjaran->nama;
@@ -189,7 +187,6 @@ class GuruMapelController extends Controller
                 $nameParts[] = strtoupper($request->hari);
             }
 
-            // PERUBAHAN: tipe_mapel -> kategori_mapel
             if ($request->filled('kategori_mapel')) {
                 $kriteria[] = "KATEGORI: " . strtoupper($request->kategori_mapel);
             }
@@ -224,7 +221,7 @@ class GuruMapelController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => count($conflicts) > 0 
-                            ? 'Import selesai with several notes' 
+                            ? 'Import selesai dengan beberapa catatan' 
                             : 'Data penugasan guru berhasil diimport.',
                 'conflicts' => $conflicts
             ], Response::HTTP_OK);
@@ -235,6 +232,77 @@ class GuruMapelController extends Controller
                 'message' => 'Gagal import data',
                 'errors'  => ['exception' => [$e->getMessage()]]
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function importPreview(Request $request): JsonResponse
+    {
+        $this->authorize('create', GuruMapel::class);
+        $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
+
+        try {
+            $file = $request->file('file');
+            $data = Excel::toArray(new \stdClass(), $file)[0];
+            
+            if (count($data) <= 1) {
+                return response()->json(['success' => false, 'message' => 'File kosong'], 422);
+            }
+
+            $headers = array_shift($data);
+            $previewData = [];
+            $semesterAktif = Semester::where('is_active', 1)->first();
+
+            foreach ($data as $index => $row) {
+                if (empty(array_filter($row))) continue;
+
+                $nip = $row[0] ?? null;
+                $kodeMapel = $row[1] ?? null;
+                $namaKelas = $row[2] ?? null;
+                $hari = ucfirst(strtolower($row[3] ?? ''));
+                $jamMulaiNama = $row[4] ?? null;
+                $jamSelesaiNama = $row[5] ?? null;
+
+                $guru = GuruStaf::where('nip', $nip)->first();
+                $mapel = MataPelajaran::where('kode_mapel', $kodeMapel)->first();
+                $kelas = Kelas::where('nama_kelas', $namaKelas)->first();
+                $jamMulai = JamSekolah::where('nama_jam', $jamMulaiNama)->where('hari', $hari)->first();
+                $jamSelesai = JamSekolah::where('nama_jam', $jamSelesaiNama)->where('hari', $hari)->first();
+
+                $errors = [];
+                if (!$guru) $errors[] = "Guru NIP {$nip} tidak ditemukan";
+                if (!$mapel) $errors[] = "Mapel Kode {$kodeMapel} tidak ditemukan";
+                if (!$kelas) $errors[] = "Kelas {$namaKelas} tidak ditemukan";
+                if (!$jamMulai) $errors[] = "Jam Mulai {$jamMulaiNama} tidak tersedia di hari {$hari}";
+                if (!$jamSelesai) $errors[] = "Jam Selesai {$jamSelesaiNama} tidak tersedia di hari {$hari}";
+
+                $isConflict = false;
+                if ($guru && $kelas && $jamMulai && $jamSelesai && $semesterAktif) {
+                    $isConflict = GuruMapel::where('hari', $hari)
+                        ->where('semester_id', $semesterAktif->id)
+                        ->where(function ($q) use ($jamMulai, $jamSelesai) {
+                            $q->whereHas('jamMulai', fn($jm) => $jm->where('waktu_mulai', '<', $jamSelesai->waktu_selesai))
+                              ->whereHas('jamSelesai', fn($js) => $js->where('waktu_selesai', '>', $jamMulai->waktu_mulai));
+                        })
+                        ->where(function ($q) use ($guru, $kelas) {
+                            $q->where('guru_staf_id', $guru->id)->orWhere('kelas_id', $kelas->id);
+                        })->exists();
+                }
+
+                $previewData[] = [
+                    'row' => $index + 2,
+                    'guru' => $guru?->nama ?? $nip,
+                    'mapel' => $mapel?->nama_mapel ?? $kodeMapel,
+                    'kelas' => $kelas?->nama_kelas ?? $namaKelas,
+                    'hari' => $hari,
+                    'waktu' => $jamMulaiNama . ' - ' . $jamSelesaiNama,
+                    'errors' => $errors,
+                    'is_conflict' => $isConflict || count($errors) > 0
+                ];
+            }
+
+            return response()->json(['success' => true, 'data' => $previewData], 200);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
@@ -451,6 +519,20 @@ class GuruMapelController extends Controller
         } catch (Throwable $e) {
             Log::error('Delete Guru Mapel Error', ['error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Gagal menghapus data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $this->authorize('delete', GuruMapel::class);
+        $request->validate(['ids' => 'required|array', 'ids.*' => 'exists:guru_mapels,id']);
+
+        try {
+            DB::transaction(fn() => GuruMapel::whereIn('id', $request->ids)->delete());
+            return response()->json(['success' => true, 'message' => 'Data terpilih berhasil dihapus.'], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Bulk Delete Guru Mapel Error', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus data masal.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 }

@@ -42,19 +42,32 @@ class GuruMapelPolicy
         return $this->authorize($user, ['Admin'], ['waka-kurikulum']);
     }
 
+    public function bulkDelete(User $user): bool
+    {
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum']);
+    }
+
+    public function getJamByHari(User $user): bool
+    {
+        return $this->authorize($user, ['Admin'], ['waka-kurikulum']);
+    }
+
     protected function authorize(User $user, array $allowedRoles = [], array $allowedJabatans = []): bool
     {
         $userRoles = $user->roles->pluck('role_name')->map(fn($r) => strtolower($r));
-        $hasRole = $userRoles->intersect(array_map('strtolower', $allowedRoles))->isNotEmpty();
+        $allowedRolesLower = array_map('strtolower', $allowedRoles);
+        
+        $hasRole = $userRoles->contains(fn($role) => in_array($role, $allowedRolesLower));
 
         $jabatanSlugs = $user->guruStaf
             ? $user->guruStaf->strukturJabatan
                 ->map(fn($sj) => strtolower($sj->jabatan?->slug ?? ''))
                 ->filter()
-                ->toArray()
-            : [];
+            : collect([]);
 
-        $hasJabatan = !empty(array_intersect($jabatanSlugs, array_map('strtolower', $allowedJabatans)));
+        $allowedJabatansLower = array_map('strtolower', $allowedJabatans);
+        
+        $hasJabatan = $jabatanSlugs->contains(fn($slug) => in_array($slug, $allowedJabatansLower));
 
         return $hasRole || $hasJabatan;
     }

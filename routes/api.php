@@ -218,22 +218,33 @@ Route::prefix('admin')->name('admin.')->middleware(['auth.token', 'role:Admin'])
     
     Route::post('siswa/import', [SiswaController::class, 'import']);
     Route::get('siswa/export', [SiswaController::class, 'export']);
+    Route::post('siswa/import-preview', [SiswaController::class, 'importPreview']);
+    Route::post('siswa/bulk-delete', [SiswaController::class, 'bulkDelete']);
     Route::apiResource('siswa', SiswaController::class);
     
     Route::post('orangtua/import', [OrangtuaController::class, 'import']);
     Route::get('orangtua/export', [OrangtuaController::class, 'export']);
+    Route::post('orangtua/bulk-delete', [OrangtuaController::class, 'bulkDelete']);
+    Route::post('orangtua/import-preview', [OrangtuaController::class, 'importPreview']);
     Route::apiResource('orangtua', OrangtuaController::class);
     
     Route::post('guru/import', [GuruController::class, 'import']);
     Route::get('guru/export', [GuruController::class, 'export']);
+    Route::post('guru/import-preview', [GuruController::class, 'importPreview']);
+    Route::post('guru/bulk-delete', [GuruController::class, 'bulkDelete']);
     Route::apiResource('guru', GuruController::class);
     
+    Route::get('guru-mapel/jam-by-hari', [GuruMapelController::class, 'getJamByHari']);
     Route::post('guru-mapel/import', [GuruMapelController::class, 'import']);
     Route::get('guru-mapel/export', [GuruMapelController::class, 'export']);
+    Route::post('guru-mapel/import-preview', [GuruMapelController::class, 'importPreview']);
+    Route::delete('guru-mapel/bulk-delete', [GuruMapelController::class, 'bulkDestroy']);
     Route::apiResource('guru_mapel', GuruMapelController::class);
     
     Route::apiResource('jurusan', JurusanController::class);
     
+    Route::post('jam-sekolah/import-preview', [JamSekolahController::class, 'importPreview']);
+    Route::post('jam-sekolah/bulk-delete', [JamSekolahController::class, 'bulkDelete']);
     Route::post('jam-sekolah/import', [JamSekolahController::class, 'import']);
     Route::get('jam-sekolah/export', [JamSekolahController::class, 'export']);
     Route::apiResource('jam_sekolah', JamSekolahController::class);
@@ -243,10 +254,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth.token', 'role:Admin'])
     
     Route::post('kelas/import', [KelasController::class, 'import']);
     Route::get('kelas/export', [KelasController::class, 'export']);
+    Route::post('kelas/import-preview', [KelasController::class, 'importPreview']);
+    Route::post('kelas/bulk-delete', [KelasController::class, 'bulkDelete']);
     Route::apiResource('kelas', KelasController::class);
     
     Route::get('mapel/export', [MapelController::class, 'export']);
     Route::post('mapel/import', [MapelController::class, 'import']);
+    Route::post('mapel/import-preview', [MapelController::class, 'importPreview']);
+    Route::delete('mapel/bulk-delete', [MapelController::class, 'destroyBulk']);
     Route::apiResource('mapel', MapelController::class);
     
     Route::get('presensi/export', [AdminPresensi::class, 'export']); 
@@ -302,11 +317,15 @@ Route::prefix('guru')->name('guru.')->middleware(['auth.token', 'role:guru'])->g
     // --- Jabatan: Waka Kurikulum ---
     Route::middleware(['jabatan:Waka Kurikulum'])->prefix('kurikulum')->name('kurikulum.')->group(function () {
         // Mapel
-        Route::post('mapel/import', [KurikulumMapel::class, 'import']);
         Route::get('mapel/export', [KurikulumMapel::class, 'export']);
+        Route::post('mapel/import', [KurikulumMapel::class, 'import']);
+        Route::post('mapel/import-preview', [KurikulumMapel::class, 'importPreview']);
+        Route::delete('mapel/bulk-delete', [KurikulumMapel::class, 'destroyBulk']);
         Route::apiResource('mapel', KurikulumMapel::class);
 
         // Jam Sekolah
+        Route::post('jam-sekolah/import-preview', [KurikulumJam::class, 'importPreview']);
+        Route::post('jam-sekolah/bulk-delete', [KurikulumJam::class, 'bulkDelete']);
         Route::post('jam-sekolah/import', [KurikulumJam::class, 'import']);
         Route::get('jam-sekolah/export', [KurikulumJam::class, 'export']);
         Route::apiResource('jam_sekolah', KurikulumJam::class);

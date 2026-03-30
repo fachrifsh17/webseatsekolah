@@ -28,7 +28,7 @@ class GuruController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import', 'bulkDelete']);
         $this->authorizeResource(GuruStaf::class, 'guru');
     }
 
@@ -40,7 +40,7 @@ class GuruController extends Controller
         $jurusan = $request->query('jurusan_id');
         $jk = $request->query('jenis_kelamin');
         $agama = $request->query('agama');
-        $active = $request->has('is_active') ? $request->query('is_active') : 1;
+        $active = $request->query('is_active');
 
         $data = GuruStaf::with(['jurusan', 'user'])
             ->when($search, function ($query, $search) {
@@ -55,7 +55,7 @@ class GuruController extends Controller
             ->when($jurusan, fn($q) => $q->where('jurusan_id', $jurusan))
             ->when($jk, fn($q) => $q->where('jenis_kelamin', $jk))
             ->when($agama, fn($q) => $q->where('agama', $agama))
-            ->where('is_active', $active)
+            ->when($active !== null, fn($q) => $q->where('is_active', $active))
             ->latest()
             ->paginate($request->query('per_page', 12));
 
@@ -79,7 +79,7 @@ class GuruController extends Controller
 
     public function export(Request $request)
     {
-        $this->authorize('viewAny', GuruStaf::class);
+        $this->authorize('export', GuruStaf::class);
 
         try {
             $filters = $request->only(['q', 'jabatan_fungsional', 'status_kepegawaian', 'jurusan_id', 'is_active', 'semester_id', 'jenis_kelamin', 'agama']);
@@ -139,7 +139,9 @@ class GuruController extends Controller
                 }
             }
 
-            $nameParts[] = 'AKTIF';
+            if (isset($filters['is_active'])) {
+                $nameParts[] = ($filters['is_active'] == 1 || $filters['is_active'] === '1') ? 'AKTIF' : 'NON_AKTIF';
+            }
             
             $profil = ProfilSekolah::first();
             $kontak = DataKontak::first();
@@ -155,9 +157,152 @@ class GuruController extends Controller
         }
     }
 
+    public function importPreview(Request $request): JsonResponse
+    {
+        $this->authorize('import', GuruStaf::class);
+
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv|max:2048'
+        ]);
+
+        try {
+            $rows = Excel::toArray(new class implements \Maatwebsite\Excel\Concerns\WithHeadingRow {
+                public function headingRow(): int { return 1; }
+            }, $request->file('file'))[0] ?? [];
+
+            if (empty($rows)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'File kosong atau format tidak sesuai.'
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            $activeJurusans = Jurusan::where('is_active', 1)
+                ->get(['id', 'nama_jurusan'])
+                ->mapWithKeys(function ($item) {
+                    return [strtolower($item->nama_jurusan) => $item->id];
+                })->toArray();
+
+            $existingGuruData = GuruStaf::get(['id', 'nip', 'nuptk', 'email']);
+            
+            $existingByNip = [];
+            $existingByNuptk = [];
+            $existingByEmail = [];
+
+            foreach ($existingGuruData as $guru) {
+                if ($guru->nip) $existingByNip[$guru->nip] = $guru->id;
+                if ($guru->nuptk) $existingByNuptk[$guru->nuptk] = $guru->id;
+                if ($guru->email) $existingByEmail[strtolower($guru->email)] = $guru->id;
+            }
+
+            $previewData = [];
+            $processedNips = [];
+            $processedNuptks = [];
+            $processedEmails = [];
+
+            foreach ($rows as $row) {
+                $nip = isset($row['nip']) ? trim($row['nip']) : null;
+                $nuptk = isset($row['nuptk']) ? trim($row['nuptk']) : null;
+                $nama = isset($row['nama']) ? trim($row['nama']) : null;
+                $email = isset($row['email']) ? trim($row['email']) : null;
+                $namaJurusan = isset($row['jurusan']) ? trim($row['jurusan']) : null;
+
+                $status = 'CREATE';
+                $existingId = null;
+                $notes = [];
+                $isValid = true;
+                $emailConflict = false;
+                $jurusanFound = false;
+
+                if (empty($nama)) {
+                    $isValid = false;
+                    $notes[] = 'Nama kosong';
+                }
+
+                if ($nip) {
+                    if (in_array($nip, $processedNips)) {
+                        $notes[] = 'NIP duplikat di dalam file';
+                        $isValid = false;
+                    } else {
+                        $processedNips[] = $nip;
+                    }
+                }
+
+                if ($nuptk) {
+                    if (in_array($nuptk, $processedNuptks)) {
+                        $notes[] = 'NUPTK duplikat di dalam file';
+                        $isValid = false;
+                    } else {
+                        $processedNuptks[] = $nuptk;
+                    }
+                }
+
+                $lowerEmail = $email ? strtolower($email) : null;
+                if ($lowerEmail) {
+                    if (in_array($lowerEmail, $processedEmails)) {
+                        $notes[] = 'Email duplikat di dalam file';
+                        $isValid = false;
+                    } else {
+                        $processedEmails[] = $lowerEmail;
+                    }
+                }
+
+                if ($nip && isset($existingByNip[$nip])) {
+                    $existingId = $existingByNip[$nip];
+                    $status = 'UPDATE';
+                } elseif ($nuptk && isset($existingByNuptk[$nuptk])) {
+                    $existingId = $existingByNuptk[$nuptk];
+                    $status = 'UPDATE';
+                }
+
+                if ($lowerEmail && isset($existingByEmail[$lowerEmail])) {
+                    $emailOwnerId = $existingByEmail[$lowerEmail];
+                    if ($existingId === null || $emailOwnerId != $existingId) {
+                        $emailConflict = true;
+                        $notes[] = 'Email sudah digunakan data lain';
+                        $isValid = false;
+                    }
+                }
+
+                if ($namaJurusan) {
+                    $keyJurusan = strtolower($namaJurusan);
+                    if (isset($activeJurusans[$keyJurusan])) {
+                        $jurusanFound = true;
+                    } else {
+                        $notes[] = "Jurusan '$namaJurusan' tidak aktif/ditemukan";
+                        $isValid = false;
+                    }
+                } else {
+                    $jurusanFound = true;
+                }
+
+                $row['is_duplicate'] = $existingId ? true : false;
+                $row['email_conflict'] = $emailConflict;
+                $row['jurusan_found'] = $jurusanFound;
+                $row['is_valid'] = $isValid;
+                $row['import_action'] = $status;
+                $row['import_notes'] = implode(', ', $notes);
+
+                $previewData[] = $row;
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $previewData
+            ], Response::HTTP_OK);
+
+        } catch (Throwable $e) {
+            Log::error('Preview Import Guru Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membaca file import: ' . $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
     public function import(Request $request): JsonResponse
     {
-        $this->authorize('create', GuruStaf::class);
+        $this->authorize('import', GuruStaf::class);
 
         $request->validate([
             'file' => 'required|mimes:xlsx,xls,csv|max:2048'
@@ -181,6 +326,64 @@ class GuruController extends Controller
                 'success' => false,
                 'message' => 'Gagal import',
                 'errors'  => ['exception' => [$e->getMessage()]]
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $this->authorize('deleteAny', GuruStaf::class);
+
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'exists:guru_staf,id'
+        ]);
+
+        try {
+            DB::transaction(function () use ($request) {
+                $gurus = GuruStaf::whereIn('id', $request->ids)->get();
+                
+                foreach ($gurus as $guru) {
+                    $hasRelation = DB::table('guru_mapel')->where('guru_staf_id', $guru->id)->exists() ||
+                                   DB::table('kelas_wali_kelas')->where('guru_staf_id', $guru->id)->exists() ||
+                                   DB::table('presensi_guru_mapel')->where('guru_staf_id', $guru->id)->exists() ||
+                                   DB::table('presensi')->where('guru_id', $guru->id)->exists() ||
+                                   DB::table('poin_siswa')->where('guru_staf_id', $guru->id)->exists();
+
+                    if ($hasRelation) {
+                        $guru->update(['is_active' => 0]);
+                        if ($guru->user) {
+                            $guru->user->update(['is_active' => 0]);
+                        }
+                    } else {
+                        $fotoPath = $guru->foto;
+                        $userId = $guru->user_id;
+
+                        if ($userId) {
+                            DB::table('user_roles')->where('user_id', $userId)->delete();
+                            User::where('id', $userId)->delete();
+                        }
+
+                        if ($fotoPath) {
+                            $filePath = public_path('uploads/guru/') . str_replace('uploads/guru/', '', $fotoPath);
+                            if (file_exists($filePath)) unlink($filePath);
+                        }
+
+                        $guru->delete();
+                    }
+                }
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data guru terpilih berhasil diproses (dihapus atau dinonaktifkan).',
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Bulk Delete Guru Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memproses data secara massal.',
+                'errors' => $e->getMessage()
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -306,7 +509,7 @@ class GuruController extends Controller
         }
     }
 
-   public function update(UpdateGuruRequest $request, ?GuruStaf $guru): JsonResponse
+    public function update(UpdateGuruRequest $request, ?GuruStaf $guru): JsonResponse
     {
         if (!$guru) {
             return response()->json([
@@ -411,33 +614,46 @@ class GuruController extends Controller
 
         try {
             DB::transaction(function () use ($guru) {
-                $fotoPath = $guru->foto;
-                $userId = $guru->user_id;
+                $hasRelation = DB::table('guru_mapel')->where('guru_staf_id', $guru->id)->exists() ||
+                               DB::table('kelas_wali_kelas')->where('guru_staf_id', $guru->id)->exists() ||
+                               DB::table('presensi_guru_mapel')->where('guru_staf_id', $guru->id)->exists() ||
+                               DB::table('presensi')->where('guru_id', $guru->id)->exists() ||
+                               DB::table('poin_siswa')->where('guru_staf_id', $guru->id)->exists();
 
-                if ($userId) {
-                    DB::table('user_roles')->where('user_id', $userId)->delete();
-                    User::where('id', $userId)->delete();
-                }
+                if ($hasRelation) {
+                    $guru->update(['is_active' => 0]);
+                    if ($guru->user) {
+                        $guru->user->update(['is_active' => 0]);
+                    }
+                } else {
+                    $fotoPath = $guru->foto;
+                    $userId = $guru->user_id;
 
-                $guru->delete();
+                    if ($userId) {
+                        DB::table('user_roles')->where('user_id', $userId)->delete();
+                        User::where('id', $userId)->delete();
+                    }
 
-                if ($fotoPath) {
-                    $filePath = public_path('uploads/guru/') . str_replace('uploads/guru/', '', $fotoPath);
-                    if (file_exists($filePath)) unlink($filePath);
+                    $guru->delete();
+
+                    if ($fotoPath) {
+                        $filePath = public_path('uploads/guru/') . str_replace('uploads/guru/', '', $fotoPath);
+                        if (file_exists($filePath)) unlink($filePath);
+                    }
                 }
             });
 
             return response()->json([
                 'success'      => true,
-                'message'      => 'Data guru berhasil dihapus',
-                'notification' => 'Berhasil dihapus',
+                'message'      => 'Data guru berhasil diproses (dihapus atau dinonaktifkan)',
+                'notification' => 'Berhasil diproses',
             ], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Failed to delete guru', ['error' => $e->getMessage()]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus data guru',
+                'message' => 'Gagal memproses data guru',
                 'errors'  => ['exception' => [$e->getMessage()]],
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }

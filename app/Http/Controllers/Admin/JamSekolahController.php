@@ -23,7 +23,7 @@ class JamSekolahController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.aktivitas')->only(['update', 'store', 'import', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['update', 'store', 'import', 'destroy', 'bulkDelete']);
 
         $this->authorizeResource(JamSekolah::class, 'jam_sekolah');
     }
@@ -42,6 +42,8 @@ class JamSekolahController extends Controller
     {
         try {
             $semesterId = $this->resolveSemesterId($request);
+            $perPage = $request->query('per_page', 10);
+            
             $query = JamSekolah::with('semester.tahunAjaran');
 
             if ($semesterId) {
@@ -50,12 +52,16 @@ class JamSekolahController extends Controller
 
             $data = $query->orderByRaw("FIELD(hari, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu')")
                           ->orderBy('waktu_mulai')
-                          ->get();
+                          ->paginate($perPage);
 
             return response()->json([
                 'success' => true,
                 'data'    => JamSekolahResource::collection($data),
                 'meta'    => [
+                    'current_page' => $data->currentPage(),
+                    'last_page'    => $data->lastPage(),
+                    'per_page'     => $data->perPage(),
+                    'total'        => $data->total(),
                     'filter_semester_id' => $semesterId,
                     'is_auto_selected'   => !$request->has('semester_id')
                 ]
@@ -85,16 +91,11 @@ class JamSekolahController extends Controller
             $sm = Semester::with('tahunAjaran')->find($semesterId);
             
             if ($sm) {
-                // Perubahan: Menggunakan underscore (_) sebagai pemisah dan menghapus karakter ilegal
                 $namaTA = str_replace(['/', '\\', ' ', '-'], '_', $sm->tahunAjaran->nama);
                 $namaSem = str_replace(['/', '\\', ' ', '-'], '_', $sm->nama);
-                
-                // Hasil format: JAM_SEKOLAH_2025_2026_GENAP.xlsx
                 $labelFile = strtoupper($namaTA . '_' . $namaSem);
-                $tahunAjaranId = $sm->tahun_ajaran_id;
             } else {
                 $labelFile = date('Ymd_His');
-                $tahunAjaranId = null;
             }
 
             $profil = ProfilSekolah::first();
@@ -102,7 +103,7 @@ class JamSekolahController extends Controller
             
             $fileName = 'JAM_SEKOLAH_' . $labelFile . '.xlsx';
 
-            return Excel::download(new JamSekolahExport($profil, $kontak, $tahunAjaranId), $fileName);
+            return Excel::download(new JamSekolahExport($profil, $kontak, $semesterId), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Error: ' . $e->getMessage());
             return response()->json([
@@ -116,10 +117,15 @@ class JamSekolahController extends Controller
     {
         $this->authorize('create', JamSekolah::class);
 
-        $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv|max:2048',
+            'semester_id' => 'nullable|exists:semesters,id'
+        ]);
 
         try {
-            $import = new JamSekolahImport();
+            $semesterId = $request->input('semester_id') ?? $this->resolveSemesterId($request);
+            $import = new JamSekolahImport($semesterId);
+            
             DB::transaction(fn() => Excel::import($import, $request->file('file')));
 
             return response()->json([
@@ -131,6 +137,142 @@ class JamSekolahController extends Controller
             return response()->json([
                 'success' => false, 
                 'message' => 'Gagal impor: ' . $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function importPreview(Request $request): JsonResponse
+    {
+        $this->authorize('create', JamSekolah::class);
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv|max:2048',
+            'semester_id' => 'nullable'
+        ]);
+
+        try {
+            $semesterId = $request->query('semester_id') ?? $this->resolveSemesterId($request);
+            $rows = Excel::toArray(new class implements \Maatwebsite\Excel\Concerns\WithHeadingRow {
+                public function headingRow(): int { return 1; }
+            }, $request->file('file'))[0] ?? [];
+
+            $existingData = JamSekolah::where('semester_id', $semesterId)->get();
+            $previewData = [];
+            $processedInFile = [];
+
+            foreach ($rows as $index => $row) {
+                $errors = [];
+                $hari = trim($row['hari'] ?? '');
+                $jamKe = $row['jam_ke'] ?? null;
+                $mulaiRaw = $row['waktu_mulai'] ?? null;
+                $selesaiRaw = $row['waktu_selesai'] ?? null;
+                $jenis = trim($row['jenis'] ?? '');
+                
+                $mulai = null;
+                $selesai = null;
+
+                if (!in_array($hari, ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'])) {
+                    $errors[] = "Hari '{$hari}' tidak valid.";
+                }
+
+                $validJenis = ['Pelajaran', 'Istirahat', 'Kegiatan', 'Upacara'];
+                if (!in_array(ucfirst(strtolower($jenis)), $validJenis)) {
+                    $errors[] = "Jenis '{$jenis}' tidak valid.";
+                }
+
+                try {
+                    if ($mulaiRaw && $selesaiRaw) {
+                        $mulai = \Carbon\Carbon::parse($mulaiRaw)->format('H:i:s');
+                        $selesai = \Carbon\Carbon::parse($selesaiRaw)->format('H:i:s');
+                        if ($selesai <= $mulai) {
+                            $errors[] = "Waktu selesai harus lebih besar dari waktu mulai.";
+                        }
+                    } else {
+                        $errors[] = "Waktu mulai/selesai kosong.";
+                    }
+                } catch (\Exception $e) {
+                    $errors[] = "Format waktu tidak valid.";
+                }
+
+                if ($jamKe) {
+                    $keyJam = $hari . '_jam_' . $jamKe;
+                    if (isset($processedInFile['jam'][$keyJam])) {
+                        $errors[] = "Jam ke-{$jamKe} hari {$hari} duplikat di file.";
+                    }
+                    $processedInFile['jam'][$keyJam] = true;
+
+                    foreach ($existingData as $exist) {
+                        if ($exist->hari === $hari && $exist->jam_ke == $jamKe) {
+                            $errors[] = "Jam ke-{$jamKe} hari {$hari} sudah ada di database.";
+                            break;
+                        }
+                    }
+                }
+
+                if ($mulai && $selesai) {
+                    if (isset($processedInFile['waktu'][$hari])) {
+                        foreach ($processedInFile['waktu'][$hari] as $time) {
+                            if ($mulai < $time['selesai'] && $selesai > $time['mulai']) {
+                                $errors[] = "Waktu bertabrakan dengan baris lain di file.";
+                                break;
+                            }
+                        }
+                    }
+                    $processedInFile['waktu'][$hari][] = ['mulai' => $mulai, 'selesai' => $selesai];
+
+                    foreach ($existingData as $exist) {
+                        if ($exist->hari === $hari) {
+                            if ($mulai < $exist->waktu_selesai && $selesai > $exist->waktu_mulai) {
+                                $errors[] = "Waktu bertabrakan dengan database.";
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                $previewData[] = [
+                    'hari' => $hari,
+                    'jam_ke' => $jamKe,
+                    'waktu_mulai' => $mulaiRaw,
+                    'waktu_selesai' => $selesaiRaw,
+                    'jenis' => $jenis,
+                    'keterangan' => $row['keterangan'] ?? null,
+                    'errors' => $errors,
+                    'is_valid' => empty($errors)
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $previewData,
+                'meta' => [
+                    'semester_id' => $semesterId,
+                    'total_rows' => count($previewData),
+                    'any_error' => collect($previewData)->contains('is_valid', false)
+                ]
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal preview: ' . $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $this->authorize('delete', JamSekolah::class);
+        $request->validate(['ids' => 'required|array', 'ids.*' => 'exists:jam_sekolah,id']);
+
+        try {
+            DB::transaction(fn() => JamSekolah::whereIn('id', $request->ids)->delete());
+            return response()->json([
+                'success' => true,
+                'message' => count($request->ids) . ' data berhasil dihapus.'
+            ], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal hapus massal.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -166,7 +308,7 @@ class JamSekolahController extends Controller
         if ($exists) {
             return response()->json([
                 'success' => false, 
-                'message' => 'Jadwal jam tersebut sudah ada.'
+                'message' => 'Nomor jam ' . $validated['jam_ke'] . ' sudah ada di hari ' . $validated['hari'] . '.'
             ], Response::HTTP_CONFLICT);
         }
 
@@ -180,7 +322,7 @@ class JamSekolahController extends Controller
         if ($overlap) {
             return response()->json([
                 'success' => false,
-                'message' => 'Waktu yang diinput bertabrakan dengan jam lain di hari yang sama.'
+                'message' => 'Waktu bertabrakan dengan jadwal lain di hari yang sama.'
             ], Response::HTTP_CONFLICT);
         }
 
@@ -232,7 +374,7 @@ class JamSekolahController extends Controller
         if ($exists) {
             return response()->json([
                 'success' => false, 
-                'message' => 'Konflik nomor jam terdeteksi.'
+                'message' => 'Nomor jam ke-' . $jamKe . ' sudah digunakan di hari ' . $hari . '.'
             ], Response::HTTP_CONFLICT);
         }
 
