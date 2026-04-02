@@ -41,23 +41,18 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, WithColumnWid
 
     public function startCell(): string 
     { 
-        return 'A14'; 
+        return 'A13'; 
     }
 
     public function query()
     {
         $query = Kelas::query()->with(['jurusan', 'tingkatan']);
-        $query->where('is_active', 1);
-
-        if (!empty($this->filters['search'])) {
-            $search = $this->filters['search'];
-            $query->where(function($q) use ($search) {
-                $q->where('nama_kelas', 'like', '%' . $search . '%')
-                  ->orWhereHas('jurusan', function($subQ) use ($search) {
-                      $subQ->where('nama_jurusan', 'like', '%' . $search . '%');
-                  });
-            });
+        
+        $isActive = true;
+        if (isset($this->filters['is_active'])) {
+            $isActive = filter_var($this->filters['is_active'], FILTER_VALIDATE_BOOLEAN);
         }
+        $query->where('is_active', $isActive ? 1 : 0);
 
         if (!empty($this->filters['jurusan_id'])) {
             $query->where('jurusan_id', $this->filters['jurusan_id']);
@@ -77,15 +72,21 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, WithColumnWid
 
     public function map($kelas): array
     {
-        $taId = $this->filters['semester_id'] ?? TahunAjaran::where('is_active', 1)->first()?->id;
+        $semesterId = $this->filters['semester_id'] ?? \App\Models\Semester::where('is_active', 1)->first()?->id;
+        
         $wali = DB::table('kelas_wali_kelas')
             ->join('guru_staf', 'kelas_wali_kelas.guru_staf_id', '=', 'guru_staf.id')
             ->where('kelas_wali_kelas.kelas_id', $kelas->id)
-            ->where('kelas_wali_kelas.semester_id', $taId)
+            ->where('kelas_wali_kelas.semester_id', $semesterId)
             ->where('kelas_wali_kelas.is_active', 1)
             ->select('guru_staf.nama', 'guru_staf.nip', 'guru_staf.nuptk')
             ->first();
         
+        $isActive = true;
+        if (isset($this->filters['is_active'])) {
+            $isActive = filter_var($this->filters['is_active'], FILTER_VALIDATE_BOOLEAN);
+        }
+
         return [
             ++$this->rowNumber,
             $kelas->id,
@@ -95,7 +96,7 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, WithColumnWid
             $wali && $wali->nip ? "'" . $wali->nip : '-', 
             $wali && $wali->nuptk ? "'" . $wali->nuptk : '-', 
             $wali->nama ?? '-',
-            'AKTIF',
+            $isActive ? 'AKTIF' : 'NON AKTIF',
         ];
     }
 
@@ -144,8 +145,14 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, WithColumnWid
                 $sheet->getStyle("A1:{$lastCol}4")->getFont()->setBold(true);
                 $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
 
+                $isActive = true;
+                if (isset($this->filters['is_active'])) {
+                    $isActive = filter_var($this->filters['is_active'], FILTER_VALIDATE_BOOLEAN);
+                }
+
                 $sheet->mergeCells("A8:{$lastCol}8"); 
-                $sheet->setCellValue('A8', 'DAFTAR DATA KELAS AKTIF');
+                $sheet->setCellValue('A8', 'DAFTAR DATA KELAS ' . ($isActive ? 'AKTIF' : 'NON AKTIF'));
+                
                 $sheet->mergeCells("A9:{$lastCol}9"); 
                 $semId = $this->filters['semester_id'] ?? null;
                 $semester = $semId ? \App\Models\Semester::with('tahunAjaran')->find($semId) : \App\Models\Semester::with('tahunAjaran')->where('is_active', 1)->first();
@@ -155,11 +162,18 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, WithColumnWid
                 $sheet->getStyle("A8:A9")->getFont()->setBold(true);
 
                 $sheet->setCellValue('A10', "JURUSAN : " . strtoupper(str_replace('JURUSAN ', '', ($this->filters['identitas_laporan'] ?? 'SEMUA JURUSAN'))));
-                $sheet->setCellValue('A11', "TINGKATAN : " . (!empty($this->filters['nama_tingkatan']) ? strtoupper($this->filters['nama_tingkatan']) : 'SEMUA TINGKATAN'));
-                $sheet->setCellValue('A12', "PENCARIAN : " . (!empty($this->filters['search']) ? strtoupper($this->filters['search']) : '-'));
-                $sheet->setCellValue('A13', "STATUS : AKTIF");
+                
+                $namaTingkatan = 'SEMUA TINGKATAN';
+                if (!empty($this->filters['tingkatan_id'])) {
+                    $tingkatanObj = \App\Models\Tingkatan::find($this->filters['tingkatan_id']);
+                    if ($tingkatanObj) {
+                        $namaTingkatan = $tingkatanObj->nama_tingkatan;
+                    }
+                }
+                $sheet->setCellValue('A11', "TINGKATAN : " . strtoupper($namaTingkatan));
+                $sheet->setCellValue('A12', "STATUS : " . ($isActive ? 'AKTIF' : 'NON AKTIF'));
 
-                $sheet->getStyle("A14:{$lastCol}{$lastRow}")->applyFromArray([
+                $sheet->getStyle("A13:{$lastCol}{$lastRow}")->applyFromArray([
                     'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
                     'alignment' => [
                         'horizontal' => Alignment::HORIZONTAL_CENTER, 
@@ -167,7 +181,7 @@ class KelasExport implements FromQuery, WithHeadings, WithMapping, WithColumnWid
                         'wrapText' => true
                     ],
                 ]);
-                $sheet->getStyle("A14:{$lastCol}14")->getFont()->setBold(true);
+                $sheet->getStyle("A13:{$lastCol}13")->getFont()->setBold(true);
 
                 $ttgRow = $lastRow + 2;
                 $sheet->mergeCells("G{$ttgRow}:{$lastCol}{$ttgRow}"); 

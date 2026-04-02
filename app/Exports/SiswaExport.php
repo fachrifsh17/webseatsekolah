@@ -73,7 +73,7 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             $siswa->tahun_angkatan ?? '-',
             $siswa->no_telp_siswa, 
             $siswa->alamat,
-            $siswa->is_active ? 'Aktif' : 'Tidak Aktif', 
+            $siswa->is_active ? 'Aktif' : 'Non Aktif', 
         ];
     }
 
@@ -206,11 +206,12 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $namaKelas = $this->filters['nama_kelas'] ?? 'SEMUA KELAS';
                 $agamaFilter = $this->filters['agama'] ?? 'SEMUA';
                 $angkatanFilter = $this->filters['tahun_angkatan'] ?? 'SEMUA';
+                $searchFilter = $this->filters['search'] ?? '-';
                 $jkFilter = $this->filters['jenis_kelamin'] ?? 'SEMUA';
                 
                 $statusText = 'SEMUA';
                 if(isset($this->filters['is_active'])) {
-                    $statusText = $this->filters['is_active'] == 1 ? 'AKTIF' : 'TIDAK AKTIF';
+                    $statusText = $this->filters['is_active'] == 1 ? 'AKTIF' : 'Non AKTIF';
                 }
 
                 $sheet->setCellValue('A10', "JURUSAN : " . strtoupper($jurusan));
@@ -219,6 +220,7 @@ class SiswaExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
                 $sheet->setCellValue('A13', "AGAMA   : " . strtoupper($agamaFilter));
                 $sheet->setCellValue('A14', "ANGKATAN: " . strtoupper($angkatanFilter));
                 $sheet->setCellValue('A15', "JENIS KELAMIN: " . strtoupper($jkFilter));
+                $sheet->setCellValue('A15', "PENCARIAN: " . strtoupper($searchFilter));
                 $sheet->setCellValue('A16', "STATUS  : " . strtoupper($statusText));
 
                 $sheet->getStyle("A17:{$lastCol}17")->applyFromArray([

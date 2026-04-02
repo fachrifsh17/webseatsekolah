@@ -17,27 +17,24 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
-use App\Models\GuruStaf;
-use App\Models\MataPelajaran;
-use App\Models\Kelas;
-use App\Models\Jurusan;
 
 class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithEvents, WithCustomStartCell
 {
-    protected $query, $profil, $kontak, $filters;
+    protected $query, $profil, $kontak, $filters, $labels;
     private $rowNumber = 0;
 
-    public function __construct($query, $profil, $kontak, $filters = [])
+    public function __construct($query, $profil, $kontak, $filters = [], $labels = [])
     {
         $this->query = $query;
         $this->profil = is_array($profil) ? (object)$profil : $profil;
         $this->kontak = is_array($kontak) ? (object)$kontak : $kontak;
         $this->filters = $filters;
+        $this->labels = $labels;
     }
 
     public function startCell(): string 
     { 
-        return 'A16'; 
+        return 'A17'; 
     }
 
     public function query()
@@ -75,7 +72,7 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
             strtoupper($item->kelas->nama_kelas ?? '-'),
             strtoupper($item->hari ?? '-'),
             $jamFormatted,
-            'AKTIF'
+            strtoupper($item->is_active ? 'AKTIF' : 'NON-AKTIF')
         ];
     }
 
@@ -84,12 +81,12 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
         $lastRow = $sheet->getHighestRow();
         $lastCol = 'K';
 
-        $sheet->getStyle("A16:{$lastCol}16")->applyFromArray([
+        $sheet->getStyle("A17:{$lastCol}17")->applyFromArray([
             'font' => ['bold' => true, 'size' => 10],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ]);
 
-        $sheet->getStyle("A16:{$lastCol}{$lastRow}")->applyFromArray([
+        $sheet->getStyle("A17:{$lastCol}{$lastRow}")->applyFromArray([
             'borders' => [
                 'allBorders' => [
                     'borderStyle' => Border::BORDER_THIN, 
@@ -100,9 +97,9 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
             'alignment' => ['vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true]
         ]);
 
-        $sheet->getStyle("A17:B{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("D17:E{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("G17:K{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("A18:B{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("D18:E{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("G18:K{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         
         $sheet->getColumnDimension('A')->setAutoSize(false)->setWidth(5);
     }
@@ -151,38 +148,20 @@ class GuruMapelExport implements FromQuery, WithHeadings, WithMapping, ShouldAut
                 $worksheet->getStyle("A8:A9")->getFont()->setBold(true)->setSize(11);
                 $worksheet->getStyle("A8:A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $guruName = '-';
-                if(isset($this->filters['guru_staf_id'])) {
-                    $g = GuruStaf::find($this->filters['guru_staf_id']);
-                    $guruName = $g ? strtoupper($g->nama) : '-';
+                $statusLabel = 'SEMUA STATUS';
+                if (isset($this->filters['is_active'])) {
+                    $statusLabel = ($this->filters['is_active'] == '1') ? 'AKTIF' : 'NON-AKTIF';
                 }
 
-                $mapelName = '-';
-                if(isset($this->filters['mata_pelajaran_id'])) {
-                    $m = MataPelajaran::find($this->filters['mata_pelajaran_id']);
-                    $mapelName = $m ? strtoupper($m->nama_mapel) : '-';
-                }
-
-                $kelasName = '-';
-                if(isset($this->filters['kelas_id'])) {
-                    $k = Kelas::find($this->filters['kelas_id']);
-                    $kelasName = $k ? strtoupper($k->nama_kelas) : '-';
-                }
-
-                $jurusanName = '-';
-                if(isset($this->filters['jurusan_id'])) {
-                    $j = Jurusan::find($this->filters['jurusan_id']);
-                    $jurusanName = $j ? strtoupper($j->nama_jurusan) : '-';
-                }
-
-                $worksheet->setCellValue('A10', "GURU      : " . $guruName);
-                $worksheet->setCellValue('A11', "MAPEL     : " . $mapelName);
-                $worksheet->setCellValue('A12', "KELAS     : " . $kelasName);
+                $worksheet->setCellValue('A10', "GURU      : " . ($this->labels['guru'] ?? 'SEMUA GURU'));
+                $worksheet->setCellValue('A11', "MAPEL     : " . ($this->labels['mapel'] ?? 'SEMUA MAPEL'));
+                $worksheet->setCellValue('A12', "KELAS     : " . ($this->labels['kelas'] ?? 'SEMUA KELAS'));
                 $worksheet->setCellValue('A13', "HARI      : " . strtoupper($this->filters['hari'] ?? 'SEMUA HARI'));
                 $worksheet->setCellValue('A14', "KATEGORI  : " . strtoupper($this->filters['kategori_mapel'] ?? 'SEMUA KATEGORI'));
-                $worksheet->setCellValue('A15', "JURUSAN   : " . $jurusanName);
+                $worksheet->setCellValue('A15', "JURUSAN   : " . ($this->labels['jurusan'] ?? 'SEMUA JURUSAN'));
+                $worksheet->setCellValue('A16', "STATUS    : " . $statusLabel);
                 
-                $worksheet->getStyle("A10:A15")->getFont()->setBold(false)->setItalic(false)->setSize(9);
+                $worksheet->getStyle("A10:A16")->getFont()->setBold(false)->setItalic(false)->setSize(9);
 
                 $ttgRow = $lastRow + 2;
                 $kota = $this->kontak->kabupaten_kota ?? 'Tasikmalaya';

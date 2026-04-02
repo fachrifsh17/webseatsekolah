@@ -30,8 +30,11 @@ class MapelController extends Controller
         try {
             $query = MataPelajaran::with('jurusan');
 
-            if ($request->has('is_active') && $request->query('is_active') !== null && $request->query('is_active') !== '') {
-                $query->where('is_active', filter_var($request->query('is_active'), FILTER_VALIDATE_BOOLEAN));
+            $isActive = $request->query('is_active');
+            if ($isActive !== null && $isActive !== '') {
+                $query->where('is_active', filter_var($isActive, FILTER_VALIDATE_BOOLEAN));
+            } else {
+                $query->where('is_active', true);
             }
 
             if ($request->filled('jurusan_id')) {
@@ -187,8 +190,11 @@ class MapelController extends Controller
         try {
             $filters = $request->only(['search', 'jurusan_id', 'tipe_mapel', 'kategori_mapel']);
             
-            if ($request->has('is_active') && $request->query('is_active') !== null && $request->query('is_active') !== '') {
-                $filters['is_active'] = filter_var($request->query('is_active'), FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+            $isActive = $request->query('is_active');
+            if ($isActive !== null && $isActive !== '') {
+                $filters['is_active'] = filter_var($isActive, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+            } else {
+                $filters['is_active'] = 1;
             }
 
             $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 

@@ -40,7 +40,7 @@ class GuruController extends Controller
         $jurusan = $request->query('jurusan_id');
         $jk = $request->query('jenis_kelamin');
         $agama = $request->query('agama');
-        $active = $request->query('is_active');
+        $active = $request->has('is_active') ? $request->query('is_active') : 1;
 
         $data = GuruStaf::with(['jurusan', 'user'])
             ->when($search, function ($query, $search) {
@@ -330,63 +330,67 @@ class GuruController extends Controller
         }
     }
 
-    public function bulkDelete(Request $request): JsonResponse
-    {
-        $this->authorize('deleteAny', GuruStaf::class);
+      public function bulkDelete(Request $request): JsonResponse
+{
+    $this->authorize('deleteAny', GuruStaf::class);
 
-        $request->validate([
-            'ids' => 'required|array',
-            'ids.*' => 'exists:guru_staf,id'
-        ]);
+    $request->validate([
+        'ids' => 'required|array',
+        'ids.*' => 'exists:guru_staf,id'
+    ]);
 
-        try {
-            DB::transaction(function () use ($request) {
-                $gurus = GuruStaf::whereIn('id', $request->ids)->get();
-                
-                foreach ($gurus as $guru) {
-                    $hasRelation = DB::table('guru_mapel')->where('guru_staf_id', $guru->id)->exists() ||
-                                   DB::table('kelas_wali_kelas')->where('guru_staf_id', $guru->id)->exists() ||
-                                   DB::table('presensi_guru_mapel')->where('guru_staf_id', $guru->id)->exists() ||
-                                   DB::table('presensi')->where('guru_id', $guru->id)->exists() ||
-                                   DB::table('poin_siswa')->where('guru_staf_id', $guru->id)->exists();
+    try {
+        DB::transaction(function () use ($request) {
+            $gurus = GuruStaf::with('user')->whereIn('id', $request->ids)->get();
+            
+            /** @var \App\Models\GuruStaf $guru */
+            foreach ($gurus as $guru) {
+                $hasRelation = DB::table('guru_mapel')->where('guru_staf_id', $guru->id)->exists() ||
+                               DB::table('kelas_wali_kelas')->where('guru_staf_id', $guru->id)->exists() ||
+                               DB::table('presensi_guru_mapel')->where('guru_staf_id', $guru->id)->exists() ||
+                               DB::table('presensi')->where('guru_id', $guru->id)->exists() ||
+                               DB::table('poin_siswa')->where('guru_staf_id', $guru->id)->exists();
 
-                    if ($hasRelation) {
-                        $guru->update(['is_active' => 0]);
-                        if ($guru->user) {
-                            $guru->user->update(['is_active' => 0]);
-                        }
-                    } else {
-                        $fotoPath = $guru->foto;
-                        $userId = $guru->user_id;
-
-                        if ($userId) {
-                            DB::table('user_roles')->where('user_id', $userId)->delete();
-                            User::where('id', $userId)->delete();
-                        }
-
-                        if ($fotoPath) {
-                            $filePath = public_path('uploads/guru/') . str_replace('uploads/guru/', '', $fotoPath);
-                            if (file_exists($filePath)) unlink($filePath);
-                        }
-
-                        $guru->delete();
+                if ($hasRelation) {
+                    $guru->update(['is_active' => 0]);
+                    if ($guru->user) {
+                        $guru->user->update(['is_active' => 0]);
                     }
-                }
-            });
+                } else {
+                    $fotoPath = $guru->foto;
+                    $userId = $guru->user_id;
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Data guru terpilih berhasil diproses (dihapus atau dinonaktifkan).',
-            ], Response::HTTP_OK);
-        } catch (Throwable $e) {
-            Log::error('Bulk Delete Guru Error', ['error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal memproses data secara massal.',
-                'errors' => $e->getMessage()
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+                    if ($userId) {
+                        DB::table('user_roles')->where('user_id', $userId)->delete();
+                        User::where('id', $userId)->delete();
+                    }
+
+                    if ($fotoPath) {
+                        $filePath = public_path('uploads/guru/') . str_replace('uploads/guru/', '', $fotoPath);
+                        if (file_exists($filePath)) {
+                            unlink($filePath);
+                        }
+                    }
+
+                    $guru->delete();
+                }
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Data guru terpilih berhasil diproses (dihapus atau dinonaktifkan).',
+        ], Response::HTTP_OK);
+
+    } catch (Throwable $e) {
+        Log::error('Bulk Delete Guru Error', ['error' => $e->getMessage()]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Gagal memproses data secara massal.',
+            'errors' => $e->getMessage()
+        ], Response::HTTP_INTERNAL_SERVER_ERROR);
     }
+}
 
     public function search(Request $request): JsonResponse
     {

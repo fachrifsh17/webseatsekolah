@@ -58,8 +58,10 @@ class KelasController extends Controller
                 }
             }
 
-            if ($request->filled('is_active')) {
+            if ($request->has('is_active')) {
                 $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN));
+            } else {
+                $query->where('is_active', true);
             }
 
             $perPage = $request->query('per_page', 10);
@@ -97,8 +99,13 @@ class KelasController extends Controller
         $this->authorize('viewAny', Kelas::class);
 
         try {
-            $filters = $request->only(['search', 'jurusan_id', 'semester_id']);
-            $filters['is_active'] = true;
+            $filters = $request->only(['search', 'jurusan_id', 'tingkatan_id', 'semester_id']);
+            
+            $isActive = true;
+            if ($request->has('is_active')) {
+                $isActive = filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN);
+            }
+            $filters['is_active'] = $isActive;
             $filters['identitas_laporan'] = 'SEMUA JURUSAN';
 
             $profil = ProfilSekolah::first() ?? new ProfilSekolah(); 
@@ -108,6 +115,13 @@ class KelasController extends Controller
 
             if ($request->filled('search')) {
                 $fileNameParts[] = strtoupper(str_replace(' ', '_', $request->search));
+            }
+
+            if ($request->filled('tingkatan_id')) {
+                $tingkatan = Tingkatan::find($request->tingkatan_id);
+                if ($tingkatan) {
+                    $fileNameParts[] = strtoupper(str_replace(' ', '_', $tingkatan->nama_tingkatan));
+                }
             }
 
             if ($request->filled('jurusan_id')) {
@@ -129,7 +143,7 @@ class KelasController extends Controller
                 $fileNameParts[] = "{$taName}_{$semName}";
             }
 
-            $fileNameParts[] = 'AKTIF';
+            $fileNameParts[] = $isActive ? 'AKTIF' : 'NON_AKTIF';
             $fileName = implode('_', $fileNameParts) . '.xlsx';
 
             if (ob_get_contents()) ob_end_clean();

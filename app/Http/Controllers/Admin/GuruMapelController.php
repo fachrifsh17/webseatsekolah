@@ -39,6 +39,12 @@ class GuruMapelController extends Controller
     {
         $query = GuruMapel::with(['guru', 'mapel.jurusan', 'kelas', 'semester', 'jamMulai', 'jamSelesai']);
 
+        if ($request->filled('is_active')) {
+            $query->where('is_active', $request->is_active);
+        } elseif (!$request->has('show_all')) {
+            $query->where('is_active', 1);
+        }
+
         if (!$request->has('show_all')) {
             $query->whereHas('mapel', function ($q) {
                 $q->where('is_active', 1);
@@ -116,92 +122,49 @@ class GuruMapelController extends Controller
         try {
             $query = $this->applyFilters($request);
             
-            $kelasId = $request->query('kelas_id') ?? $request->query('klas_id');
-            $guruId = $request->query('guru_staf_id') ?? $request->query('guru_id');
-            $jurusanId = $request->query('jurusan_id');
-
-            if ($request->filled('semester_id')) {
-                $semester = Semester::with('tahunAjaran')->find($request->semester_id);
+            $semesterId = $request->query('semester_id');
+            if ($semesterId) {
+                $semester = Semester::with('tahunAjaran')->find($semesterId);
             } else {
                 $semester = Semester::with('tahunAjaran')->where('is_active', 1)->first();
             }
 
-            $filters = [
-                'q'             => $request->query('q'),
-                'hari'          => $request->query('hari'),
-                'kategori_mapel'=> $request->query('kategori_mapel', 'Semua Kategori'),
-                'status_mapel'  => $request->has('show_all') ? 'Semua (Aktif & Non-Aktif)' : 'Aktif'
+            $filters = $request->all();
+            $filters['semester'] = $semester ? $semester->nama : 'Semua';
+            $filters['tahun_ajaran'] = $semester ? $semester->tahunAjaran->nama : '-';
+
+            $labels = [
+                'guru'    => $request->guru_staf_id ? (GuruStaf::find($request->guru_staf_id)->nama ?? 'SEMUA GURU') : 'SEMUA GURU',
+                'mapel'   => $request->mata_pelajaran_id ? (MataPelajaran::find($request->mata_pelajaran_id)->nama_mapel ?? 'SEMUA MAPEL') : 'SEMUA MAPEL',
+                'kelas'   => $request->kelas_id ? (Kelas::find($request->kelas_id)->nama_kelas ?? 'SEMUA KELAS') : 'SEMUA KELAS',
+                'jurusan' => $request->jurusan_id ? (Jurusan::find($request->jurusan_id)->nama_jurusan ?? 'SEMUA JURUSAN') : 'SEMUA JURUSAN',
             ];
 
-            $nameParts = []; 
+            $nameParts = ['JADWAL_GURU_MAPEL'];
+            
             if ($semester) {
-                $filters['semester'] = $semester->nama;
-                $filters['tahun_ajaran'] = $semester->tahunAjaran->nama;
-                
                 $taClean = str_replace(['/', ' '], '_', $semester->tahunAjaran->nama);
                 $semClean = strtoupper(str_replace(' ', '_', $semester->nama));
                 $nameParts[] = "{$taClean}_{$semClean}";
-            } else {
-                $filters['semester'] = 'Semua';
-                $filters['tahun_ajaran'] = '-';
-                $nameParts[] = 'SEMUA_SEMESTER';
             }
 
-            $kriteria = [];
-            array_unshift($nameParts, 'JADWAL_GURU_MAPEL');
-
-            if ($jurusanId) {
-                $jurusan = Jurusan::find($jurusanId);
-                if ($jurusan) {
-                    $kriteria[] = "JURUSAN: " . strtoupper($jurusan->nama_jurusan);
-                    $nameParts[] = strtoupper(str_replace(' ', '_', $jurusan->nama_jurusan));
-                }
+            if ($request->filled('guru_staf_id')) {
+                $guru = GuruStaf::find($request->guru_staf_id);
+                if ($guru) $nameParts[] = strtoupper(str_replace(' ', '_', $guru->nama));
             }
 
-            if ($guruId) {
-                $guru = GuruStaf::find($guruId);
-                if ($guru) {
-                    $kriteria[] = "GURU: " . strtoupper($guru->nama);
-                    $nameParts[] = strtoupper(str_replace(' ', '_', $guru->nama));
-                }
+            if ($request->filled('kelas_id')) {
+                $kelas = Kelas::find($request->kelas_id);
+                if ($kelas) $nameParts[] = strtoupper(str_replace(' ', '_', $kelas->nama_kelas));
             }
 
-            if ($request->filled('mata_pelajaran_id')) {
-                $mapel = MataPelajaran::find($request->mata_pelajaran_id);
-                if ($mapel) {
-                    $kriteria[] = "MAPEL: " . strtoupper($mapel->nama_mapel);
-                    $nameParts[] = strtoupper(str_replace(' ', '_', $mapel->nama_mapel));
-                }
-            }
-
-            if ($kelasId) {
-                $kelas = Kelas::find($kelasId);
-                if ($kelas) {
-                    $kriteria[] = "KELAS: " . strtoupper($kelas->nama_kelas);
-                    $nameParts[] = strtoupper(str_replace(' ', '_', $kelas->nama_kelas));
-                }
-            }
-
-            if ($request->filled('hari')) {
-                $kriteria[] = "HARI: " . strtoupper($request->hari);
-                $nameParts[] = strtoupper($request->hari);
-            }
-
-            if ($request->filled('kategori_mapel')) {
-                $kriteria[] = "KATEGORI: " . strtoupper($request->kategori_mapel);
-            }
-
-            $filters['identitas_laporan'] = count($kriteria) > 0 ? implode(' | ', $kriteria) : 'SEMUA DATA';
-            
-            $nameParts[] = 'AKTIF';
             $fileName = implode('_', $nameParts) . '.xlsx';
-
             $profil = ProfilSekolah::first();
             $contak = DataKontak::first();
 
             if (ob_get_contents()) ob_end_clean();
             
-            return Excel::download(new GuruMapelExport($query, $profil, $contak, $filters), $fileName);
+            return Excel::download(new GuruMapelExport($query, $profil, $contak, $filters, $labels), $fileName);
         } catch (Throwable $e) {
             Log::error('Export Guru Mapel Error', ['error' => $e->getMessage()]);
             return response()->json(['message' => 'Gagal mengekspor data penugasan.'], Response::HTTP_INTERNAL_SERVER_ERROR);
@@ -235,77 +198,116 @@ class GuruMapelController extends Controller
         }
     }
 
-    public function importPreview(Request $request): JsonResponse
-    {
-        $this->authorize('create', GuruMapel::class);
-        $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
+ public function importPreview(Request $request): JsonResponse
+{
+    $this->authorize('create', GuruMapel::class);
+    $request->validate(['file' => 'required|mimes:xlsx,xls,csv|max:2048']);
 
-        try {
-            $file = $request->file('file');
-            $data = Excel::toArray(new \stdClass(), $file)[0];
-            
-            if (count($data) <= 1) {
-                return response()->json(['success' => false, 'message' => 'File kosong'], 422);
-            }
-
-            $headers = array_shift($data);
-            $previewData = [];
-            $semesterAktif = Semester::where('is_active', 1)->first();
-
-            foreach ($data as $index => $row) {
-                if (empty(array_filter($row))) continue;
-
-                $nip = $row[0] ?? null;
-                $kodeMapel = $row[1] ?? null;
-                $namaKelas = $row[2] ?? null;
-                $hari = ucfirst(strtolower($row[3] ?? ''));
-                $jamMulaiNama = $row[4] ?? null;
-                $jamSelesaiNama = $row[5] ?? null;
-
-                $guru = GuruStaf::where('nip', $nip)->first();
-                $mapel = MataPelajaran::where('kode_mapel', $kodeMapel)->first();
-                $kelas = Kelas::where('nama_kelas', $namaKelas)->first();
-                $jamMulai = JamSekolah::where('nama_jam', $jamMulaiNama)->where('hari', $hari)->first();
-                $jamSelesai = JamSekolah::where('nama_jam', $jamSelesaiNama)->where('hari', $hari)->first();
-
-                $errors = [];
-                if (!$guru) $errors[] = "Guru NIP {$nip} tidak ditemukan";
-                if (!$mapel) $errors[] = "Mapel Kode {$kodeMapel} tidak ditemukan";
-                if (!$kelas) $errors[] = "Kelas {$namaKelas} tidak ditemukan";
-                if (!$jamMulai) $errors[] = "Jam Mulai {$jamMulaiNama} tidak tersedia di hari {$hari}";
-                if (!$jamSelesai) $errors[] = "Jam Selesai {$jamSelesaiNama} tidak tersedia di hari {$hari}";
-
-                $isConflict = false;
-                if ($guru && $kelas && $jamMulai && $jamSelesai && $semesterAktif) {
-                    $isConflict = GuruMapel::where('hari', $hari)
-                        ->where('semester_id', $semesterAktif->id)
-                        ->where(function ($q) use ($jamMulai, $jamSelesai) {
-                            $q->whereHas('jamMulai', fn($jm) => $jm->where('waktu_mulai', '<', $jamSelesai->waktu_selesai))
-                              ->whereHas('jamSelesai', fn($js) => $js->where('waktu_selesai', '>', $jamMulai->waktu_mulai));
-                        })
-                        ->where(function ($q) use ($guru, $kelas) {
-                            $q->where('guru_staf_id', $guru->id)->orWhere('kelas_id', $kelas->id);
-                        })->exists();
-                }
-
-                $previewData[] = [
-                    'row' => $index + 2,
-                    'guru' => $guru?->nama ?? $nip,
-                    'mapel' => $mapel?->nama_mapel ?? $kodeMapel,
-                    'kelas' => $kelas?->nama_kelas ?? $namaKelas,
-                    'hari' => $hari,
-                    'waktu' => $jamMulaiNama . ' - ' . $jamSelesaiNama,
-                    'errors' => $errors,
-                    'is_conflict' => $isConflict || count($errors) > 0
-                ];
-            }
-
-            return response()->json(['success' => true, 'data' => $previewData], 200);
-        } catch (Throwable $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+    try {
+        $file = $request->file('file');
+        $data = Excel::toArray(new \stdClass(), $file)[0];
+        
+        if (count($data) <= 1) {
+            return response()->json(['success' => false, 'message' => 'File kosong'], 422);
         }
-    }
 
+        array_shift($data);
+        $previewData = [];
+        $semesterAktif = Semester::where('is_active', 1)->first();
+
+        foreach ($data as $index => $row) {
+            if (empty(array_filter($row))) continue;
+
+            $guruInput = trim((string)($row[0] ?? ''));
+            $mapelInput = trim((string)($row[1] ?? ''));
+            $namaKelas = trim((string)($row[2] ?? ''));
+            $hari = ucfirst(strtolower(trim((string)($row[3] ?? ''))));
+            $jamMulaiKe = $row[4] ?? null;
+            $jamSelesaiKe = $row[5] ?? null;
+
+            $guru = GuruStaf::where('id', $guruInput)
+                ->orWhere('nama', $guruInput)
+                ->first();
+
+            $mapel = MataPelajaran::where('id', $mapelInput)
+                ->orWhere('nama_mapel', $mapelInput)
+                ->first();
+
+            $kelas = Kelas::where('nama_kelas', $namaKelas)->first();
+
+            $jamMulai = JamSekolah::where('jam_ke', $jamMulaiKe)->where('hari', $hari)->first();
+            $jamSelesai = JamSekolah::where('jam_ke', $jamSelesaiKe)->where('hari', $hari)->first();
+
+            $errors = [];
+            if (!$semesterAktif) $errors[] = "Tidak ada semester aktif";
+
+            if (!$guru) {
+                $errors[] = "Guru '{$guruInput}' tidak ditemukan";
+            } elseif ($guru->is_active == 0) {
+                $errors[] = "Guru {$guru->nama} non-aktif";
+            }
+
+            if (!$mapel) {
+                $errors[] = "Mapel '{$mapelInput}' tidak ditemukan (Gunakan ID seperti M001)";
+            } elseif ($mapel->is_active == 0) {
+                $errors[] = "Mapel {$mapel->nama_mapel} non-aktif";
+            }
+
+            if (!$kelas) {
+                $errors[] = "Kelas {$namaKelas} tidak ditemukan";
+            } elseif ($kelas->is_active == 0) {
+                $errors[] = "Kelas {$namaKelas} non-aktif";
+            }
+
+            if (!$jamMulai || !$jamSelesai) {
+                $errors[] = "Jam ke-{$jamMulaiKe} s/d {$jamSelesaiKe} tidak tersedia di hari {$hari}";
+            } elseif ($jamSelesai && $jamMulai && $jamSelesai->waktu_selesai <= $jamMulai->waktu_mulai) {
+                $errors[] = "Waktu selesai harus setelah waktu mulai";
+            }
+
+            $isConflict = false;
+            if (empty($errors) && $guru && $kelas && $jamMulai && $jamSelesai && $semesterAktif) {
+                $bentrok = GuruMapel::where('hari', $hari)
+                    ->where('semester_id', $semesterAktif->id)
+                    ->where(function ($q) use ($jamMulai, $jamSelesai) {
+                        $q->where(function($query) use ($jamMulai, $jamSelesai) {
+                            $query->whereHas('jamMulai', function ($sub) use ($jamSelesai) {
+                                $sub->where('waktu_mulai', '<', $jamSelesai->waktu_selesai);
+                            })->whereHas('jamSelesai', function ($sub) use ($jamMulai) {
+                                $sub->where('waktu_selesai', '>', $jamMulai->waktu_mulai);
+                            });
+                        });
+                    })
+                    ->where(function ($q) use ($guru, $kelas) {
+                        $q->where('guru_staf_id', $guru->id)
+                          ->orWhere('kelas_id', $kelas->id);
+                    })
+                    ->first();
+
+                if ($bentrok) {
+                    $isConflict = true;
+                    $subjek = $bentrok->guru_staf_id == $guru->id ? "Guru '{$guru->nama}'" : "Kelas '{$kelas->nama_kelas}'";
+                    $errors[] = "Conflict! {$subjek} sudah ada jadwal lain di jam ini.";
+                }
+            }
+
+            $previewData[] = [
+                'row' => $index + 2,
+                'guru' => $guru?->nama ?? $guruInput,
+                'mapel' => $mapel?->nama_mapel ?? $mapelInput,
+                'kelas' => $kelas?->nama_kelas ?? $namaKelas,
+                'hari' => $hari,
+                'waktu' => $jamMulai ? "Jam {$jamMulaiKe} ({$jamMulai->waktu_mulai}) - Jam {$jamSelesaiKe} ({$jamSelesai->waktu_selesai})" : "Jam {$jamMulaiKe} - {$jamSelesaiKe}",
+                'errors' => $errors,
+                'is_conflict' => $isConflict || count($errors) > 0
+            ];
+        }
+
+        return response()->json(['success' => true, 'data' => $previewData], 200);
+    } catch (Throwable $e) {
+        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+    }
+}
     public function show(GuruMapel $guruMapel): JsonResponse
     {
         return response()->json([

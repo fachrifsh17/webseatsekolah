@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
 
 class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles, WithEvents, WithCustomStartCell
 {
-    protected $queryBuilder, $profil, $kontak, $kelasData, $jurusanData, $filters, $semesterText, $tahunAjaranText, $semesterId, $tingkatanText;
+    protected $queryBuilder, $profil, $kontak, $kelasData, $jurusanData, $filters, $semesterText, $tahunAjaranText, $semesterId, $tingkatanText, $statusText, $searchText;
 
     public function __construct($queryBuilder, $profil, $kontak, $kelasData = null, $filters = [], $jurusanData = null)
     {
@@ -60,9 +60,20 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles
         } else {
             $this->tingkatanText = $this->kelasData?->tingkatan?->nama_tingkatan ? strtoupper($this->kelasData->tingkatan->nama_tingkatan) : 'SEMUA TINGKATAN';
         }
+
+        $status = $filters['is_active'] ?? null;
+        if ($status === '1' || $status === 1) {
+            $this->statusText = 'AKTIF';
+        } elseif ($status === '0' || $status === 0) {
+            $this->statusText = 'NON-AKTIF';
+        } else {
+            $this->statusText = 'SEMUA STATUS';
+        }
+
+        $this->searchText = !empty($filters['q']) ? strtoupper($filters['q']) : 'SEMUA DATA';
     }
 
-    public function startCell(): string { return 'A13'; }
+    public function startCell(): string { return 'A15'; }
 
     public function query()
     {
@@ -187,16 +198,18 @@ class OrangtuaExport implements FromQuery, WithHeadings, WithMapping, WithStyles
                 $sheet->getStyle('A9')->getFont()->setBold(true);
                 $sheet->getStyle('A9')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $sheet->setCellValue('A10', "JURUSAN : " . strtoupper($this->jurusanData ? $this->jurusanData->nama_jurusan : 'SEMUA JURUSAN'));
-                $sheet->setCellValue('A11', "TINGKAT : " . $this->tingkatanText);
-                $sheet->setCellValue('A12', "KELAS   : " . strtoupper($this->kelasData ? $this->kelasData->nama_kelas : 'SEMUA KELAS'));
+                $sheet->setCellValue('A10', "JURUSAN   : " . strtoupper($this->jurusanData ? $this->jurusanData->nama_jurusan : 'SEMUA JURUSAN'));
+                $sheet->setCellValue('A11', "TINGKAT   : " . $this->tingkatanText);
+                $sheet->setCellValue('A12', "KELAS     : " . strtoupper($this->kelasData ? $this->kelasData->nama_kelas : 'SEMUA KELAS'));
+                $sheet->setCellValue('A13', "PENCARIAN : " . $this->searchText);
+                $sheet->setCellValue('A14', "STATUS    : " . $this->statusText);
 
-                $sheet->getStyle("A13:{$lastCol}13")->applyFromArray([
+                $sheet->getStyle("A15:{$lastCol}15")->applyFromArray([
                     'font' => ['bold' => true],
                     'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
                 ]);
 
-                $sheet->getStyle("A13:{$lastCol}{$dataLastRow}")->applyFromArray([
+                $sheet->getStyle("A15:{$lastCol}{$dataLastRow}")->applyFromArray([
                     'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
                     'alignment' => ['vertical' => Alignment::VERTICAL_CENTER]
                 ]);

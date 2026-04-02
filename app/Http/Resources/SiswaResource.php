@@ -9,25 +9,24 @@ class SiswaResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        // Mencari riwayat kelas yang sedang aktif
-        $riwayatAktif = $this->relationLoaded('riwayatKelas') 
-            ? $this->riwayatKelas->firstWhere('is_active', 1) 
+        $riwayatTerakhir = $this->relationLoaded('riwayatKelas') 
+            ? $this->riwayatKelas->first() 
             : null;
             
-        $dataKelas = $riwayatAktif ? $riwayatAktif->kelas : null;
+        $dataKelas = $riwayatTerakhir ? $riwayatTerakhir->kelas : null;
 
         return [
-            'id'            => $this->id,
-            'user_id'       => $this->user_id,
-            'nis'           => $this->nis,
-            'nisn'          => $this->nisn,
-            'nik'           => $this->nik,
-            'nama_lengkap'  => $this->nama_lengkap,
-            'tempat_lahir'  => $this->tempat_lahir,
-            'tanggal_lahir' => $this->tanggal_lahir?->toDateString(),
-            'jenis_kelamin' => $this->jenis_kelamin,
-            'agama'         => $this->agama,
-            'tahun_angkatan'=> $this->tahun_angkatan,
+            'id'             => $this->id,
+            'user_id'        => $this->user_id,
+            'nis'            => $this->nis,
+            'nisn'           => $this->nisn,
+            'nik'            => $this->nik,
+            'nama_lengkap'   => $this->nama_lengkap,
+            'tempat_lahir'   => $this->tempat_lahir,
+            'tanggal_lahir'  => $this->tanggal_lahir?->toDateString(),
+            'jenis_kelamin'  => $this->jenis_kelamin,
+            'agama'          => $this->agama,
+            'tahun_angkatan' => $this->tahun_angkatan,
 
             'kelas' => $dataKelas ? [
                 'id'   => $dataKelas->id,

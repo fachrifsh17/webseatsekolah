@@ -28,10 +28,9 @@ class OrangtuaResource extends JsonResource
                     'nis'      => $a->nis,
                     'nama'     => $a->nama_lengkap,
                     'hubungan' => $a->pivot?->hubungan,
-                    'kelas'    => null, // Default null jika tidak ada riwayat
+                    'kelas'    => null,
                 ];
 
-                // PERBAIKAN: Menggunakan 'riwayatKelas' sesuai yang di-load di Controller
                 $riwayat = $a->relationLoaded('riwayatKelas') ? $a->riwayatKelas->first() : null;
 
                 if ($riwayat && $riwayat->kelas) {

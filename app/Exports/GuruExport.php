@@ -195,12 +195,12 @@ class GuruExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize
 
                 $sheet->setCellValue('A10', "JABATAN: " . strtoupper($this->filters['jabatan_fungsional'] ?? 'SEMUA'));
                 $sheet->setCellValue('A11', "KEPEGAWAIAN: " . strtoupper($this->filters['status_kepegawaian'] ?? 'SEMUA'));
-                $sheet->setCellValue('A12', "STATUS: " . $statusAktif);
-                $sheet->setCellValue('A13', "JURUSAN: " . strtoupper($namaJurusan));
-                $sheet->setCellValue('A14', "JENIS KELAMIN: " . $teksJK);
-                $sheet->setCellValue('A15', "AGAMA: " . strtoupper($this->filters['agama'] ?? 'SEMUA'));
-                $sheet->setCellValue('A16', "PENCARIAN: " . $pencarian);
-                $sheet->getStyle('A10:A16')->getFont()->setBold(false)->setSize(9);
+                $sheet->setCellValue('A12', "JURUSAN: " . strtoupper($namaJurusan));
+                $sheet->setCellValue('A13', "JENIS KELAMIN: " . $teksJK);
+                $sheet->setCellValue('A14', "AGAMA: " . strtoupper($this->filters['agama'] ?? 'SEMUA'));
+                $sheet->setCellValue('A15', "PENCARIAN: " . $pencarian);
+                 $sheet->setCellValue('A16', "STATUS: " . $statusAktif);
+                $sheet->getStyle('A10:A15')->getFont()->setBold(false)->setSize(9);
 
                 $kepsek = DB::table('struktur_jabatan')
                     ->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')
