@@ -53,4 +53,5 @@ class UserPolicy
     public function create(User $user): bool { return false; }
     public function update(User $user, User $model): bool { return false; }
     public function delete(User $user, User $model): bool { return false; }
+    public function bulkDelete(User $user): bool { return $user->hasRole('Admin'); }
 }

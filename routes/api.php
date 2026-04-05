@@ -213,6 +213,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth.token', 'role:Admin'])
     Route::apiResource('kelaswalikelas', KelasWaliKelasController::class,);
     Route::apiResource('tingkatan', TingkatanController::class,);
     
+    Route::post('user/bulk-delete', [UserController::class, 'bulkDelete']);
     Route::apiResource('user', UserController::class);
     Route::apiResource('role', RoleController::class);
     

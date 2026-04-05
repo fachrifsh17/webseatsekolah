@@ -114,11 +114,18 @@ class RoleController extends Controller
 
     public function destroy(Role $role): JsonResponse
     {   
-        if (in_array($role->nama_role, ['Admin'])) {
+        if (in_array($role->role_name, ['Admin'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Role sistem tidak dapat dihapus.'
             ], Response::HTTP_FORBIDDEN);
+        }
+
+        if ($role->users()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Role tidak dapat dihapus karena masih digunakan oleh beberapa pengguna.'
+            ], Response::HTTP_CONFLICT);
         }
 
         try {

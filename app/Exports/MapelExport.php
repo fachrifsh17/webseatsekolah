@@ -54,7 +54,6 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
             $query->where('jurusan_id', $this->filters['jurusan_id']);
         }
 
-        // Filter Kategori Mapel (Sebelumnya Tipe)
         if (!empty($this->filters['kategori_mapel'])) {
             $query->where('kategori_mapel', $this->filters['kategori_mapel']);
         }
@@ -66,9 +65,10 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
     {
         return [
             'NO',
+            'ID MAPEL',
             'NAMA MATA PELAJARAN',
             'JURUSAN',
-            'KATEGORI', // Diubah dari Tipe ke Kategori
+            'KATEGORI',
             'STATUS'
         ];
     }
@@ -78,9 +78,10 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
         $this->rowNumber++;
         return [
             $this->rowNumber,
+            $mapel->id,
             strtoupper($mapel->nama_mapel),
             $mapel->jurusan->nama_jurusan ?? 'UMUM',
-            strtoupper($mapel->kategori_mapel), // Diubah dari tipe_mapel ke kategori_mapel
+            strtoupper($mapel->kategori_mapel),
             $mapel->is_active ? 'AKTIF' : 'NON-AKTIF',
         ];
     }
@@ -92,17 +93,16 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
         return [
             AfterSheet::class => function(AfterSheet $event) {
                 $sheet = $event->sheet->getDelegate();
-                $lastCol = 'E'; // Disesuaikan menjadi E karena kolom berkurang satu (Tipe dihapus, sisa Kategori)
+                $lastCol = 'F'; 
                 $dataLastRow = $sheet->getHighestRow();
 
-                // Set Lebar Kolom
                 $sheet->getColumnDimension('A')->setWidth(5);
                 $sheet->getColumnDimension('B')->setAutoSize(true); 
-                $sheet->getColumnDimension('C')->setWidth(25);
-                $sheet->getColumnDimension('D')->setWidth(25); // Kolom Kategori
-                $sheet->getColumnDimension('E')->setWidth(15); // Kolom Status
+                $sheet->getColumnDimension('C')->setWidth(35);
+                $sheet->getColumnDimension('D')->setWidth(25);
+                $sheet->getColumnDimension('E')->setWidth(20);
+                $sheet->getColumnDimension('F')->setWidth(15);
 
-                // Logo Provinsi
                 if (!empty($this->profil->logo_provinsi)) {
                     $pathProv = public_path('uploads/profil/' . str_replace('uploads/profil/', '', $this->profil->logo_provinsi));
                     if (file_exists($pathProv)) {
@@ -130,7 +130,6 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
                 $email = $this->kontak->email_resmi ?? '-';
                 $npsn = $this->profil->npsn ?? '-';
 
-                // Header Kop Surat
                 $sheet->mergeCells("A1:{$lastCol}1"); $sheet->setCellValue('A1', "PEMERINTAH PROVINSI {$provKapital}");
                 $sheet->mergeCells("A2:{$lastCol}2"); $sheet->setCellValue('A2', 'DINAS PENDIDIKAN');
                 $sheet->mergeCells("A3:{$lastCol}3"); $sheet->setCellValue('A3', $cabdin);
@@ -145,7 +144,6 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
                 $sheet->getStyle("A4:{$lastCol}4")->getFont()->setSize(14);
                 $sheet->getStyle("A6:{$lastCol}6")->getBorders()->getBottom()->setBorderStyle(Border::BORDER_DOUBLE);
 
-                // Judul Dokumen
                 $sheet->mergeCells("A8:{$lastCol}8"); 
                 $sheet->setCellValue('A8', 'DAFTAR MATA PELAJARAN');
                 $sheet->getStyle('A8')->getFont()->setBold(true)->setSize(12);
@@ -158,7 +156,6 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
                 $sheet->getStyle('A9')->getFont()->setBold(true);
                 $sheet->getStyle('A9')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // Info Filter di Excel
                 $jurusanName = 'SEMUA JURUSAN';
                 if (!empty($this->filters['jurusan_id'])) {
                     $jurusan = Jurusan::find($this->filters['jurusan_id']);
@@ -168,7 +165,6 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
                 $sheet->setCellValue('A11', "KATEGORI : " . (!empty($this->filters['kategori_mapel']) ? strtoupper($this->filters['kategori_mapel']) : 'SEMUA KATEGORI'));
                 $sheet->setCellValue('A12', "STATUS : " . (isset($this->filters['is_active']) ? ($this->filters['is_active'] ? 'AKTIF' : 'NON-AKTIF') : 'SEMUA STATUS'));
 
-                // Style Table
                 $sheet->getStyle("A13:{$lastCol}13")->applyFromArray([
                     'font' => ['bold' => true],
                     'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
@@ -179,7 +175,6 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
                     'alignment' => ['vertical' => Alignment::VERTICAL_CENTER]
                 ]);
 
-                // Tanda Tangan
                 $ttdRow = $dataLastRow + 2;
                 $kepsek = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->where('struktur_jabatan.jabatan_id', 1)->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')->first();
                 $wakaKur = DB::table('struktur_jabatan')->join('guru_staf', 'struktur_jabatan.guru_staf_id', '=', 'guru_staf.id')->where('struktur_jabatan.jabatan_id', 2)->select('guru_staf.nama', 'guru_staf.nip', 'struktur_jabatan.file_ttd')->first();
@@ -187,18 +182,17 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
 
                 $sheet->mergeCells("A{$ttdRow}:B{$ttdRow}");
                 $sheet->setCellValue("A{$ttdRow}", "Mengetahui,");
-                $sheet->mergeCells("D{$ttdRow}:E{$ttdRow}"); // Geser posisi TTD ke kanan (D-E)
-                $sheet->setCellValue("D{$ttdRow}", $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
+                $sheet->mergeCells("E{$ttdRow}:{$lastCol}{$ttdRow}"); 
+                $sheet->setCellValue("E{$ttdRow}", $lokasiTtd . ", " . Carbon::now()->translatedFormat('d F Y'));
                 
                 $ttdRow++;
                 $sheet->mergeCells("A{$ttdRow}:B{$ttdRow}");
                 $sheet->setCellValue("A{$ttdRow}", "Waka Kurikulum,");
-                $sheet->mergeCells("D{$ttdRow}:E{$ttdRow}");
-                $sheet->setCellValue("D{$ttdRow}", "Kepala Sekolah,");
-                $sheet->getStyle("A" . ($ttdRow-1) . ":E{$ttdRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->mergeCells("E{$ttdRow}:{$lastCol}{$ttdRow}");
+                $sheet->setCellValue("E{$ttdRow}", "Kepala Sekolah,");
+                $sheet->getStyle("A" . ($ttdRow-1) . ":{$lastCol}{$ttdRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $imageRow = $ttdRow + 1;
-                // Gambar TTD Waka
                 if ($wakaKur && $wakaKur->file_ttd) {
                     $pathWaka = storage_path('app/private/' . str_replace(['private/', 'app/private/'], '', $wakaKur->file_ttd));
                     if (file_exists($pathWaka)) {
@@ -212,14 +206,13 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
                     }
                 }
 
-                // Gambar TTD Kepsek
                 if ($kepsek && $kepsek->file_ttd) {
                     $pathKepsek = storage_path('app/private/' . str_replace(['private/', 'app/private/'], '', $kepsek->file_ttd));
                     if (file_exists($pathKepsek)) {
                         $drawKepsek = new Drawing();
                         $drawKepsek->setPath($pathKepsek);
                         $drawKepsek->setHeight(70);
-                        $drawKepsek->setCoordinates("D{$imageRow}"); 
+                        $drawKepsek->setCoordinates("E{$imageRow}"); 
                         $drawKepsek->setOffsetX(60); 
                         $drawKepsek->setEditAs('oneCell');
                         $drawKepsek->setWorksheet($sheet);
@@ -229,17 +222,17 @@ class MapelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, W
                 $namaRow = $ttdRow + 4;
                 $sheet->mergeCells("A{$namaRow}:B{$namaRow}");
                 $sheet->setCellValue("A{$namaRow}", "( " . strtoupper($wakaKur->nama ?? '____________________') . " )");
-                $sheet->mergeCells("D{$namaRow}:E{$namaRow}");
-                $sheet->setCellValue("D{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
-                $sheet->getStyle("A{$namaRow}:E{$namaRow}")->getFont()->setBold(true)->setUnderline(true);
-                $sheet->getStyle("A{$namaRow}:E{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->mergeCells("E{$namaRow}:{$lastCol}{$namaRow}");
+                $sheet->setCellValue("E{$namaRow}", "( " . strtoupper($kepsek->nama ?? '____________________') . " )");
+                $sheet->getStyle("A{$namaRow}:{$lastCol}{$namaRow}")->getFont()->setBold(true)->setUnderline(true);
+                $sheet->getStyle("A{$namaRow}:{$lastCol}{$namaRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $nipRow = $namaRow + 1;
                 $sheet->mergeCells("A{$nipRow}:B{$nipRow}");
                 $sheet->setCellValue("A{$nipRow}", "NIP. " . ($wakaKur->nip ?? '........................'));
-                $sheet->mergeCells("D{$nipRow}:E{$nipRow}");
-                $sheet->setCellValue("D{$nipRow}", "NIP. " . ($kepsek->nip ?? '........................'));
-                $sheet->getStyle("A{$nipRow}:E{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->mergeCells("E{$nipRow}:{$lastCol}{$nipRow}");
+                $sheet->setCellValue("E{$nipRow}", "NIP. " . ($kepsek->nip ?? '........................'));
+                $sheet->getStyle("A{$nipRow}:{$lastCol}{$nipRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
     }

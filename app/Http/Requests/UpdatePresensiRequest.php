@@ -18,17 +18,10 @@ class UpdatePresensiRequest extends FormRequest
     {
         return [
             'tanggal' => ['sometimes', 'date'],
-            
             'data_presensi' => ['required', 'array', 'min:1'],
-            
-            /**
-             * PERBAIKAN: 
-             * 'id' dibuat 'nullable' agar Anda tidak wajib mengirimnya di Postman.
-             * Pencarian data nanti akan mengandalkan 'siswa_id' di Controller.
-             */
-            'data_presensi.*.id' => ['nullable'], 
-            'data_presensi.*.siswa_id' => ['required', 'string', 'exists:siswa,id'],
-            'data_presensi.*.status'   => ['required', 'string', 'in:Hadir,Izin,Sakit,Alpa'],
+            'data_presensi.*.id' => ['nullable'],
+            'data_presensi.*.siswa_id' => ['required', 'string'],
+            'data_presensi.*.status' => ['required', 'string', 'in:Hadir,Izin,Sakit,Alpa,H,I,S,A'],
             'data_presensi.*.keterangan' => ['nullable', 'string', 'max:255'],
         ];
     }
@@ -39,7 +32,6 @@ class UpdatePresensiRequest extends FormRequest
             'data_presensi.required' => 'Data presensi wajib dikirim.',
             'data_presensi.min' => 'Minimal satu data siswa harus disertakan.',
             'data_presensi.*.siswa_id.required' => 'ID Siswa wajib diisi.',
-            'data_presensi.*.siswa_id.exists' => 'Siswa tidak terdaftar di database.',
             'data_presensi.*.status.required' => 'Status presensi wajib diisi.',
             'data_presensi.*.status.in' => 'Status harus Hadir, Izin, Sakit, atau Alpa.',
         ];

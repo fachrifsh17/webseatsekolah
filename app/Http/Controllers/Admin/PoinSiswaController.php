@@ -67,10 +67,13 @@ class PoinSiswaController extends Controller
                 $query->where('kelas_id', $request->kelas_id);
             }
 
+            $targetSemester = null;
             if ($request->filled('semester_id')) {
+                $targetSemester = Semester::find($request->semester_id);
                 $query->where('semester_id', $request->semester_id);
             } else {
                 if ($semesterActive) {
+                    $targetSemester = $semesterActive;
                     $query->where('semester_id', $semesterActive->id);
                 }
             }
@@ -79,20 +82,19 @@ class PoinSiswaController extends Controller
                 $query->where('siswa_id', $request->siswa_id);
             }
             
-            if ($request->filled('bulan')) {
-                $time = strtotime($request->bulan);
-                $query->whereMonth('tanggal', date('m', $time))
-                      ->whereYear('tanggal', date('Y', $time));
-            } elseif ($semesterActive && !$request->filled('semester_id')) {
-                $isGanjil = stripos($semesterActive->nama, 'Ganjil') !== false;
+            if ($request->filled('bulan') && $request->bulan !== 'KUMULATIF') {
+                $query->whereMonth('tanggal', $request->bulan);
+                if ($targetSemester) {
+                    $query->whereYear('tanggal', $targetSemester->tahun);
+                }
+            } elseif ($targetSemester && !$request->filled('semester_id')) {
+                $isGanjil = stripos($targetSemester->nama, 'Ganjil') !== false;
                 if ($isGanjil) {
                     $query->whereMonth('tanggal', '>=', 7)
                           ->whereMonth('tanggal', '<=', 12);
                 } else {
-                    $query->where(function($q) {
-                        $q->whereMonth('tanggal', '>=', 1)
+                    $query->whereMonth('tanggal', '>=', 1)
                           ->whereMonth('tanggal', '<=', 6);
-                    });
                 }
             }
 
@@ -163,12 +165,15 @@ class PoinSiswaController extends Controller
                 $riwayatAktif = $siswa->riwayatKelas()->where('semester_id', $semester->id)->where('is_active', true)->first();
                 $kelasId = $riwayatAktif ? $riwayatAktif->kelas_id : null;
 
-                return PoinSiswa::create(array_merge($request->validated(), [
-                    'tanggal' => now()->toDateString(),
-                    'semester_id' => $semester->id,
-                    'guru_staf_id' => $guruStafId,
-                    'kelas_id' => $kelasId
-                ]));
+                $data = $request->validated();
+                $data['poin_positif'] = $data['poin_positif'] ?? 0;
+                $data['poin_negatif'] = $data['poin_negatif'] ?? 0;
+                $data['tanggal'] = $data['tanggal'] ?? now()->toDateString();
+                $data['semester_id'] = $semester->id;
+                $data['guru_staf_id'] = $guruStafId;
+                $data['kelas_id'] = $kelasId;
+
+                return PoinSiswa::create($data);
             });
 
             return response()->json([
@@ -196,7 +201,16 @@ class PoinSiswaController extends Controller
     public function update(UpdatePoinSiswaRequest $request, PoinSiswa $poinSiswa): JsonResponse
     {
         try {
-            DB::transaction(fn() => $poinSiswa->update($request->validated()));
+            DB::transaction(function() use ($request, $poinSiswa) {
+                $data = $request->validated();
+                if (array_key_exists('poin_positif', $data)) {
+                    $data['poin_positif'] = $data['poin_positif'] ?? 0;
+                }
+                if (array_key_exists('poin_negatif', $data)) {
+                    $data['poin_negatif'] = $data['poin_negatif'] ?? 0;
+                }
+                $poinSiswa->update($data);
+            });
             
             return response()->json([
                 'success' => true,
@@ -254,24 +268,22 @@ class PoinSiswaController extends Controller
             $labelWaktu = "KUMULATIF";
             $bulanStr = "";
             $inputMonth = null;
-            $inputYear = null;
             
-            if ($request->filled('bulan')) {
-                $time = strtotime($request->bulan);
-                $inputMonth = date('m', $time);
-                $inputYear = date('Y', $time);
-                $labelWaktu = date('F Y', $time);
-                $bulanStr = "_BULAN_" . $inputMonth;
+            if ($request->filled('bulan') && $request->bulan !== 'KUMULATIF') {
+                $inputMonth = $request->bulan;
+                $labelWaktu = \Carbon\Carbon::createFromFormat('m', $inputMonth)->translatedFormat('F') . ' ' . $semesterObj->tahun;
+                $namaBulanExport = strtoupper(\Carbon\Carbon::createFromFormat('m', $inputMonth)->translatedFormat('F'));
+                $bulanStr = "_BULAN_" . $namaBulanExport;
             }
 
             $isGanjil = stripos($namaSemester, 'Ganjil') !== false;
             
             if ($inputMonth) {
                 if ($isGanjil && !in_array((int)$inputMonth, [7, 8, 9, 10, 11, 12])) {
-                    return response()->json(['success' => false, 'message' => 'Bulan yang dipilih tidak masuk dalam periode Semester Ganjil (Juli - Desember).'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                    return response()->json(['success' => false, 'message' => 'Bulan tidak masuk periode Ganjil.'], Response::HTTP_UNPROCESSABLE_ENTITY);
                 }
                 if (!$isGanjil && !in_array((int)$inputMonth, [1, 2, 3, 4, 5, 6])) {
-                    return response()->json(['success' => false, 'message' => 'Bulan yang dipilih tidak masuk dalam periode Semester Genap (Januari - Juni).'], Response::HTTP_UNPROCESSABLE_ENTITY);
+                    return response()->json(['success' => false, 'message' => 'Bulan tidak masuk periode Genap.'], Response::HTTP_UNPROCESSABLE_ENTITY);
                 }
             }
 
@@ -292,9 +304,9 @@ class PoinSiswaController extends Controller
 
             $query->where('semester_id', $semesterObj->id);
 
-            if ($inputMonth && $inputYear) {
+            if ($inputMonth) {
                 $query->whereMonth('tanggal', $inputMonth)
-                      ->whereYear('tanggal', $inputYear);
+                      ->whereYear('tanggal', $semesterObj->tahun);
             } else {
                 if ($isGanjil) {
                     $query->whereMonth('tanggal', '>=', 7)

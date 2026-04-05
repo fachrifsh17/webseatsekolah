@@ -203,117 +203,123 @@ class PresensiGuruMapelController extends Controller
         ], Response::HTTP_OK);
     }
 
- public function store(StorePresensiGuruMapelRequest $request): JsonResponse
-{
-    $this->authorize('create', PresensiGuruMapel::class);
+    public function store(StorePresensiGuruMapelRequest $request): JsonResponse
+    {
+        $this->authorize('create', PresensiGuruMapel::class);
 
-    $tanggalInput = $request->input('tanggal', Carbon::today()->toDateString());
-    $cekLibur = $this->checkIsLibur($tanggalInput);
+        $tanggalInput = $request->input('tanggal', Carbon::today()->toDateString());
+        $cekLibur = $this->checkIsLibur($tanggalInput);
 
-    if ($cekLibur['is_libur']) {
-        return response()->json([
-            'success' => false,
-            'message' => "Gagal simpan. Tanggal tersebut adalah hari libur: {$cekLibur['keterangan']}."
-        ], Response::HTTP_UNPROCESSABLE_ENTITY);
-    }
+        if ($cekLibur['is_libur']) {
+            return response()->json([
+                'success' => false,
+                'message' => "Gagal simpan. Tanggal tersebut adalah hari libur: {$cekLibur['keterangan']}."
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
-    $relasi = GuruMapel::where('is_active', 1)
-        ->whereHas('mapel', fn($q) => $q->where('is_active', 1))
-        ->whereHas('kelas', fn($q) => $q->where('is_active', 1))
-        ->find($request->input('guru_mapel_id'));
+        $relasi = GuruMapel::where('is_active', 1)
+            ->whereHas('mapel', fn($q) => $q->where('is_active', 1))
+            ->whereHas('kelas', fn($q) => $q->where('is_active', 1))
+            ->find($request->input('guru_mapel_id'));
 
-    if (!$relasi) {
-        return response()->json(['success' => false, 'message' => 'Data jadwal tidak ditemukan, tidak aktif, atau kelas/mapel sudah tidak aktif.'], Response::HTTP_NOT_FOUND);
-    }
+        if (!$relasi) {
+            return response()->json(['success' => false, 'message' => 'Data jadwal tidak ditemukan, tidak aktif, atau kelas/mapel sudah tidak aktif.'], Response::HTTP_NOT_FOUND);
+        }
 
-    $hariInput = Carbon::parse($tanggalInput)->locale('id')->dayName;
+        $hariInput = Carbon::parse($tanggalInput)->locale('id')->dayName;
 
-    if (strtolower($relasi->hari) !== strtolower($hariInput)) {
-        return response()->json([
-            'success' => false,
-            'message' => "Gagal simpan. Jadwal adalah hari {$relasi->hari}, sedangkan tanggal yang dipilih adalah hari {$hariInput}."
-        ], Response::HTTP_UNPROCESSABLE_ENTITY);
-    }
+        if (strtolower($relasi->hari) !== strtolower($hariInput)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Gagal simpan. Jadwal adalah hari {$relasi->hari}, sedangkan tanggal yang dipilih adalah hari {$hariInput}."
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
-    $semesterId = $request->input('semester_id') ?? $relasi->semester_id;
-    $inputPresensiRaw = collect($request->input('presensi', []));
-    $siswaInputIds = $inputPresensiRaw->pluck('siswa_id')->toArray();
+        $semesterId = $request->input('semester_id') ?? $relasi->semester_id;
+        $inputPresensiRaw = collect($request->input('presensi', []));
+        $siswaInputIds = $inputPresensiRaw->pluck('siswa_id')->toArray();
 
-    $siswaAktifIds = Siswa::whereIn('id', $siswaInputIds)
-        ->where('is_active', 1)
-        ->pluck('id')
-        ->toArray();
+        $siswaAktifIds = Siswa::whereIn('id', $siswaInputIds)
+            ->where('is_active', 1)
+            ->pluck('id')
+            ->toArray();
 
-    $siswaIlegalAtauTidakAktif = array_diff($siswaInputIds, $siswaAktifIds);
+        $siswaIlegalAtauTidakAktif = array_diff($siswaInputIds, $siswaAktifIds);
 
-    if (!empty($siswaIlegalAtauTidakAktif)) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Gagal simpan. Terdapat siswa yang tidak terdaftar atau sudah tidak aktif.',
-            'invalid_ids' => array_values($siswaIlegalAtauTidakAktif)
-        ], Response::HTTP_UNPROCESSABLE_ENTITY);
-    }
+        if (!empty($siswaIlegalAtauTidakAktif)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal simpan. Terdapat siswa yang tidak terdaftar atau sudah tidak aktif.',
+                'invalid_ids' => array_values($siswaIlegalAtauTidakAktif)
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
-    $siswaTerdaftarDiKelasIds = $this->getSiswaDariRiwayat($relasi->kelas_id, $semesterId, $tanggalInput)
-        ->whereIn('id', $siswaAktifIds)
-        ->pluck('id')
-        ->toArray();
+        $siswaTerdaftarDiKelasIds = $this->getSiswaDariRiwayat($relasi->kelas_id, $semesterId, $tanggalInput)
+            ->whereIn('id', $siswaAktifIds)
+            ->pluck('id')
+            ->toArray();
 
-    $siswaSalahKelas = array_diff($siswaAktifIds, $siswaTerdaftarDiKelasIds);
-    
-    if (!empty($siswaSalahKelas)) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Gagal simpan. Terdapat siswa yang tidak terdaftar di kelas ini pada semester tersebut.',
-            'invalid_ids' => array_values($siswaSalahKelas)
-        ], Response::HTTP_UNPROCESSABLE_ENTITY);
-    }
+        $siswaSalahKelas = array_diff($siswaAktifIds, $siswaTerdaftarDiKelasIds);
+        
+        if (!empty($siswaSalahKelas)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal simpan. Terdapat siswa yang tidak terdaftar di kelas ini pada semester tersebut.',
+                'invalid_ids' => array_values($siswaSalahKelas)
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
-    try {
-        $presensi = DB::transaction(function () use ($request, $relasi, $tanggalInput, $siswaTerdaftarDiKelasIds, $inputPresensiRaw, $semesterId) {
-            $header = PresensiGuruMapel::updateOrCreate(
-                [
-                    'guru_mapel_id' => $relasi->id,
-                    'tanggal' => $tanggalInput
-                ],
-                [
-                    'semester_id' => $semesterId,
-                    'guru_staf_id' => $relasi->guru_staf_id,
-                    'kelas_id' => $relasi->kelas_id,
-                    'mapel_id' => $relasi->mata_pelajaran_id,
-                    'materi' => $request->input('materi'),
-                ]
-            );
-
-            foreach ($siswaTerdaftarDiKelasIds as $siswaId) {
-                $dataSiswa = $inputPresensiRaw->firstWhere('siswa_id', $siswaId);
-                $header->presensiDetail()->updateOrCreate(
-                    ['siswa_id' => $siswaId],
+        try {
+            $presensi = DB::transaction(function () use ($request, $relasi, $tanggalInput, $siswaTerdaftarDiKelasIds, $inputPresensiRaw, $semesterId) {
+                $header = PresensiGuruMapel::firstOrCreate(
                     [
-                        'status' => $dataSiswa['status'] ?? 'hadir',
-                        'catatan' => $dataSiswa['catatan'] ?? null
+                        'guru_mapel_id' => $relasi->id,
+                        'tanggal' => $tanggalInput
+                    ],
+                    [
+                        'semester_id' => $semesterId,
+                        'guru_staf_id' => $relasi->guru_staf_id,
+                        'kelas_id' => $relasi->kelas_id,
+                        'mapel_id' => $relasi->mata_pelajaran_id,
+                        'materi' => $request->input('materi'),
                     ]
                 );
-            }
-            return $header;
-        });
 
-        return (new PresensiGuruMapelResource($presensi->load([
-            'presensiDetail.siswa',
-            'guru',
-            'mapel',
-            'kelas',
-            'guruMapel.jamMulai',
-            'guruMapel.jamSelesai',
-        ])))
-            ->additional(['success' => true, 'message' => 'Presensi berhasil disimpan.'])
-            ->response()
-            ->setStatusCode(Response::HTTP_CREATED);
-    } catch (Throwable $e) {
-        Log::error('Admin Simpan Jurnal Error: ' . $e->getMessage());
-        return response()->json(['success' => false, 'message' => 'Gagal simpan data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+                if (!$header->wasRecentlyCreated) {
+                    $header->update([
+                        'materi' => $request->input('materi')
+                    ]);
+                }
+
+                foreach ($siswaTerdaftarDiKelasIds as $siswaId) {
+                    $dataSiswa = $inputPresensiRaw->firstWhere('siswa_id', $siswaId);
+                    $header->presensiDetail()->updateOrCreate(
+                        ['siswa_id' => $siswaId],
+                        [
+                            'status' => $dataSiswa['status'] ?? 'hadir',
+                            'catatan' => $dataSiswa['catatan'] ?? null
+                        ]
+                    );
+                }
+                return $header;
+            });
+
+            return (new PresensiGuruMapelResource($presensi->load([
+                'presensiDetail.siswa',
+                'guru',
+                'mapel',
+                'kelas',
+                'guruMapel.jamMulai',
+                'guruMapel.jamSelesai',
+            ])))
+                ->additional(['success' => true, 'message' => 'Presensi berhasil disimpan.'])
+                ->response()
+                ->setStatusCode(Response::HTTP_CREATED);
+        } catch (Throwable $e) {
+            Log::error('Admin Simpan Jurnal Error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal simpan data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
-}
 
     public function update(UpdatePresensiGuruMapelRequest $request, $id): JsonResponse
     {

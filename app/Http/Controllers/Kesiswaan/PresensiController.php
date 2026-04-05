@@ -287,6 +287,7 @@ class PresensiController extends Controller
             $collection = $siswa->map(fn($item) => [
                 'siswa_id'   => $item->id,
                 'nama'       => $item->nama_lengkap,
+                'nis'        => $item->nis,
                 'nisn'       => $item->nisn,
                 'status'     => $item->presensiDetail->first()?->status ?? null,
                 'keterangan' => $item->presensiDetail->first()?->keterangan ?? null,
@@ -311,14 +312,18 @@ class PresensiController extends Controller
         }
     }
 
-   public function store(StorePresensiRequest $request): JsonResponse
+    public function store(StorePresensiRequest $request): JsonResponse
     {
         $this->authorize('create', Presensi::class);
 
         try {
             $semesterActive = Semester::where('is_active', true)->firstOrFail();
-            $tanggalInput = $request->query('tanggal', date('Y-m-d'));
+            $tanggalInput = $request->input('tanggal');
             $requestKelasId = (string) $request->input('kelas_id');
+
+            if (!$tanggalInput) {
+                return response()->json(['success' => false, 'message' => 'Gagal simpan: Tanggal presensi wajib diisi.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
 
             $this->validateTanggalPresensi($tanggalInput, $semesterActive->id);
 
@@ -329,7 +334,7 @@ class PresensiController extends Controller
             $result = DB::transaction(function () use ($dataInput, $tanggalInput, $semesterActive, $requestKelasId, $request) {
                 $waliKelasRecord = $this->getWaliKelasOrFail($requestKelasId, $semesterActive->id);
                 
-                $presensiHeader = Presensi::updateOrCreate(
+                $presensiHeader = Presensi::firstOrCreate(
                     [
                         'tanggal' => $tanggalInput, 
                         'kelas_id' => $requestKelasId, 
@@ -338,12 +343,15 @@ class PresensiController extends Controller
                     [
                         'kelas_wali_id' => $waliKelasRecord->id,
                         'guru_id' => $waliKelasRecord->guru_staf_id,
-                        'kegiatan' => $request->kegiatan,
-                        'materi' => $request->materi,
-                        'jam_mulai' => $request->jam_mulai,
-                        'jam_selesai' => $request->jam_selesai,
                     ]
                 );
+
+                $presensiHeader->update([
+                    'kegiatan' => $request->kegiatan,
+                    'materi' => $request->materi,
+                    'jam_mulai' => $request->jam_mulai,
+                    'jam_selesai' => $request->jam_selesai,
+                ]);
 
                 foreach ($dataInput as $item) {
                     PresensiDetail::updateOrCreate(
@@ -363,7 +371,7 @@ class PresensiController extends Controller
 
         } catch (Throwable $e) {
             Log::error('Store Presensi Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Gagal menyimpan: ' . $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
     }
 
@@ -372,7 +380,7 @@ class PresensiController extends Controller
         $carbonDate = Carbon::parse($tanggal);
 
         if ($carbonDate->isWeekend()) {
-            throw new \Exception('Tidak dapat melakukan presensi pada hari libur (Sabtu/Minggu).');
+            throw new \Exception('Gagal menyimpan: Tidak dapat melakukan presensi pada hari libur (Sabtu/Minggu).');
         }
 
         $isLiburKalender = KalenderAkademik::where('semester_id', $semesterId)
@@ -382,7 +390,7 @@ class PresensiController extends Controller
             ->exists();
 
         if ($isLiburKalender) {
-            throw new \Exception('Tanggal tersebut adalah libur di kalender akademik.');
+            throw new \Exception('Gagal menyimpan: Tanggal tersebut adalah hari libur di kalender akademik.');
         }
     }
 
@@ -398,21 +406,11 @@ class PresensiController extends Controller
             })
             ->count();
 
-        if (count($dataInput) < $totalSiswaSeharusnya) {
-            throw new \Exception('Gagal simpan: Seluruh siswa di kelas ini wajib diisi status presensinya.');
-        }
-
-        $siswaNonAktif = Siswa::whereIn('id', $inputSiswaIds)->where('is_active', 0)->pluck('nama_lengkap')->toArray();
-        if (!empty($siswaNonAktif)) {
-            throw new \Exception('Gagal simpan: Siswa berikut sudah tidak aktif: ' . implode(', ', $siswaNonAktif));
-        }
-
         $siswaLuarKelas = [];
         foreach ($inputSiswaIds as $sId) {
             $isMember = SiswaKelas::where('siswa_id', $sId)
                 ->where('kelas_id', $kelasId)
                 ->where('semester_id', $semesterId)
-                ->where('is_active', 1)
                 ->exists();
             
             if (!$isMember) {
@@ -454,7 +452,7 @@ class PresensiController extends Controller
             'rincian_siswa' => $result->details->map(fn($d) => [
                 'id' => $d->id,
                 'siswa_id' => $d->siswa_id,
-                'nama_siswa' => $d->siswa->nama_lengkap,
+                'nama_siswa' => $d->siswa->nama_lengkap ?? '-',
                 'status' => $d->status,
                 'catatan' => $d->keterangan
             ]),
@@ -465,14 +463,17 @@ class PresensiController extends Controller
 
     public function update(UpdatePresensiRequest $request, $presensiId): JsonResponse
     {
-        $presensiHeader = Presensi::with('semester')->find($presensiId);
+        $presensiHeader = Presensi::with(['semester', 'details'])->find($presensiId);
 
         if (!$presensiHeader) {
             return response()->json(['success' => false, 'message' => 'Data presensi tidak ditemukan.'], Response::HTTP_NOT_FOUND);
         }
 
         if (!$presensiHeader->semester || $presensiHeader->semester->is_active != 1) {
-            return response()->json(['success' => false, 'message' => 'Akses Ditolak: Data presensi pada semester yang sudah tidak aktif tidak dapat diubah.'], Response::HTTP_FORBIDDEN);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Akses Ditolak: Data presensi pada semester non-aktif tidak dapat diubah.'
+            ], Response::HTTP_FORBIDDEN);
         }
 
         $this->authorize('update', $presensiHeader);
@@ -483,51 +484,27 @@ class PresensiController extends Controller
 
                 if ($request->has('data_presensi')) {
                     foreach ($request->data_presensi as $item) {
-                        $detail = PresensiDetail::where('presensi_id', $presensiHeader->id)
+                        PresensiDetail::where('presensi_id', $presensiHeader->id)
                             ->where('siswa_id', $item['siswa_id'])
-                            ->first();
-
-                        if ($detail) {
-                            $detail->update([
+                            ->update([
                                 'status' => $item['status'],
                                 'keterangan' => $item['keterangan'] ?? 'Diupdate Admin: ' . Auth::user()->username
                             ]);
-                        }
                     }
                 }
 
                 return $presensiHeader->load(['semester', 'kelas', 'guru', 'details.siswa']);
             });
 
-            $responseData = [
-                'id' => $result->id,
-                'tanggal' => Carbon::parse($result->tanggal)->format('Y-m-d'),
-                'semester' => [
-                    'id' => $result->semester->id,
-                    'nama' => $result->semester->nama,
-                    'tahun_ajaran_id' => $result->semester->tahun_ajaran_id,
-                    'tahun' => $result->semester->tahun
-                ],
-                'rincian_siswa' => $result->details->map(fn($d) => [
-                    'id' => $d->id,
-                    'siswa_id' => $d->siswa_id,
-                    'nama_siswa' => $d->siswa->nama_lengkap,
-                    'status' => $d->status,
-                    'catatan' => $d->keterangan
-                ]),
-                'created_at' => $result->created_at->format('d-m-Y H:i'),
-                'updated_at' => $result->updated_at->format('d-m-Y H:i')
-            ];
-
             return response()->json([
-                'data' => $responseData,
+                'data' => $this->formatPresensiResponse($result),
                 'success' => true,
                 'message' => 'Data presensi berhasil diperbarui.'
             ], Response::HTTP_OK);
             
         } catch (Throwable $e) {
             Log::error('Update Presensi Error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return response()->json(['success' => false, 'message' => 'Gagal memperbarui data.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 

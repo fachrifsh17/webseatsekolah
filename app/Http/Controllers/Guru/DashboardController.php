@@ -224,14 +224,20 @@ class DashboardController extends Controller
 
     private function getPengumuman()
     {
-        return Pengumuman::latest()->take(3)->get()->map(fn($item) => [
-            'id' => $item->id,
-            'judul' => $item->judul,
-            'isi_pengumuman' => $item->isi_pengumuman,
-            'tanggal_publikasi' => Carbon::parse($item->tanggal_publikasi)->format('Y-m-d'),
-            'penting' => $item->penting,
-            'created_at' => $item->created_at->format('Y-m-d H:i:s'),
-            'updated_at' => $item->updated_at->format('Y-m-d H:i:s'),
-        ]);
+        $tigaHariLalu = today()->subDays(2);
+
+        return Pengumuman::where('created_at', '>=', $tigaHariLalu)
+            ->latest()
+            ->take(3)
+            ->get()
+            ->map(fn($item) => [
+                'id' => $item->id,
+                'judul' => $item->judul,
+                'isi_pengumuman' => $item->isi_pengumuman,
+                'tanggal_publikasi' => $item->tanggal_publikasi ? Carbon::parse($item->tanggal_publikasi)->format('Y-m-d') : null,
+                'penting' => $item->penting,
+                'created_at' => $item->created_at->format('Y-m-d H:i:s'),
+                'updated_at' => $item->updated_at->format('Y-m-d H:i:s'),
+            ]);
     }
 }

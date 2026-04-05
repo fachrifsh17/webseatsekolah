@@ -29,41 +29,22 @@ class DashboardController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $user = $request->user();
             $hariIni = today();
             $tigaHariLagi = today()->addDays(3);
             
-            // Ambil active semester ID dengan cache singkat (10 menit)
             $activeSemesterIds = Cache::remember('active_semester_ids', 600, function() {
                 return Semester::where('is_active', 1)->pluck('id');
             });
 
             $data = [
-                'user_info' => [
-                    'name' => $user->nama_lengkap ?? $user->username ?? $user->name,
-                    'role' => 'Admin',
-                ],
-                // Statistik menggunakan cache agar loading instan
+                'user_info' => $this->getUserInfo($request->user()),
                 'statistics' => $this->getStats($activeSemesterIds),
                 'common' => [
                     'kalender_akademik' => $this->getKalenderData($activeSemesterIds, $hariIni, $tigaHariLagi),
-                    // Optimasi: Langsung ambil 5 terbaru tanpa map manual yang berat
-                    'recent_pengumuman' => Pengumuman::latest()->take(5)->get()->map(function($item) {
-                        return [
-                            'id' => $item->id,
-                            'judul' => $item->judul,
-                            'isi_pengumuman' => $item->isi_pengumuman,
-                            'tanggal_publikasi' => $item->tanggal_publikasi ? Carbon::parse($item->tanggal_publikasi)->format('Y-m-d H:i:s') : null,
-                            'penting' => $item->penting,
-                            'created_at' => $item->created_at->format('Y-m-d H:i:s'),
-                            'updated_at' => $item->updated_at->format('Y-m-d H:i:s'),
-                        ];
-                    }),
-                    'recent_berita' => BeritaResource::collection(Berita::latest()->take(5)->get()),
+                    'recent_pengumuman' => $this->getRecentPengumuman(),
+                    'recent_berita' => $this->getRecentBerita(),
                 ],
-                'recent_logs' => LogAktivitasResource::collection(
-                    LogAktivitas::with('user')->latest()->take(5)->get()
-                ),
+                'recent_logs' => $this->getRecentLogs(),
             ];
 
             return response()->json([
@@ -85,16 +66,53 @@ class DashboardController extends Controller
         }
     }
 
+    private function getUserInfo($user): array
+    {
+        return [
+            'name' => $user->nama_lengkap ?? $user->username ?? $user->name,
+            'role' => 'Admin',
+        ];
+    }
+
+    private function getRecentPengumuman(): array
+    {
+        $tigaHariLalu = today()->subDays(2);
+
+        return Pengumuman::where('created_at', '>=', $tigaHariLalu)
+            ->latest()
+            ->take(5)
+            ->get()
+            ->map(fn($item) => [
+                'id' => $item->id,
+                'judul' => $item->judul,
+                'isi_pengumuman' => $item->isi_pengumuman,
+                'tanggal_publikasi' => $item->tanggal_publikasi ? Carbon::parse($item->tanggal_publikasi)->format('Y-m-d H:i:s') : null,
+                'penting' => $item->penting,
+                'created_at' => $item->created_at->format('Y-m-d H:i:s'),
+                'updated_at' => $item->updated_at->format('Y-m-d H:i:s'),
+            ])->toArray();
+    }
+
+    private function getRecentBerita()
+    {
+        return BeritaResource::collection(Berita::latest()->take(5)->get());
+    }
+
+    private function getRecentLogs()
+    {
+        return LogAktivitasResource::collection(
+            LogAktivitas::with('user')->latest()->take(5)->get()
+        );
+    }
+
     private function getStats($activeSemesterIds): array
     {
-        // KUNCI KECEPATAN: Simpan hasil hitung selama 30 menit.
-        // Data statistik tidak perlu real-time per detik.
         return Cache::remember('admin_dashboard_stats', 1800, function () use ($activeSemesterIds) {
             return [
-                'total_berita'         => Berita::count(),
-                'total_pengumuman'     => Pengumuman::count(),
-                'guru_aktif'           => GuruStaf::where('is_active', 1)->count(),
-                'siswa_aktif'          => Siswa::where('is_active', 1)
+                'total_berita'          => Berita::count(),
+                'total_pengumuman'      => Pengumuman::count(),
+                'guru_aktif'            => GuruStaf::where('is_active', 1)->count(),
+                'siswa_aktif'           => Siswa::where('is_active', 1)
                     ->whereHas('riwayatKelas', function($q) use ($activeSemesterIds) {
                         $q->whereIn('semester_id', $activeSemesterIds)
                           ->where('is_active', 1);

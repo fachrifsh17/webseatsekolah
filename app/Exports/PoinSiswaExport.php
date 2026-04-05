@@ -156,8 +156,19 @@ class PoinSiswaExport implements FromQuery, WithMapping, WithStyles, WithEvents,
                 $sheet->getStyle("A9")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
                 $sheet->mergeCells("A10:{$lastCol}10"); $sheet->setCellValue('A10', "KELAS : " . strtoupper($this->namaKelas));
+                
+                // PERBAIKAN DI SINI:
+                if (strtoupper($this->labelWaktu) === 'KUMULATIF' || empty($this->labelWaktu)) {
+                    $periodeTampil = 'KESELURUHAN';
+                } else {
+                    try {
+                        $periodeTampil = strtoupper(Carbon::parse($this->labelWaktu)->translatedFormat('F Y'));
+                    } catch (\Exception $e) {
+                        $periodeTampil = strtoupper($this->labelWaktu);
+                    }
+                }
+
                 $sheet->mergeCells("A11:{$lastCol}11");
-                $periodeTampil = !empty($this->labelWaktu) ? strtoupper(Carbon::parse($this->labelWaktu)->translatedFormat('F Y')) : 'KESELURUHAN';
                 $sheet->setCellValue('A11', "PERIODE : " . $periodeTampil);
                 
                 $sheet->mergeCells("A12:{$lastCol}12");

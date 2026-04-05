@@ -69,7 +69,8 @@ class DashboardController extends Controller
 
     private function getAkademikData($hariIni, $tigaHariLagi, $semesterId)
     {
-        $pengumuman = Pengumuman::latest()->first();
+        $tigaHariLalu = today()->subDays(2);
+        $pengumuman = Pengumuman::where('created_at', '>=', $tigaHariLalu)->latest()->first();
 
         $kalender = KalenderAkademik::where('semester_id', $semesterId)
             ->where(function ($q) use ($hariIni, $tigaHariLagi) {

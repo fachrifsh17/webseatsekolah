@@ -26,7 +26,7 @@ class UserController extends Controller
     {
         $this->middleware('auth.token');
         $this->middleware('role:Admin');
-        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy']);
+        $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'bulkDestroy']);
 
         $this->authorizeResource(User::class, 'user');
     }
@@ -161,11 +161,54 @@ class UserController extends Controller
         }
 
         try {
-            $user->delete();
+            DB::transaction(function () use ($user) {
+                if ($user->guruStaf) $user->guruStaf->delete();
+                if ($user->siswa) $user->siswa->delete();
+                if ($user->orangtua) $user->orangtua->delete();
+                
+                $user->delete();
+            });
+
             return response()->json(['success' => true, 'message' => 'User berhasil dihapus.'], Response::HTTP_OK);
         } catch (Throwable $e) {
             Log::error('Failed to delete user', ['user_id' => (string)$user->id, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Gagal menghapus user.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'string|exists:users,id'
+        ]);
+
+        $ids = $request->input('ids');
+        $currentUserId = (string)Auth::id();
+
+        if (in_array($currentUserId, $ids)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak bisa menghapus akun sendiri dalam operasi massal.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        try {
+            DB::transaction(function () use ($ids) {
+                $users = User::with(['guruStaf', 'siswa', 'orangtua'])->whereIn('id', $ids)->get();
+                /** @var \App\Models\User $user */
+                foreach ($users as $user) {
+                    if ($user->guruStaf) $user->guruStaf->delete();
+                    if ($user->siswa) $user->siswa->delete();
+                    if ($user->orangtua) $user->orangtua->delete();
+                    $user->delete();
+                }
+            });
+
+            return response()->json(['success' => true, 'message' => count($ids) . ' user berhasil dihapus.'], Response::HTTP_OK);
+        } catch (Throwable $e) {
+            Log::error('Bulk delete failed', ['ids' => $ids, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus beberapa user.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 

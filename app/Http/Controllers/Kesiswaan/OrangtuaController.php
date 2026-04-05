@@ -20,7 +20,6 @@ class OrangtuaController extends Controller
     public function __construct()
     {
         $this->middleware('auth.token');
-        $this->middleware('role:Admin');
         $this->middleware('log.aktivitas')->only(['store', 'update', 'destroy', 'import', 'bulkDelete']);
         $this->authorizeResource(Orangtua::class, 'orangtua');
     }
